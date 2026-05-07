@@ -12,7 +12,8 @@ paths:
   reports: "reports"
   figures: "reports/figures"
   mlflow_tracking: "mlruns"
-  models: "src/models"  # <-- Assurez-vous que cette ligne existe
+  models: "models"   
+ # <-- Assurez-vous que cette ligne existe
 
 
 data:
