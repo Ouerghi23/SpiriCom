@@ -3,32 +3,36 @@ complaint_db.py
 ================
 SQLite database manager for Ooredoo NLP complaint storage.
 
-Schema:
+Schema (v2 — adds is_complaint):
   complaints (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    complaint_id    TEXT UNIQUE,
-    submitted_at    TEXT,
-    msisdn          TEXT,
-    city_input      TEXT,     -- city typed by user
-    segment         TEXT,
-    channel         TEXT,     -- web / app / social / call_center
-    text_original   TEXT,     -- raw complaint as typed
-    language        TEXT,     -- ar / fr / en
-    nlp_category    TEXT,
-    nlp_sentiment   TEXT,
-    nlp_urgency_score REAL,
-    nlp_urgency_level TEXT,
-    nlp_city        TEXT,     -- city extracted by NLP
-    nlp_network_type TEXT,
-    nlp_keywords    TEXT,     -- JSON list
-    status          TEXT      -- open / in_progress / resolved
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    complaint_id        TEXT UNIQUE,
+    submitted_at        TEXT,
+    msisdn              TEXT,
+    city_input          TEXT,
+    segment             TEXT,
+    channel             TEXT,
+    text_original       TEXT,
+    language            TEXT,
+    nlp_category        TEXT,
+    nlp_sentiment       TEXT,
+    nlp_urgency_score   REAL,
+    nlp_urgency_level   TEXT,
+    nlp_city            TEXT,
+    nlp_network_type    TEXT,
+    nlp_keywords        TEXT,
+    status              TEXT,
+    is_complaint        INTEGER   ← NEW  (1 = réclamation, 0 = feedback, NULL = unknown)
   )
 
-Usage:
-    from src.nlp.complaint_db import ComplaintDB
-    db = ComplaintDB()
-    db.insert(complaint_dict)
-    df = db.to_dataframe()
+Migration:
+    If the existing DB does not yet have is_complaint, _init_schema() adds it
+    with ALTER TABLE … ADD COLUMN — safe to run on live databases.
+
+NEW in stats():
+    "complaint_count"     — submissions where is_complaint = 1
+    "non_complaint_count" — submissions where is_complaint = 0
+    "by_type"             — {"complaint": N, "feedback": N}  (used by NLPAnalysis.jsx)
 """
 
 from __future__ import annotations
@@ -66,9 +70,10 @@ class ComplaintDB:
         finally:
             conn.close()
 
-    # ── Schema ─────────────────────────────────────────────────────────────
-    def _init_schema(self):
+    # ── Schema + migration ─────────────────────────────────────────────────
+    def _init_schema(self) -> None:
         with self._conn() as conn:
+            # Create table if it does not exist (includes is_complaint)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS complaints (
                     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,9 +92,22 @@ class ComplaintDB:
                     nlp_city            TEXT,
                     nlp_network_type    TEXT,
                     nlp_keywords        TEXT,
-                    status              TEXT DEFAULT 'open'
+                    status              TEXT DEFAULT 'open',
+                    is_complaint        INTEGER DEFAULT NULL
                 )
             """)
+
+            # ── Safe migration: add is_complaint to existing databases ─────
+            # ALTER TABLE ADD COLUMN raises OperationalError if already present.
+            try:
+                conn.execute(
+                    "ALTER TABLE complaints ADD COLUMN is_complaint INTEGER DEFAULT NULL"
+                )
+                logger.info("Migration: added is_complaint column to existing table.")
+            except sqlite3.OperationalError:
+                pass  # Column already exists — nothing to do
+
+            # Indices
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_submitted_at
                 ON complaints(submitted_at)
@@ -102,20 +120,32 @@ class ComplaintDB:
                 CREATE INDEX IF NOT EXISTS idx_language
                 ON complaints(language)
             """)
+            # NEW index — supports the is_complaint filter in list endpoint
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_is_complaint
+                ON complaints(is_complaint)
+            """)
+
         logger.info(f"DB ready: {self.db_path}")
 
     # ── Insert ─────────────────────────────────────────────────────────────
     def insert(self, complaint: dict) -> str:
         """
         Insert one analyzed complaint.
-        complaint must have: text_original + all nlp_* fields from pipeline.
-
+        Accepts the dict returned by MultilingualNLPPipeline.analyze().
         Returns the complaint_id.
         """
         cid = complaint.get("complaint_id") or self._generate_id()
         kw  = complaint.get("keywords") or complaint.get("nlp_keywords") or []
         if isinstance(kw, list):
             kw = json.dumps(kw, ensure_ascii=False)
+
+        # is_complaint: accept True/False (Python), 1/0 (int), or None
+        raw_is_complaint = complaint.get("is_complaint")
+        if raw_is_complaint is None:
+            is_complaint_val = None
+        else:
+            is_complaint_val = 1 if raw_is_complaint else 0
 
         row = {
             "complaint_id":      cid,
@@ -142,6 +172,7 @@ class ComplaintDB:
                                  or complaint.get("nlp_network_type"),
             "nlp_keywords":      kw,
             "status":            complaint.get("status", "open"),
+            "is_complaint":      is_complaint_val,   # NEW
         }
 
         with self._conn() as conn:
@@ -150,39 +181,48 @@ class ComplaintDB:
                     complaint_id, submitted_at, msisdn, city_input, segment,
                     channel, text_original, language, nlp_category,
                     nlp_sentiment, nlp_urgency_score, nlp_urgency_level,
-                    nlp_city, nlp_network_type, nlp_keywords, status
+                    nlp_city, nlp_network_type, nlp_keywords, status,
+                    is_complaint
                 ) VALUES (
                     :complaint_id, :submitted_at, :msisdn, :city_input, :segment,
                     :channel, :text_original, :language, :nlp_category,
                     :nlp_sentiment, :nlp_urgency_score, :nlp_urgency_level,
-                    :nlp_city, :nlp_network_type, :nlp_keywords, :status
+                    :nlp_city, :nlp_network_type, :nlp_keywords, :status,
+                    :is_complaint
                 )
             """, row)
         return cid
 
     # ── Query ──────────────────────────────────────────────────────────────
-    def to_dataframe(self,
-                     language:  str | None = None,
-                     urgency:   str | None = None,
-                     sentiment: str | None = None,
-                     status:    str | None = None,
-                     limit:     int = 5000) -> pd.DataFrame:
-        """Load complaints from DB into a DataFrame with optional filters."""
-        conditions = []
-        params: list = []
+    def to_dataframe(
+        self,
+        language:     str | None  = None,
+        urgency:      str | None  = None,
+        sentiment:    str | None  = None,
+        status:       str | None  = None,
+        is_complaint: bool | None = None,   # NEW filter
+        limit:        int         = 5000,
+    ) -> pd.DataFrame:
+        """Load complaints from DB with optional filters."""
+        conditions: list[str] = []
+        params:     list      = []
 
-        if language:
+        if language is not None:
             conditions.append("language = ?")
             params.append(language)
-        if urgency:
+        if urgency is not None:
             conditions.append("nlp_urgency_level = ?")
             params.append(urgency)
-        if sentiment:
+        if sentiment is not None:
             conditions.append("nlp_sentiment = ?")
             params.append(sentiment)
-        if status:
+        if status is not None:
             conditions.append("status = ?")
             params.append(status)
+        # NEW: filter by is_complaint
+        if is_complaint is not None:
+            conditions.append("is_complaint = ?")
+            params.append(1 if is_complaint else 0)
 
         where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
         sql   = f"SELECT * FROM complaints {where} ORDER BY submitted_at DESC LIMIT ?"
@@ -191,57 +231,103 @@ class ComplaintDB:
         with self._conn() as conn:
             df = pd.read_sql_query(sql, conn, params=params)
 
-        if not df.empty and "nlp_keywords" in df.columns:
-            df["nlp_keywords"] = df["nlp_keywords"].apply(
-                lambda x: json.loads(x) if x and isinstance(x, str) else []
-            )
+        if not df.empty:
+            if "nlp_keywords" in df.columns:
+                df["nlp_keywords"] = df["nlp_keywords"].apply(
+                    lambda x: json.loads(x) if x and isinstance(x, str) else []
+                )
+            # NEW: convert SQLite 0/1/NULL → Python bool/None
+            if "is_complaint" in df.columns:
+                df["is_complaint"] = df["is_complaint"].apply(
+                    lambda x: None if pd.isna(x) else bool(int(x))
+                )
         return df
 
+    # ── Aggregated stats ───────────────────────────────────────────────────
     def count(self) -> int:
         with self._conn() as conn:
             return conn.execute("SELECT COUNT(*) FROM complaints").fetchone()[0]
 
     def stats(self) -> dict:
-        """Return aggregated stats for the dashboard."""
+        """
+        Return aggregated stats for the NLP dashboard.
+
+        NEW fields:
+            complaint_count     — is_complaint = 1
+            non_complaint_count — is_complaint = 0
+            by_type             — {"complaint": N, "feedback": N}
+                                  consumed by the NLPAnalysis.jsx 4th donut chart
+        """
         with self._conn() as conn:
             total = conn.execute("SELECT COUNT(*) FROM complaints").fetchone()[0]
             if total == 0:
-                return {"total": 0}
+                return {
+                    "total": 0,
+                    "complaint_count": 0,
+                    "non_complaint_count": 0,
+                    "by_type": {"complaint": 0, "feedback": 0},
+                }
 
             by_lang = dict(conn.execute(
                 "SELECT language, COUNT(*) FROM complaints GROUP BY language"
             ).fetchall())
             by_cat  = dict(conn.execute(
-                "SELECT nlp_category, COUNT(*) FROM complaints GROUP BY nlp_category ORDER BY 2 DESC LIMIT 10"
+                "SELECT nlp_category, COUNT(*) FROM complaints "
+                "GROUP BY nlp_category ORDER BY 2 DESC LIMIT 10"
             ).fetchall())
             by_sent = dict(conn.execute(
-                "SELECT nlp_sentiment, COUNT(*) FROM complaints GROUP BY nlp_sentiment"
+                "SELECT nlp_sentiment, COUNT(*) FROM complaints "
+                "GROUP BY nlp_sentiment"
             ).fetchall())
             by_urg  = dict(conn.execute(
-                "SELECT nlp_urgency_level, COUNT(*) FROM complaints GROUP BY nlp_urgency_level"
+                "SELECT nlp_urgency_level, COUNT(*) FROM complaints "
+                "GROUP BY nlp_urgency_level"
             ).fetchall())
             by_city = dict(conn.execute(
-                "SELECT nlp_city, COUNT(*) FROM complaints WHERE nlp_city IS NOT NULL GROUP BY nlp_city ORDER BY 2 DESC LIMIT 10"
+                "SELECT nlp_city, COUNT(*) FROM complaints "
+                "WHERE nlp_city IS NOT NULL "
+                "GROUP BY nlp_city ORDER BY 2 DESC LIMIT 10"
             ).fetchall())
-            avg_urg = conn.execute(
-                "SELECT AVG(nlp_urgency_score) FROM complaints"
-            ).fetchone()[0] or 0.0
+            avg_urg = (
+                conn.execute("SELECT AVG(nlp_urgency_score) FROM complaints")
+                .fetchone()[0] or 0.0
+            )
+
+            # NEW: complaint / non-complaint counts
+            complaint_count = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM complaints WHERE is_complaint = 1"
+                ).fetchone()[0]
+            )
+            non_complaint_count = (
+                conn.execute(
+                    "SELECT COUNT(*) FROM complaints WHERE is_complaint = 0"
+                ).fetchone()[0]
+            )
 
         return {
-            "total":            total,
-            "by_language":      by_lang,
-            "by_category":      by_cat,
-            "by_sentiment":     by_sent,
-            "by_urgency_level": by_urg,
-            "by_city":          by_city,
-            "mean_urgency":     round(avg_urg, 3),
+            "total":              total,
+            "by_language":        by_lang,
+            "by_category":        by_cat,
+            "by_sentiment":       by_sent,
+            "by_urgency_level":   by_urg,
+            "by_city":            by_city,
+            "mean_urgency":       round(avg_urg, 3),
+            # NEW — consumed by NLPAnalysis.jsx KPI tiles + 4th donut chart
+            "complaint_count":    complaint_count,
+            "non_complaint_count": non_complaint_count,
+            "by_type": {
+                "complaint": complaint_count,
+                "feedback":  non_complaint_count,
+            },
         }
 
+    # ── Mutations ──────────────────────────────────────────────────────────
     def update_status(self, complaint_id: str, status: str) -> None:
         with self._conn() as conn:
             conn.execute(
                 "UPDATE complaints SET status = ? WHERE complaint_id = ?",
-                (status, complaint_id)
+                (status, complaint_id),
             )
 
     def _generate_id(self) -> str:

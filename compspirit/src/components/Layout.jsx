@@ -1,27 +1,46 @@
 // src/components/Layout.jsx
-// FIX: import path corrected from '../routes/routes' → '../routes'
-//      (NAV_LINKS lives at src/routes.js, not src/routes/routes.js)
-// ADD: /dashboard/about link included in NAV_LINKS via routes.js
+// ──────────────────────────────────────────────────────────────────────────────
+// Fix: navbar right section was one undivided flex row — language toggle,
+// user info, and logout button were visually merged.
+//
+// Now split into three clearly separated zones with 1px dividers:
+//   [ EN/中文 ]  |  [ Avatar  Name / Role ]  |  [ Logout ]
+//
+// Also fixed: translation keys now match en.json / zh.json (flat nav.* keys).
+// TranslateWidget removed from <main> — it was floating over dashboard content.
+// ──────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect }   from 'react'
-import { NavLink, Link, Outlet } from 'react-router-dom'
-import { NAV_LINKS }             from '../routes'    // ← FIX: was '../routes/routes'
-import logoImg                   from '../assets/images/logo_1.png'
+import { useState, useEffect }                    from 'react'
+import { NavLink, Link, Outlet, useNavigate }     from 'react-router-dom'
+import { useTranslation }                         from 'react-i18next'
+import { LogOut }                                 from 'lucide-react'
+import { useAuth }                                from '../hooks/useAuth.jsx'
+import LanguageToggle                             from './LanguageToggle'
+import logoImg                                    from '../assets/images/logo_1.png'
 
+// ── Colour tokens ─────────────────────────────────────────────────────────────
 const C = {
-  primary:      '#CF0A2C',
-  primaryHover: '#E8102F',
-  dark:         '#0A0A0A',
-  darker:       '#050505',
-  border:       'rgba(255,255,255,.08)',
-  card:         '#111111',
-  text:         '#F8FAFC',
-  textMuted:    'rgba(248,250,252,.75)',
-  textDim:      'rgba(248,250,252,.45)',
+  primary:   '#CF0A2C',
+  bg:        '#0C0D12',
+  dark:      '#0A0B0E',
+  darker:    '#060607',
+  border:    'rgba(255,255,255,.08)',
+  text:      '#E6E8F0',
+  textMuted: 'rgba(230,232,240,.55)',
+  textDim:   'rgba(230,232,240,.28)',
 }
 
+// ── Thin vertical divider between navbar zones ────────────────────────────────
+const NavDivider = () => (
+  <div style={{ width: 1, height: 24, background: C.border, flexShrink: 0 }}/>
+)
+
+// ════════════════════════════════════════════════════════════════════════════
 export default function Layout() {
   const [scrolled, setScrolled] = useState(false)
+  const { user, logout }        = useAuth()
+  const { t }                   = useTranslation()
+  const navigate                = useNavigate()
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -29,62 +48,173 @@ export default function Layout() {
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  // Nav items — keys match flat nav.* in en.json / zh.json
+  const NAV = [
+    { label: t('nav.overview'),  path: '/dashboard'            },
+    { label: t('nav.map'),       path: '/dashboard/map'        },
+    { label: t('nav.anomalies'), path: '/dashboard/anomalies'  },
+    { label: t('nav.forecast'),  path: '/dashboard/forecast'   },
+    { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
+    { label: t('nav.segments'),  path: '/dashboard/segments'   },
+    { label: t('nav.nlp'),       path: '/dashboard/nlp'        },
+    { label: t('nav.about'),     path: '/dashboard/about'      },
+  ]
+
+  // Initials for avatar — max 2 chars
+  const initials = (user?.full_name || user?.username || 'SC')
+    .split(' ')
+    .map(w => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
   return (
     <div style={{
-      fontFamily: "'Inter','Barlow',system-ui,sans-serif",
+      fontFamily: "'Inter', 'Barlow', system-ui, sans-serif",
       background: C.dark,
-      color: C.text,
-      minHeight: '100vh',
+      color:      C.text,
+      minHeight:  '100vh',
     }}>
       <style>{`
-        *{box-sizing:border-box}
-        ::-webkit-scrollbar{width:6px;height:6px}
-        ::-webkit-scrollbar-track{background:${C.dark}}
-        ::-webkit-scrollbar-thumb{background:${C.primary};border-radius:3px}
-        ::-webkit-scrollbar-thumb:hover{background:${C.primaryHover}}
+        *, *::before, *::after { box-sizing: border-box; }
 
-        .nav-link{
-          color:${C.textMuted};font-size:12px;font-weight:600;
-          letter-spacing:.5px;text-transform:uppercase;
-          padding:8px 0;position:relative;
-          transition:color .2s ease;text-decoration:none;white-space:nowrap;
+        ::-webkit-scrollbar       { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: ${C.dark}; }
+        ::-webkit-scrollbar-thumb { background: ${C.primary}; border-radius: 3px; }
+
+        /* Nav link base */
+        .nav-link {
+          color:          ${C.textMuted};
+          font-size:      11px;
+          font-weight:    600;
+          letter-spacing: .5px;
+          text-transform: uppercase;
+          padding:        8px 0;
+          position:       relative;
+          transition:     color .2s ease;
+          text-decoration:none;
+          white-space:    nowrap;
         }
-        .nav-link::after{
-          content:'';position:absolute;bottom:0;left:0;width:100%;height:2px;
-          background:${C.primary};transform:scaleX(0);
-          transform-origin:left;transition:transform .3s cubic-bezier(.4,0,.2,1);
+        /* Underline slide-in on hover / active */
+        .nav-link::after {
+          content:          '';
+          position:         absolute;
+          bottom:           0;
+          left:             0;
+          width:            100%;
+          height:           2px;
+          background:       ${C.primary};
+          transform:        scaleX(0);
+          transform-origin: left;
+          transition:       transform .25s cubic-bezier(.4,0,.2,1);
         }
-        .nav-link:hover,.nav-link.active{color:#fff}
-        .nav-link:hover::after,.nav-link.active::after{transform:scaleX(1)}
+        .nav-link:hover,
+        .nav-link.active        { color: #fff; }
+        .nav-link:hover::after,
+        .nav-link.active::after { transform: scaleX(1); }
+
+        /* Logout button */
+        .logout-btn {
+          display:        flex;
+          align-items:    center;
+          gap:            5px;
+          background:     transparent;
+          color:          ${C.textMuted};
+          border:         1px solid rgba(255,255,255,.1);
+          padding:        6px 12px;
+          font-size:      11px;
+          font-weight:    600;
+          letter-spacing: .5px;
+          text-transform: uppercase;
+          border-radius:  6px;
+          cursor:         pointer;
+          font-family:    inherit;
+          transition:     all .2s;
+          white-space:    nowrap;
+        }
+        .logout-btn:hover {
+          background:    rgba(248,81,73,.10);
+          border-color:  rgba(248,81,73,.30);
+          color:         #F85149;
+        }
       `}</style>
 
-      {/* ── NAVBAR ── */}
+      {/* ════════════════════════════════════════════════════════════════════
+          NAVBAR
+      ════════════════════════════════════════════════════════════════════ */}
       <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000, height: 72,
-        padding: '0 48px', display: 'flex', alignItems: 'center',
+        position:       'fixed',
+        top:            0,
+        left:           0,
+        right:          0,
+        zIndex:         1000,
+        height:         68,
+        padding:        '0 32px',
+        display:        'flex',
+        alignItems:     'center',
         justifyContent: 'space-between',
-        background: scrolled ? 'rgba(10,10,10,.98)' : 'rgba(10,10,10,.95)',
-        borderBottom: `1px solid ${C.border}`,
-        backdropFilter: 'blur(16px) saturate(180%)',
-        transition: 'all .4s cubic-bezier(.4,0,.2,1)',
+        background:     'rgba(10,11,14,.97)',
+        borderBottom:   `1px solid ${scrolled ? C.primary + '33' : C.border}`,
+        backdropFilter: 'blur(20px) saturate(180%)',
+        transition:     'border-color .3s',
+        gap:            16,
       }}>
 
-        {/* Logo */}
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', flexShrink: 0 }}>
-          <div style={{ width: 42, height: 42, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(207,10,44,.6)' }}>
-            <img src={logoImg} alt="SpiriComp" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {/* ── LEFT: Logo ── */}
+        <Link to="/" style={{
+          display:        'flex',
+          alignItems:     'center',
+          gap:            10,
+          textDecoration: 'none',
+          flexShrink:     0,
+        }}>
+          <div style={{
+            width:        38,
+            height:       38,
+            borderRadius: '50%',
+            overflow:     'hidden',
+            border:       '1.5px solid rgba(207,10,44,.5)',
+          }}>
+            <img src={logoImg} alt="SpiriComp" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
           </div>
           <div>
-            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 900, fontSize: 22, letterSpacing: '-.8px', lineHeight: 1 }}>
+            <div style={{
+              fontFamily:    "'Barlow Condensed', sans-serif",
+              fontWeight:    900,
+              fontSize:      20,
+              letterSpacing: '-.5px',
+              lineHeight:    1,
+              color:         '#fff',
+            }}>
               Spiri<span style={{ color: C.primary }}>Comp</span>
             </div>
-            <div style={{ fontSize: 9.5, letterSpacing: 3, color: C.textDim, marginTop: 1 }}>HUAWEI · NOC PLATFORM</div>
+            <div style={{
+              fontSize:      8,
+              letterSpacing: 3,
+              color:         C.textDim,
+              marginTop:     1,
+              fontWeight:    700,
+              textTransform: 'uppercase',
+            }}>
+              {t('brand.by')} · NOC
+            </div>
           </div>
         </Link>
 
-        {/* Desktop nav */}
-        <div style={{ display: 'flex', gap: 32, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
-          {NAV_LINKS.map(({ label, path }) => (
+        {/* ── CENTER: Nav links ── */}
+        <div style={{
+          display:   'flex',
+          gap:       24,
+          position:  'absolute',
+          left:      '44%',
+          transform: 'translateX(-50%)',
+        }}>
+          {NAV.map(({ label, path }) => (
             <NavLink
               key={path}
               to={path}
@@ -96,61 +226,149 @@ export default function Layout() {
           ))}
         </div>
 
-        {/* Right actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
-          <Link to="/" style={{
-            background: C.primary, color: '#fff', padding: '9px 20px',
-            fontSize: 12, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase',
-            borderRadius: 6, textDecoration: 'none', transition: 'all .2s',
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-          }}
-            onMouseOver={e => e.currentTarget.style.background = C.primaryHover}
-            onMouseOut={e  => e.currentTarget.style.background = C.primary}>
-            ← Landing
-          </Link>
+        {/* ── RIGHT: Three distinct zones separated by dividers ── */}
+        {/*
+          Zone 1: Language toggle  (LanguageToggle component)
+          Zone 2: User identity    (avatar + name + role)
+          Zone 3: Logout action    (button)
+        */}
+        <div style={{
+          display:    'flex',
+          alignItems: 'center',
+          gap:        12,
+          flexShrink: 0,
+        }}>
 
-          {/* NOC engineer badge */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 16, borderLeft: `1px solid ${C.border}` }}>
-            <div style={{ textAlign: 'right', fontSize: 13 }}>
-              <div style={{ fontWeight: 600 }}>NOC Engineer</div>
-              <div style={{ fontSize: 11, color: C.textDim }}>SpiriComp · 2026</div>
+          {/* ── Zone 1: Language toggle ── */}
+          <LanguageToggle />
+
+          <NavDivider />
+
+          {/* ── Zone 2: User identity ── */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {/* Avatar circle — initials */}
+            <div style={{
+              width:          32,
+              height:         32,
+              borderRadius:   '50%',
+              background:     'linear-gradient(135deg, #CF0A2C, #9F0822)',
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'center',
+              fontWeight:     700,
+              fontSize:       12,
+              color:          '#fff',
+              flexShrink:     0,
+              letterSpacing:  '.5px',
+            }}>
+              {initials}
             </div>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'linear-gradient(135deg,#CF0A2C,#9F0822)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 15 }}>
-              SC
+
+            {/* Name + role — stacked */}
+            <div style={{ lineHeight: 1 }}>
+              <div style={{
+                fontSize:   13,
+                fontWeight: 600,
+                color:      C.text,
+                whiteSpace: 'nowrap',
+              }}>
+                {user?.full_name || user?.username || 'NOC Engineer'}
+              </div>
+              <div style={{
+                fontSize:      10,
+                color:         C.textDim,
+                marginTop:     3,
+                letterSpacing: '.5px',
+                textTransform: 'uppercase',
+              }}>
+                {user?.role || 'engineer'} · SpiriComp
+              </div>
             </div>
           </div>
+
+          <NavDivider />
+
+          {/* ── Zone 3: Logout ── */}
+          <button className="logout-btn" onClick={handleLogout}>
+            <LogOut size={11}/>
+            {t('nav.logout')}
+          </button>
+
         </div>
       </nav>
 
-      {/* ── Content ── */}
-      <main style={{ paddingTop: 72 }}>
+      {/* ── Content area ── */}
+      <main style={{ paddingTop: 68 }}>
         <Outlet />
+        {/*
+          TranslateWidget removed from here — it was floating over dashboard content.
+          If you need a Google Translate fallback, add it as a footer link instead.
+        */}
       </main>
 
       {/* ── Footer ── */}
-      <footer style={{ background: C.darker, borderTop: `1px solid ${C.border}`, padding: '48px 48px 32px', marginTop: 80 }}>
-        <div style={{ maxWidth: 1600, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', border: '1.5px solid rgba(207,10,44,.5)' }}>
-              <img src={logoImg} alt="SpiriComp" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <footer style={{
+        background:  C.darker,
+        borderTop:   `1px solid ${C.border}`,
+        padding:     '40px 48px 28px',
+        marginTop:   80,
+      }}>
+        <div style={{
+          maxWidth:       1600,
+          margin:         '0 auto',
+          display:        'flex',
+          justifyContent: 'space-between',
+          alignItems:     'center',
+          flexWrap:       'wrap',
+          gap:            20,
+        }}>
+          {/* Footer logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{
+              width:        30,
+              height:       30,
+              borderRadius: '50%',
+              overflow:     'hidden',
+              border:       '1.5px solid rgba(207,10,44,.4)',
+            }}>
+              <img src={logoImg} alt="SpiriComp" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
             </div>
-            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 800, fontSize: 19 }}>
+            <div style={{
+              fontFamily: "'Barlow Condensed', sans-serif",
+              fontWeight: 800,
+              fontSize:   18,
+              color:      '#fff',
+            }}>
               Spiri<span style={{ color: C.primary }}>Comp</span>
             </div>
           </div>
-          <p style={{ fontSize: 13, color: C.textDim, margin: 0 }}>
+
+          <p style={{ fontSize: 12, color: C.textDim, margin: 0 }}>
             © 2026 SpiriComp — Huawei Technologies Tunisia · PFE 2026
           </p>
-          <div style={{ display: 'flex', gap: 24, fontSize: 13, color: C.textDim }}>
+
+          <div style={{ display: 'flex', gap: 20, fontSize: 12 }}>
             {[
               { label: 'API Docs', href: 'http://localhost:8000/docs' },
               { label: 'GitHub',   href: 'https://github.com/Ouerghi23' },
-              { label: 'About',    href: null, path: '/dashboard/about' },
-            ].map(({ label, href, path }) => (
-              href
-                ? <a key={label} href={href} target="_blank" rel="noreferrer" style={{ color: C.textDim, textDecoration: 'none', transition: 'color .2s', cursor: 'pointer' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = C.textDim}>{label}</a>
-                : <Link key={label} to={path} style={{ color: C.textDim, textDecoration: 'none', transition: 'color .2s' }} onMouseOver={e => e.currentTarget.style.color = '#fff'} onMouseOut={e => e.currentTarget.style.color = C.textDim}>{label}</Link>
+            ].map(({ label, href }) => (
+              <a
+                key={label} href={href} target="_blank" rel="noreferrer"
+                style={{ color: C.textDim, textDecoration: 'none', transition: 'color .2s' }}
+                onMouseOver={e => { e.currentTarget.style.color = '#fff' }}
+                onMouseOut={e  => { e.currentTarget.style.color = C.textDim }}
+              >
+                {label}
+              </a>
             ))}
+            <Link
+              to="/dashboard/about"
+              style={{ color: C.textDim, textDecoration: 'none', transition: 'color .2s' }}
+              onMouseOver={e => { e.currentTarget.style.color = '#fff' }}
+              onMouseOut={e  => { e.currentTarget.style.color = C.textDim }}
+            >
+              About
+            </Link>
           </div>
         </div>
       </footer>

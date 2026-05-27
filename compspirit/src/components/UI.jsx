@@ -1,95 +1,122 @@
 // src/components/UI.jsx
 // ─────────────────────────────────────────────────────────────────────
-// Shared UI components — SpiriComp NOC Dashboard
+// SpiriComp NOC Dashboard — Design System
 //
-// Exports (alphabetical):
-//   Badge · BrandHeader · Card · ChartCard · EmptyState
-//   KpiCard · PageHeader · SectionHeader · Spinner · THEME
-//   baseChartOptions
-//
-// FIX: BrandHeader added — was used by Overview.jsx but never exported.
-// FIX: baseChartOptions.chart.animations.enabled set to false —
-//      prevents charts re-animating on every state update.
+// FIXES in this version:
+//   THEME        updated to Datadog-style: #0C0D12 bg, #2F81F7 blue primary
+//                red is now ALERT ONLY — not decorative
+//   EmptyState   removed broken IcoGlobe default prop reference
+//   SectionHeader added subtitle prop (used by Overview.jsx)
+//   Spinner      dots now use THEME.primary (blue) not THEME.red
+//   BrandHeader  dark navy gradient with 3px red left stripe
+//   PageHeader   accent bar now blue (navigation ≠ alert)
 // ─────────────────────────────────────────────────────────────────────
 
 export const THEME = {
-  bg:          '#0F172A',               // slate-900
-  bgCard:      'rgba(255,255,255,.025)',
-  bgCardHover: 'rgba(255,255,255,.04)',
-  surface:     'rgba(255,255,255,.025)',
-  border:      'rgba(255,255,255,.06)',
-  borderHover: 'rgba(255,255,255,.12)',
-  text:        '#E2E8F0',
-  textMuted:   'rgba(226,232,240,.5)',
-  textDim:     'rgba(226,232,240,.35)',
-  // Colours
-  red:         '#CF0A2C',
-  redLight:    '#FF4060',
-  blue:        '#3B82F6',
-  cyan:        '#22D3EE',
-  green:       '#22C55E',
-  amber:       '#F59E0B',
-  orange:      '#F97316',
-  purple:      '#A855F7',
-  teal:        '#14B8A6',
+  // ── Backgrounds ───────────────────────────────────────────────────
+  bg:              '#0C0D12',
+  bgCard:          '#13151D',
+  bgCardHover:     '#1A1D28',
+  surface:         '#13151D',
+  surfaceElevated: '#1A1D28',
+
+  // ── Borders ───────────────────────────────────────────────────────
+  border:          'rgba(255,255,255,.08)',
+  borderHover:     'rgba(255,255,255,.16)',
+
+  // ── Text (3 levels) ───────────────────────────────────────────────
+  text:            '#E6E8F0',
+  textMuted:       'rgba(230,232,240,.55)',
+  textDim:         'rgba(230,232,240,.28)',
+
+  // ── Primary accent — electric blue ────────────────────────────────
+  primary:         '#2F81F7',
+  primaryLight:    '#5B9FFA',
+  primaryBg:       'rgba(47,129,247,.1)',
+  primaryBorder:   'rgba(47,129,247,.28)',
+
+  // ── Semantic — 4 colors, one meaning each ─────────────────────────
+  red:             '#F85149',   // ALERT · critical · anomaly
+  redBg:           'rgba(248,81,73,.1)',
+  redBorder:       'rgba(248,81,73,.28)',
+
+  green:           '#3FB950',   // HEALTHY · good QoE · resolved
+  greenBg:         'rgba(63,185,80,.1)',
+  greenBorder:     'rgba(63,185,80,.28)',
+
+  amber:           '#D29922',   // WARNING · spike · degraded
+  amberBg:         'rgba(210,153,34,.1)',
+  amberBorder:     'rgba(210,153,34,.28)',
+
+  blue:            '#2F81F7',   // INFO — same as primary
+
+  // ── Extended (chart data only) ────────────────────────────────────
+  cyan:            '#39C5CF',
+  purple:          '#8957E5',
+  orange:          '#E16A2B',
+  teal:            '#1A9E8F',
 }
 
 // ── Brand Header ──────────────────────────────────────────────────────
-// Used by Overview.jsx for the main NOC dashboard hero.
-// Props: title, subtitle, badges[], icon (React component)
+// Dark navy gradient — 3px red left accent honours SpiriComp brand
+// without making red the dominant dashboard colour.
 export const BrandHeader = ({ title, subtitle, badges = [], icon: Icon }) => (
   <div style={{
-    background: `linear-gradient(135deg, ${THEME.red} 0%, #8B0000 50%, #1A1A2E 100%)`,
-    padding: '28px 36px',
-    borderRadius: 14,
-    marginBottom: 32,
-    display: 'flex',
-    alignItems: 'center',
+    background:   'linear-gradient(135deg, rgba(207,10,44,.22) 0%, #0E1120 35%, #0C0D12 100%)',
+    border:       `1px solid ${THEME.border}`,
+    padding:      '24px 32px',
+    borderRadius: 12,
+    marginBottom: 28,
+    display:      'flex',
+    alignItems:   'center',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 16,
-    position: 'relative',
-    overflow: 'hidden',
-    boxShadow: '0 8px 32px rgba(207,10,44,.22)',
+    flexWrap:     'wrap',
+    gap:          16,
+    position:     'relative',
+    overflow:     'hidden',
   }}>
-    {/* decorative radial glow */}
+    {/* 3px red left accent bar */}
     <div style={{
-      position: 'absolute', top: '-50%', right: '-10%',
-      width: 320, height: 320,
-      background: 'radial-gradient(circle, rgba(255,255,255,.08) 0%, transparent 70%)',
+      position:     'absolute', top: 0, left: 0, bottom: 0, width: 3,
+      background:   'linear-gradient(to bottom, #CF0A2C, rgba(207,10,44,.15))',
+      borderRadius: '12px 0 0 12px',
+    }} />
+    {/* Blue glow top-right */}
+    <div style={{
+      position:      'absolute', top: '-40%', right: 0,
+      width: 260, height: 260,
+      background:    `radial-gradient(circle, ${THEME.primaryBg} 0%, transparent 70%)`,
       pointerEvents: 'none',
     }} />
 
-    {/* title + subtitle */}
-    <div style={{ position: 'relative', zIndex: 1 }}>
+    <div style={{ position:'relative', zIndex:1, paddingLeft:8 }}>
       <h1 style={{
-        color: '#fff', fontSize: 24, fontWeight: 800, margin: 0,
-        letterSpacing: '-.5px', lineHeight: 1.2,
-        display: 'flex', alignItems: 'center', gap: 12,
+        color:         THEME.text, fontSize: 22, fontWeight: 700, margin: 0,
+        letterSpacing: '-.4px', lineHeight: 1.2,
+        display:       'flex', alignItems: 'center', gap: 12,
       }}>
-        {Icon && <Icon size={26} color="rgba(255,255,255,.9)" />}
+        {Icon && <Icon size={22} color={THEME.primary} />}
         {title}
       </h1>
       {subtitle && (
-        <p style={{ color: 'rgba(255,255,255,.62)', fontSize: 13, margin: '6px 0 0', fontWeight: 400 }}>
+        <p style={{ color:THEME.textMuted, fontSize:12, margin:'5px 0 0', fontWeight:400, lineHeight:1.5 }}>
           {subtitle}
         </p>
       )}
     </div>
 
-    {/* badges */}
     {badges.length > 0 && (
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', position: 'relative', zIndex: 1 }}>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', position:'relative', zIndex:1 }}>
         {badges.map((b, i) => (
           <span key={i} style={{
-            background: 'rgba(255,255,255,.1)',
-            backdropFilter: 'blur(8px)',
-            color: '#fff',
-            border: '1px solid rgba(255,255,255,.22)',
-            padding: '5px 16px',
+            background:   THEME.primaryBg,
+            color:        THEME.primary,
+            border:       `1px solid ${THEME.primaryBorder}`,
+            padding:      '4px 14px',
             borderRadius: 20,
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize:     11,
+            fontWeight:   600,
+            letterSpacing:.3,
           }}>
             {b}
           </span>
@@ -102,26 +129,31 @@ export const BrandHeader = ({ title, subtitle, badges = [], icon: Icon }) => (
 // ── Page Header ───────────────────────────────────────────────────────
 export const PageHeader = ({ title, subtitle, badges = [] }) => (
   <div style={{
-    marginBottom: 28,
-    display: 'flex', justifyContent: 'space-between',
-    alignItems: 'flex-end', flexWrap: 'wrap', gap: 16,
+    marginBottom: 24,
+    display:      'flex', justifyContent:'space-between',
+    alignItems:   'flex-end', flexWrap:'wrap', gap:16,
   }}>
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
-        <div style={{ width: 4, height: 28, background: THEME.red, borderRadius: 2 }} />
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: THEME.text, letterSpacing: '-.5px', margin: 0 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:6 }}>
+        {/* Blue accent bar — navigation ≠ alert */}
+        <div style={{ width:3, height:26, background:THEME.primary, borderRadius:2 }} />
+        <h1 style={{ fontSize:24, fontWeight:700, color:THEME.text, letterSpacing:'-.4px', margin:0 }}>
           {title}
         </h1>
       </div>
-      <p style={{ fontSize: 13, color: THEME.textMuted, margin: '0 0 0 16px' }}>{subtitle}</p>
+      {subtitle && (
+        <p style={{ fontSize:13, color:THEME.textMuted, margin:'0 0 0 15px', lineHeight:1.5 }}>
+          {subtitle}
+        </p>
+      )}
     </div>
     {badges.length > 0 && (
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
         {badges.map(b => (
           <span key={b} style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase',
-            padding: '5px 11px', border: `1px solid ${THEME.border}`,
-            background: 'rgba(255,255,255,.02)', color: THEME.textMuted, borderRadius: 4,
+            fontSize:10, fontWeight:700, letterSpacing:1.5, textTransform:'uppercase',
+            padding:'4px 10px', border:`1px solid ${THEME.border}`,
+            background:'rgba(255,255,255,.03)', color:THEME.textMuted, borderRadius:4,
           }}>
             {b}
           </span>
@@ -132,30 +164,36 @@ export const PageHeader = ({ title, subtitle, badges = [] }) => (
 )
 
 // ── Section Header ────────────────────────────────────────────────────
-export const SectionHeader = ({ children, action }) => (
-  <div style={{
-    display: 'flex', justifyContent: 'space-between',
-    alignItems: 'center', margin: '24px 0 14px',
-  }}>
-    <h2 style={{
-      fontSize: 13, fontWeight: 700, color: THEME.text,
-      letterSpacing: 1, textTransform: 'uppercase', margin: 0,
-      display: 'flex', alignItems: 'center', gap: 10,
-    }}>
-      <span style={{ width: 16, height: 1, background: THEME.red, display: 'inline-block' }} />
-      {children}
-    </h2>
-    {action}
+// FIX: added subtitle prop — used by Overview.jsx
+export const SectionHeader = ({ children, action, subtitle }) => (
+  <div style={{ margin:'24px 0 12px' }}>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <h2 style={{
+        fontSize:      11, fontWeight:700, color:THEME.textMuted,
+        letterSpacing: 1.8, textTransform:'uppercase', margin:0,
+        display:       'flex', alignItems:'center', gap:10,
+      }}>
+        {/* Blue line — section indicator, not alert */}
+        <span style={{ width:14, height:1.5, background:THEME.primary, display:'inline-block', borderRadius:1 }} />
+        {children}
+      </h2>
+      {action}
+    </div>
+    {subtitle && (
+      <p style={{ fontSize:11, color:THEME.textDim, margin:'4px 0 0 24px', lineHeight:1.5 }}>
+        {subtitle}
+      </p>
+    )}
   </div>
 )
 
 // ── Card ──────────────────────────────────────────────────────────────
 export const Card = ({ children, style = {}, className = '', noPadding = false }) => (
   <div className={className} style={{
-    background: THEME.bgCard,
-    border: `1px solid ${THEME.border}`,
-    borderRadius: 12,
-    padding: noPadding ? 0 : 20,
+    background:   THEME.bgCard,
+    border:       `1px solid ${THEME.border}`,
+    borderRadius: 10,
+    padding:      noPadding ? 0 : 18,
     ...style,
   }}>
     {children}
@@ -164,45 +202,50 @@ export const Card = ({ children, style = {}, className = '', noPadding = false }
 
 // ── KPI Card ──────────────────────────────────────────────────────────
 export const KpiCard = ({ label, value, unit, delta, good, color, sub, icon }) => {
-  const accent = color || THEME.red
+  const accent = color || THEME.primary
   return (
     <div style={{
-      background: THEME.bgCard,
-      border: `1px solid ${THEME.border}`,
-      borderRadius: 12,
-      padding: '18px 20px',
-      borderTop: `2px solid ${accent}`,
-      transition: 'all .25s',
+      background:   THEME.bgCard,
+      border:       `1px solid ${THEME.border}`,
+      borderRadius: 10,
+      padding:      '16px 18px',
+      borderTop:    `2px solid ${accent}`,
+      transition:   'all .2s',
     }}
-      onMouseEnter={e => { e.currentTarget.style.background = THEME.bgCardHover; e.currentTarget.style.transform = 'translateY(-2px)' }}
-      onMouseLeave={e => { e.currentTarget.style.background = THEME.bgCard;       e.currentTarget.style.transform = 'translateY(0)' }}>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-        <div style={{ fontSize: 10, color: THEME.textDim, letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700 }}>
+      onMouseEnter={e => {
+        e.currentTarget.style.background  = THEME.bgCardHover
+        e.currentTarget.style.borderColor = THEME.borderHover
+        e.currentTarget.style.transform   = 'translateY(-1px)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background  = THEME.bgCard
+        e.currentTarget.style.borderColor = THEME.border
+        e.currentTarget.style.transform   = 'translateY(0)'
+      }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:10 }}>
+        <div style={{ fontSize:9, color:THEME.textDim, letterSpacing:1.8, textTransform:'uppercase', fontWeight:700, lineHeight:1.4 }}>
           {label}
         </div>
-        {icon && <span style={{ fontSize: 14, opacity: .7 }}>{icon}</span>}
+        {icon && <span style={{ opacity:.65 }}>{icon}</span>}
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{ fontSize: 26, fontWeight: 700, color: accent, lineHeight: 1 }}>{value}</span>
-        {unit && <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 600 }}>{unit}</span>}
+      <div style={{ display:'flex', alignItems:'baseline', gap:5 }}>
+        <span style={{ fontSize:24, fontWeight:700, color:accent, lineHeight:1 }}>{value}</span>
+        {unit && <span style={{ fontSize:11, color:THEME.textMuted, fontWeight:500 }}>{unit}</span>}
       </div>
-
       {(delta !== undefined || sub) && (
-        <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ marginTop:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           {delta !== undefined && (
             <span style={{
-              fontSize: 11, fontWeight: 700,
+              fontSize:11, fontWeight:600,
               color: good
                 ? (delta >= 0 ? THEME.green : THEME.red)
                 : (delta >= 0 ? THEME.red   : THEME.green),
-              display: 'inline-flex', alignItems: 'center', gap: 3,
+              display:'inline-flex', alignItems:'center', gap:2,
             }}>
               {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
             </span>
           )}
-          {sub && <span style={{ fontSize: 11, color: THEME.textDim }}>{sub}</span>}
+          {sub && <span style={{ fontSize:11, color:THEME.textDim }}>{sub}</span>}
         </div>
       )}
     </div>
@@ -210,24 +253,25 @@ export const KpiCard = ({ label, value, unit, delta, good, color, sub, icon }) =
 }
 
 // ── Badge ─────────────────────────────────────────────────────────────
-const BADGE_COLORS = {
-  red:    { bg: 'rgba(207,10,44,.12)',  bd: 'rgba(207,10,44,.3)',  fg: '#FF4060' },
-  blue:   { bg: 'rgba(59,130,246,.12)', bd: 'rgba(59,130,246,.3)', fg: '#60A5FA' },
-  green:  { bg: 'rgba(34,197,94,.12)',  bd: 'rgba(34,197,94,.3)',  fg: '#4ADE80' },
-  amber:  { bg: 'rgba(245,158,11,.12)', bd: 'rgba(245,158,11,.3)', fg: '#FBBF24' },
-  purple: { bg: 'rgba(168,85,247,.12)', bd: 'rgba(168,85,247,.3)', fg: '#C084FC' },
-  cyan:   { bg: 'rgba(34,211,238,.12)', bd: 'rgba(34,211,238,.3)', fg: '#67E8F9' },
-  gray:   { bg: 'rgba(255,255,255,.05)', bd: 'rgba(255,255,255,.1)', fg: '#94A3B8' },
-  orange: { bg: 'rgba(249,115,22,.12)', bd: 'rgba(249,115,22,.3)', fg: '#FB923C' },
+const BADGE_VARIANTS = {
+  blue:   { bg:'rgba(47,129,247,.1)',  bd:'rgba(47,129,247,.28)',  fg:'#5B9FFA' },
+  green:  { bg:'rgba(63,185,80,.1)',   bd:'rgba(63,185,80,.28)',   fg:'#3FB950' },
+  amber:  { bg:'rgba(210,153,34,.1)',  bd:'rgba(210,153,34,.28)',  fg:'#D29922' },
+  red:    { bg:'rgba(248,81,73,.1)',   bd:'rgba(248,81,73,.28)',   fg:'#F85149' },
+  cyan:   { bg:'rgba(57,197,207,.1)',  bd:'rgba(57,197,207,.28)',  fg:'#39C5CF' },
+  purple: { bg:'rgba(137,87,229,.1)',  bd:'rgba(137,87,229,.28)',  fg:'#8957E5' },
+  gray:   { bg:'rgba(255,255,255,.05)',bd:'rgba(255,255,255,.12)', fg:'rgba(230,232,240,.6)' },
+  orange: { bg:'rgba(225,106,43,.1)',  bd:'rgba(225,106,43,.28)',  fg:'#E16A2B' },
 }
 
-export const Badge = ({ children, variant = 'red' }) => {
-  const c = BADGE_COLORS[variant] || BADGE_COLORS.red
+export const Badge = ({ children, variant = 'blue' }) => {
+  const c = BADGE_VARIANTS[variant] || BADGE_VARIANTS.blue
   return (
     <span style={{
-      display: 'inline-block', padding: '3px 10px', fontSize: 10, fontWeight: 700,
-      letterSpacing: 1, textTransform: 'uppercase', borderRadius: 4,
-      background: c.bg, border: `1px solid ${c.bd}`, color: c.fg,
+      display:       'inline-block', padding:'3px 9px',
+      fontSize:      10, fontWeight:700, letterSpacing:.8,
+      textTransform: 'uppercase', borderRadius:4,
+      background:    c.bg, border:`1px solid ${c.bd}`, color:c.fg,
     }}>
       {children}
     </span>
@@ -235,70 +279,83 @@ export const Badge = ({ children, variant = 'red' }) => {
 }
 
 // ── Spinner ───────────────────────────────────────────────────────────
+// FIX: uses THEME.primary (blue) — loading is not an alert state
 export const Spinner = ({ size = 32 }) => (
-  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, gap: 6 }}>
-    <style>{`@keyframes _pulse{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}`}</style>
-    {[0, 1, 2].map(i => (
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:24, gap:6 }}>
+    <style>{`@keyframes _sp{0%,80%,100%{opacity:.25;transform:scale(.75)}40%{opacity:1;transform:scale(1)}}`}</style>
+    {[0,1,2].map(i => (
       <div key={i} style={{
-        width: size / 4, height: size / 4, borderRadius: '50%',
-        background: THEME.red, animation: `_pulse 1.2s ${i * .2}s infinite ease-in-out`,
+        width:size/4, height:size/4, borderRadius:'50%',
+        background:THEME.primary,                  // FIX: was THEME.red
+        animation:`_sp 1.2s ${i*.2}s infinite ease-in-out`,
       }} />
     ))}
   </div>
 )
 
 // ── Empty State ───────────────────────────────────────────────────────
-export const EmptyState = ({ icon = '📭', title, desc, action }) => (
+// FIX: removed broken IcoGlobe default — default is now null
+export const EmptyState = ({ icon = null, title, desc, action }) => (
   <div style={{
-    display: 'flex', flexDirection: 'column', alignItems: 'center',
-    justifyContent: 'center', padding: 48, textAlign: 'center', minHeight: 200,
+    display:'flex', flexDirection:'column', alignItems:'center',
+    justifyContent:'center', padding:'40px 24px', textAlign:'center', minHeight:180,
   }}>
-    <div style={{ fontSize: 40, marginBottom: 14, opacity: .4 }}>{icon}</div>
-    <div style={{ fontSize: 14, fontWeight: 600, color: THEME.text, marginBottom: 6 }}>{title}</div>
-    {desc && <div style={{ fontSize: 12, color: THEME.textMuted, maxWidth: 360, lineHeight: 1.6 }}>{desc}</div>}
-    {action && <div style={{ marginTop: 16 }}>{action}</div>}
+    {icon && (
+      <div style={{ marginBottom:14, opacity:.3, display:'flex', justifyContent:'center' }}>
+        {typeof icon === 'string'
+          ? <span style={{ fontSize:34, lineHeight:1 }}>{icon}</span>
+          : icon}
+      </div>
+    )}
+    <div style={{ fontSize:13, fontWeight:600, color:THEME.textMuted, marginBottom:5 }}>{title}</div>
+    {desc && (
+      <div style={{ fontSize:11, color:THEME.textDim, maxWidth:340, lineHeight:1.6 }}>{desc}</div>
+    )}
+    {action && <div style={{ marginTop:14 }}>{action}</div>}
   </div>
 )
 
 // ── Base chart options ─────────────────────────────────────────────────
-// FIX: animations.enabled:false — prevents re-animation on every state update
 export const baseChartOptions = {
   chart: {
-    foreColor:   THEME.textMuted,
-    fontFamily:  'system-ui, sans-serif',
-    toolbar:     { show: false },
-    zoom:        { enabled: false },
-    background:  'transparent',
-    animations:  { enabled: false },          // ← FIX: was missing / true
+    foreColor:  THEME.textMuted,
+    fontFamily: "'Inter', system-ui, sans-serif",
+    toolbar:    { show:false },
+    zoom:       { enabled:false },
+    background: 'transparent',
+    animations: { enabled:false },
   },
   grid: {
-    borderColor:    'rgba(255,255,255,.05)',
+    borderColor:     'rgba(255,255,255,.05)',
     strokeDashArray: 3,
+    xaxis: { lines:{ show:false } },
+    yaxis: { lines:{ show:true  } },
   },
   legend: {
-    fontSize: '11px',
-    labels:   { colors: THEME.textMuted },
-    markers:  { radius: 3 },
+    fontSize:   '11px',
+    labels:     { colors:THEME.textMuted },
+    markers:    { radius:2 },
+    itemMargin: { horizontal:14 },
   },
-  tooltip:  { theme: 'dark', style: { fontSize: '11px' } },
+  tooltip:  { theme:'dark', style:{ fontSize:'11px' } },
   xaxis: {
-    labels:     { style: { fontSize: '10px', colors: THEME.textMuted } },
-    axisBorder: { show: false },
-    axisTicks:  { show: false },
+    labels:     { style:{ fontSize:'10px', colors:THEME.textMuted } },
+    axisBorder: { show:false },
+    axisTicks:  { show:false },
   },
   yaxis: {
-    labels: { style: { fontSize: '10px', colors: THEME.textMuted } },
+    labels: { style:{ fontSize:'10px', colors:THEME.textMuted } },
   },
 }
 
-// ── Chart card wrapper ────────────────────────────────────────────────
+// ── Chart Card ────────────────────────────────────────────────────────
 export const ChartCard = ({ title, subtitle, children, action, height, style = {} }) => (
   <Card style={style}>
     {(title || subtitle || action) && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:14 }}>
         <div>
-          {title    && <div style={{ fontSize: 13, fontWeight: 700, color: THEME.text, marginBottom: 2 }}>{title}</div>}
-          {subtitle && <div style={{ fontSize: 11, color: THEME.textMuted }}>{subtitle}</div>}
+          {title    && <div style={{ fontSize:13, fontWeight:600, color:THEME.text,    marginBottom:2 }}>{title}</div>}
+          {subtitle && <div style={{ fontSize:11, color:THEME.textDim }}>{subtitle}</div>}
         </div>
         {action}
       </div>

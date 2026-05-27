@@ -1,75 +1,80 @@
 // src/api/client.js
-// Connects to FastAPI analytics endpoints which read real parquet files.
-//
-// FIX CL3: baseURL reads from env variable — set VITE_API_URL in .env
-//          Falls back to localhost:8000 for local development.
-// FIX CL1: centralised request/response interceptors for error handling.
-// FIX CL2: timeout raised to 30 s to handle cold-start parquet loads.
+// ─────────────────────────────────────────────────────────────────────
+// FIX CL1: centralised request/response interceptors
+// FIX CL2: timeout 30s for cold parquet loads
+// FIX CL3: baseURL from VITE_API_URL env variable
+// FIX CL4: JWT token attached to THIS axios instance directly —
+//           useAuth.setupAxiosAuth() only patches global axios,
+//           not this named instance. We read sessionStorage here.
+// ─────────────────────────────────────────────────────────────────────
 
 import axios from 'axios'
 
+const TOKEN_KEY = 'spiricomp_token'
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
-  timeout: 30_000,  // FIX CL2: 30 s — cold parquet loads can be slow
+  timeout: 30_000,
 })
 
-// ── FIX CL1: centralised response interceptor ────────────────────────────
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    const status  = error?.response?.status
-    const url     = error?.config?.url || '?'
-    const message = error?.response?.data?.detail || error.message
+// FIX CL4: attach JWT to every request on this instance
+api.interceptors.request.use(config => {
+  const token = sessionStorage.getItem(TOKEN_KEY)
+  if (token) config.headers.Authorization = `Bearer ${token}`
+  return config
+})
 
-    if (status === 404) {
+// FIX CL1: centralised error logging
+api.interceptors.response.use(
+  res => res,
+  err => {
+    const status  = err?.response?.status
+    const url     = err?.config?.url || '?'
+    const message = err?.response?.data?.detail || err.message
+
+    if (status === 401) {
+      // Token expired — clear session and redirect to login
+      sessionStorage.removeItem(TOKEN_KEY)
+      sessionStorage.removeItem('spiricomp_user')
+      window.location.href = '/login'
+    } else if (status === 404) {
       console.warn(`[API] 404 Not Found: ${url}`)
     } else if (status >= 500) {
       console.error(`[API] Server error ${status}: ${url} — ${message}`)
-    } else if (!error.response) {
-      console.error(`[API] Network error (is FastAPI running?): ${url}`)
+    } else if (!err.response) {
+      console.error(`[API] Network error (is FastAPI running on port 8000?): ${url}`)
     }
 
-    // Re-throw so individual pages can still catch and show their own UI
-    return Promise.reject(error)
+    return Promise.reject(err)
   }
 )
 
-// ── Analytics endpoints (real parquet data) ──────────────────────────────
+// ── Analytics endpoints ───────────────────────────────────────────────
 export const analyticsApi = {
-  // Overview & KPIs
   overview:           ()       => api.get('/api/analytics/overview'),
   kpiTiles:           ()       => api.get('/api/analytics/kpi/tiles'),
   kpiHeatmap:         ()       => api.get('/api/analytics/kpi/heatmap'),
 
-  // Complaints
   complaintsTrend:    ()       => api.get('/api/analytics/complaints/trend'),
   complaintsByRegion: ()       => api.get('/api/analytics/complaints/by-region'),
   complaintsByCity:   ()       => api.get('/api/analytics/complaints/by-city'),
 
-  // Anomaly Detection
   anomaliesSummary:   ()       => api.get('/api/analytics/anomalies/summary'),
-  anomaliesTimeline:  (region) => api.get('/api/analytics/anomalies/timeline',
-                                           { params: { region } }),
+  anomaliesTimeline:  (region) => api.get('/api/analytics/anomalies/timeline', { params: { region } }),
   anomalyRegions:     ()       => api.get('/api/analytics/anomalies/regions'),
 
-  // Forecasting
   forecasts:          ()       => api.get('/api/analytics/forecasts'),
   forecastScores:     ()       => api.get('/api/analytics/forecasts/scores'),
-  forecastHistory:    (region) => api.get('/api/analytics/forecasts/history',
-                                           { params: { region } }),
+  forecastHistory:    (region) => api.get('/api/analytics/forecasts/history', { params: { region } }),
 
-  // Customer Segmentation
-  segmentProfiles:            () => api.get('/api/analytics/segments/profiles'),
-  segmentRegionDistribution:  () => api.get('/api/analytics/segments/region-distribution'),
+  segmentProfiles:           () => api.get('/api/analytics/segments/profiles'),
+  segmentRegionDistribution: () => api.get('/api/analytics/segments/region-distribution'),
 
-  // Root Cause Analysis
-  rootCauseResults:   () => api.get('/api/analytics/root-cause/results'),
-
-  // Status
-  status:             () => api.get('/api/analytics/status'),
+  rootCauseResults: () => api.get('/api/analytics/root-cause/results'),
+  status:           () => api.get('/api/analytics/status'),
 }
 
-// ── NLP endpoints ─────────────────────────────────────────────────────────
+// ── NLP / complaint endpoints ─────────────────────────────────────────
 export const nlpApi = {
   submit:          (data)   => api.post('/api/complaints/submit', data),
   analyze:         (data)   => api.post('/api/complaints/analyze', data),

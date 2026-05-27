@@ -190,11 +190,11 @@ def _render_wordcloud_section(cc: pd.DataFrame) -> None:
         return
 
     # Word frequency bar chart (always works, no extra deps)
+# Correction 1 - Convertir chaque série en une seule chaîne
     all_text = " ".join(
-        cc[col].dropna().astype(str).str.lower()
-        for col in text_cols
+      " ".join(cc[col].dropna().astype(str).str.lower())
+    for col in text_cols
     )
-
     # Tokenize (simple split, works for French/English DCLM labels)
     stopwords = {
         "de", "la", "le", "les", "du", "des", "un", "une", "et", "en",

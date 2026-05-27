@@ -1,19 +1,199 @@
 // src/pages/About.jsx
 // ─────────────────────────────────────────────────────────────────────
-// About SpiriComp — in-dashboard project overview page
-// Add to App.jsx: <Route path="about" element={<About />} />
-// Add to routes.js NAV_LINKS: { label: 'About', path: '/dashboard/about' }
+// SpiriComp — NOC Intelligence Platform
+// Professional enterprise page for NOC Engineers · Huawei Tunisia
+//
+// Changes from original:
+//   - All emoji icons replaced with Lucide React
+//   - Full react-i18next (about.* keys, EN + ZH)
+//   - Card/PageHeader/THEME replaced with inline dark design system
+//   - Technical content rewritten for NOC engineer audience
+//   - Huawei enterprise tone throughout
 // ─────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react'
-import { PageHeader, SectionHeader, Card, Badge, THEME } from '../components/UI'
+import { useState, useEffect }  from 'react'
+import { useTranslation }        from 'react-i18next'
+import {
+  Brain, Radio, Signal, Globe, Cpu, BarChart3,
+  Building2, Smartphone, Network, Database,
+  GitBranch, TrendingUp, Users, Layers,
+  FileText, BookOpen, Github, Activity,
+  ExternalLink, Download, MapPin, Zap,
+  ShieldCheck, Award, ChevronRight, Code2,
+  Server, Box,
+} from 'lucide-react'
+import { Badge } from '../components/UI'
 
-const C = THEME
+// ── Colour palette ────────────────────────────────────────────────────
+const C = {
+  bg:        '#080808',
+  bg2:       '#0C0C0C',
+  bg3:       '#0A0A0A',
+  surface:   '#0C0C0C',
+  border:    'rgba(255,255,255,.055)',
+  text:      '#F8FAFC',
+  textMuted: 'rgba(248,250,252,.5)',
+  textDim:   'rgba(248,250,252,.32)',
+  red:       '#CF0A2C',
+  redLight:  '#FF4060',
+  blue:      '#3B82F6',
+  cyan:      '#22D3EE',
+  green:     '#22C55E',
+  amber:     '#F59E0B',
+  orange:    '#F97316',
+  purple:    '#A855F7',
+}
 
-// ── GitHub live card ─────────────────────────────────────────────────
-function GithubProfile({ username }) {
-  const [data, setData]       = useState(null)
-  const [repos, setRepos]     = useState([])
+// ── Section label (matches all other pages) ───────────────────────────
+const SLabel = ({ children }) => (
+  <div style={{
+    fontSize: 10, fontWeight: 800, color: C.red,
+    letterSpacing: '4.5px', textTransform: 'uppercase',
+    display: 'flex', alignItems: 'center', marginBottom: 16,
+  }}>
+    <span style={{ width: 22, height: 1, background: C.red, display: 'inline-block', flexShrink: 0, marginRight: 12 }}/>
+    {children}
+  </div>
+)
+
+// ── Panel card (replaces old Card component) ──────────────────────────
+const Panel = ({ children, style = {} }) => (
+  <div style={{
+    background: C.surface, border: `1px solid ${C.border}`,
+    position: 'relative', overflow: 'hidden', ...style,
+  }}>
+    <div style={{
+      position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
+      background: `linear-gradient(90deg, transparent, ${C.red}, transparent)`,
+    }}/>
+    {children}
+  </div>
+)
+
+// ── Innovation pillar card ─────────────────────────────────────────────
+function PillarCard({ Icon, title, tag, body, accent }) {
+  return (
+    <div
+      className="about-pillar"
+      style={{
+        background: C.bg3, border: `1px solid ${C.border}`,
+        padding: '28px 26px', position: 'relative', overflow: 'hidden',
+        transition: 'all .3s cubic-bezier(.22,1,.36,1)', cursor: 'default',
+      }}
+    >
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }}/>
+
+      {/* Icon + Tag row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+        <div style={{
+          width: 46, height: 46,
+          background: `${accent}10`, border: `1px solid ${accent}30`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon size={20} color={accent}/>
+        </div>
+        <span style={{
+          fontSize: 9, fontWeight: 800, letterSpacing: '2px', padding: '3px 10px',
+          border: `1px solid ${accent}30`, color: accent,
+          textTransform: 'uppercase', background: `${accent}08`,
+        }}>
+          {tag}
+        </span>
+      </div>
+
+      <div style={{
+        fontFamily: "'Barlow Condensed', sans-serif",
+        fontSize: 18, fontWeight: 800, color: C.text,
+        letterSpacing: '-.3px', marginBottom: 12, lineHeight: 1.2,
+      }}>
+        {title}
+      </div>
+      <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.85, margin: 0, fontWeight: 300 }}>
+        {body}
+      </p>
+    </div>
+  )
+}
+
+// ── Partner card ───────────────────────────────────────────────────────
+function PartnerCard({ Icon, name, role, color, detail }) {
+  return (
+    <div
+      className="about-partner"
+      style={{
+        background: C.bg3, border: `1px solid ${C.border}`,
+        padding: '28px 30px', display: 'flex', alignItems: 'flex-start', gap: 22,
+        transition: 'all .25s', position: 'relative', overflow: 'hidden',
+      }}
+    >
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${color}, transparent)` }}/>
+      <div style={{
+        width: 52, height: 52, flexShrink: 0,
+        background: `${color}10`, border: `1px solid ${color}30`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon size={22} color={color}/>
+      </div>
+      <div>
+        <div style={{ fontSize: 9, fontWeight: 800, color, letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 7 }}>{role}</div>
+        <div style={{
+          fontFamily: "'Barlow Condensed', sans-serif",
+          fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-.3px', marginBottom: 12,
+        }}>
+          {name}
+        </div>
+        <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.85, margin: 0, fontWeight: 300 }}>{detail}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Architecture diagram ───────────────────────────────────────────────
+function ArchDiagram({ t }) {
+  const layers = [
+    { label: t('about.archL1'), color: C.blue,   Icon: Database,  items: ['complaints_clean.parquet', 'kpi_daily_agg.parquet', 'feature_matrix.parquet'] },
+    { label: t('about.archL2'), color: C.red,    Icon: Brain,     items: ['Anomaly Detection', 'Spike Forecasting', 'Root Cause RCA', 'User Clustering'] },
+    { label: t('about.archL3'), color: C.amber,  Icon: Box,       items: ['models/anomaly/', 'models/prediction/', 'models/classification/', 'models/clustering/'] },
+    { label: t('about.archL4'), color: C.green,  Icon: Server,    items: ['analytics_api.py', 'nlp_api.py', 'SQLite complaints.db'] },
+    { label: t('about.archL5'), color: C.purple, Icon: BarChart3, items: ['React / Vite', 'ApexCharts', 'Leaflet', 'NOC Engineer UI'] },
+  ]
+  return (
+    <Panel style={{ padding: '24px' }}>
+      <div style={{ display: 'flex', gap: 0 }}>
+        {layers.map((layer, i) => (
+          <div key={layer.label} style={{ flex: 1, position: 'relative' }}>
+            {i < layers.length - 1 && (
+              <div style={{ position: 'absolute', right: -10, top: '50%', transform: 'translateY(-50%)', zIndex: 2 }}>
+                <ChevronRight size={14} color="rgba(255,255,255,.2)"/>
+              </div>
+            )}
+            <div style={{
+              margin: '0 5px', padding: '18px 14px',
+              background: `${layer.color}08`, border: `1px solid ${layer.color}28`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 12 }}>
+                <layer.Icon size={12} color={layer.color}/>
+                <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: layer.color }}>
+                  {layer.label}
+                </div>
+              </div>
+              {layer.items.map(item => (
+                <div key={item} style={{ fontSize: 9, color: C.textMuted, marginBottom: 5, lineHeight: 1.5, fontFamily: 'monospace' }}>
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  )
+}
+
+// ── GitHub live card ───────────────────────────────────────────────────
+function GithubProfile({ username, t }) {
+  const [data,    setData]    = useState(null)
+  const [repos,   setRepos]   = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -27,38 +207,38 @@ function GithubProfile({ username }) {
   }, [username])
 
   return (
-    <Card style={{ padding: 0, overflow: 'hidden' }}>
-      <a href={`https://github.com/${username}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
-        {/* Header */}
-        <div style={{ padding: '28px 28px 20px', borderBottom: `1px solid ${C.border}`, background: 'rgba(255,255,255,.015)' }}>
+    <Panel style={{ overflow: 'hidden' }}>
+      <a
+        href={`https://github.com/${username}`}
+        target="_blank" rel="noreferrer"
+        style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+      >
+        <div style={{ padding: '24px 26px 18px', borderBottom: `1px solid ${C.border}` }}>
           {loading ? (
-            <div style={{ color: C.textMuted, fontSize: 11, letterSpacing: 2 }}>LOADING GITHUB…</div>
+            <div style={{ color: C.textMuted, fontSize: 11, letterSpacing: 2 }}>Loading…</div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 18 }}>
               {data?.avatar_url && (
-                <img src={data.avatar_url} alt={username} style={{ width: 72, height: 72, borderRadius: '50%', border: '2px solid rgba(207,10,44,.4)', objectFit: 'cover', flexShrink: 0 }} />
+                <img src={data.avatar_url} alt={username} style={{ width: 68, height: 68, borderRadius: '50%', border: `2px solid rgba(207,10,44,.4)`, objectFit: 'cover', flexShrink: 0 }}/>
               )}
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: '-.3px', marginBottom: 4 }}>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 22, fontWeight: 900, color: C.text, letterSpacing: '-.3px', marginBottom: 4 }}>
                   {data?.name || username}
                 </div>
-                <div style={{ fontSize: 13, color: '#CF0A2C', fontWeight: 600, marginBottom: 8 }}>@{username}</div>
-                {data?.bio && <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6, marginBottom: 12 }}>{data.bio}</div>}
+                <div style={{ fontSize: 12, color: C.red, fontWeight: 700, marginBottom: 8 }}>@{username}</div>
+                {data?.bio && (
+                  <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6, marginBottom: 10 }}>{data.bio}</div>
+                )}
                 {data?.location && (
                   <div style={{ fontSize: 11, color: C.textDim, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    {data.location}
+                    <MapPin size={10} color={C.textDim}/> {data.location}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: 24, marginTop: 14 }}>
-                  {[
-                    ['Public Repos', data?.public_repos ?? '—'],
-                    ['Followers',    data?.followers    ?? '—'],
-                    ['Following',    data?.following    ?? '—'],
-                  ].map(([label, val]) => (
+                <div style={{ display: 'flex', gap: 20, marginTop: 14 }}>
+                  {[['Public Repos', data?.public_repos ?? '—'], ['Followers', data?.followers ?? '—'], ['Following', data?.following ?? '—']].map(([label, val]) => (
                     <div key={label}>
-                      <div style={{ fontSize: 22, fontWeight: 900, color: '#CF0A2C', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '-1px' }}>{val}</div>
-                      <div style={{ fontSize: 9, color: C.textDim, letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2 }}>{label}</div>
+                      <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 900, color: C.red, letterSpacing: '-1px', lineHeight: 1 }}>{val}</div>
+                      <div style={{ fontSize: 9, color: C.textDim, letterSpacing: '1.5px', textTransform: 'uppercase', marginTop: 3 }}>{label}</div>
                     </div>
                   ))}
                 </div>
@@ -67,304 +247,360 @@ function GithubProfile({ username }) {
           )}
         </div>
 
-        {/* Repos */}
         {repos.length > 0 && (
-          <div style={{ padding: '16px 28px 24px' }}>
-            <div style={{ fontSize: 9, color: C.textDim, letterSpacing: 2.5, textTransform: 'uppercase', marginBottom: 12, fontWeight: 700 }}>Recent Repositories</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {repos.slice(0, 5).map(repo => (
+          <div style={{ padding: '14px 26px 22px' }}>
+            <div style={{ fontSize: 9, color: C.textDim, letterSpacing: '2.5px', textTransform: 'uppercase', marginBottom: 12, fontWeight: 700 }}>
+              {t('about.recentRepos')}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {repos.slice(0, 4).map(repo => (
                 <div key={repo.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
                   <div>
                     <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{repo.name}</div>
                     {repo.description && (
-                      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3, maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{repo.description}</div>
+                      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 2, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {repo.description}
+                      </div>
                     )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                     {repo.language && (
-                      <span style={{ fontSize: 9, color: C.textDim, background: 'rgba(255,255,255,.04)', padding: '2px 8px', borderRadius: 3 }}>{repo.language}</span>
+                      <span style={{ fontSize: 9, color: C.textDim, background: 'rgba(255,255,255,.04)', border: `1px solid ${C.border}`, padding: '2px 8px' }}>
+                        {repo.language}
+                      </span>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: C.textDim }}>
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="rgba(255,255,255,.2)"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                      {repo.stargazers_count}
+                      <Award size={9} color={C.textDim}/> {repo.stargazers_count}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#CF0A2C' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="#CF0A2C"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0 1 12 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.202 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/></svg>
-              github.com/{username}
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CF0A2C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: C.red }}>
+              <Github size={13} color={C.red}/> github.com/{username}
+              <ExternalLink size={10} color={C.red}/>
             </div>
           </div>
         )}
       </a>
-    </Card>
+    </Panel>
   )
 }
 
-// ── Architecture flow diagram ─────────────────────────────────────────
-function ArchDiagram() {
-  const layers = [
-    { label: 'Data Sources',    color: '#3B82F6', items: ['complaints_clean.parquet', 'kpi_daily_agg.parquet', 'feature_matrix.parquet'] },
-    { label: 'ML Pipeline',     color: '#CF0A2C', items: ['Anomaly Detection', 'Spike Forecasting', 'Root Cause Classifier', 'User Clustering'] },
-    { label: 'Storage',         color: '#F59E0B', items: ['models/anomaly/*.parquet', 'models/prediction/*.parquet', 'models/classification/*.json', 'models/clustering/*.parquet'] },
-    { label: 'API Layer',       color: '#22C55E', items: ['analytics_api.py (FastAPI)', 'nlp_api.py (FastAPI)', 'SQLite complaints.db'] },
-    { label: 'Dashboard',       color: '#8B5CF6', items: ['React/Vite', 'ApexCharts', 'Leaflet', 'NOC Engineer UI'] },
-  ]
-
-  return (
-    <Card style={{ padding: '28px 24px' }}>
-      <div style={{ display: 'flex', gap: 0 }}>
-        {layers.map((layer, i) => (
-          <div key={layer.label} style={{ flex: 1, position: 'relative' }}>
-            {/* Arrow connector */}
-            {i < layers.length - 1 && (
-              <div style={{ position: 'absolute', right: -14, top: '50%', transform: 'translateY(-50%)', zIndex: 2, color: 'rgba(255,255,255,.2)', fontSize: 16 }}>→</div>
-            )}
-            <div style={{ margin: '0 6px', padding: '18px 14px', background: `${layer.color}10`, border: `1px solid ${layer.color}30`, borderRadius: 0, borderTop: `2px solid ${layer.color}` }}>
-              <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 2, textTransform: 'uppercase', color: layer.color, marginBottom: 12 }}>{layer.label}</div>
-              {layer.items.map(item => (
-                <div key={item} style={{ fontSize: 9, color: C.textMuted, marginBottom: 5, lineHeight: 1.4, fontFamily: 'monospace' }}>{item}</div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  )
-}
-
-// ── Document download card ────────────────────────────────────────────
-function DocCard({ icon, title, desc, badge, href, type = 'external' }) {
+// ── Document / resource card ───────────────────────────────────────────
+function DocCard({ Icon, iconColor, title, desc, badge, href, type = 'external' }) {
   return (
     <a href={href} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-      <Card style={{
-        padding: '20px 22px',
-        display: 'flex', flexDirection: 'column', gap: 10,
-        transition: 'all .3s', cursor: 'pointer', height: '100%',
-      }}
-        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(207,10,44,.25)'; e.currentTarget.style.background = 'rgba(207,10,44,.025)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-        onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.surface; e.currentTarget.style.transform = 'translateY(0)' }}>
+      <div
+        className="about-doc"
+        style={{
+          background: C.bg3, border: `1px solid ${C.border}`,
+          padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10,
+          transition: 'all .25s', cursor: 'pointer', height: '100%',
+          position: 'relative', overflow: 'hidden',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ fontSize: 28 }}>{icon}</div>
+          <div style={{
+            width: 36, height: 36,
+            background: `${iconColor}10`, border: `1px solid ${iconColor}30`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <Icon size={16} color={iconColor}/>
+          </div>
           <Badge variant={badge.variant}>{badge.label}</Badge>
         </div>
-        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{title}</div>
-        <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>{desc}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: '#CF0A2C', marginTop: 4 }}>
-          {type === 'download' ? (
-            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CF0A2C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download</>
-          ) : (
-            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#CF0A2C" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg> Open</>
-          )}
+        <div style={{ fontSize: 13, fontWeight: 700, color: C.text, letterSpacing: '-.2px' }}>{title}</div>
+        <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.65, flex: 1 }}>{desc}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, fontWeight: 700, color: C.red }}>
+          {type === 'download'
+            ? <><Download size={10} color={C.red}/> Download</>
+            : <><ExternalLink size={10} color={C.red}/> Open</>
+          }
         </div>
-      </Card>
+      </div>
     </a>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// MAIN
+// MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════
 export default function About() {
+  const { t } = useTranslation()
+
+  // ── Platform KPIs ────────────────────────────────────────────────
+  const KPIS = [
+    { value: '50K+',   label: t('about.kpiComplaints'), color: C.red    },
+    { value: '552K',   label: t('about.kpiSessions'),   color: C.blue   },
+    { value: '24',     label: t('about.kpiGov'),         color: C.green  },
+    { value: '~4 500', label: t('about.kpiSites'),       color: C.purple },
+    { value: '89%+',   label: t('about.kpiRca'),         color: C.amber  },
+    { value: '2.91',   label: t('about.kpiForecast'),    color: C.cyan   },
+    { value: '18 mo',  label: t('about.kpiHistory'),     color: C.orange },
+    { value: '6',      label: t('about.kpiModules'),     color: '#EC4899'},
+  ]
+
+  // ── Innovation pillars ────────────────────────────────────────────
+  const PILLARS = [
+    { Icon: ShieldCheck, tag: t('about.p1Tag'), title: t('about.p1Title'), accent: C.red,    body: t('about.p1Body') },
+    { Icon: TrendingUp,  tag: t('about.p2Tag'), title: t('about.p2Title'), accent: C.blue,   body: t('about.p2Body') },
+    { Icon: Signal,      tag: t('about.p3Tag'), title: t('about.p3Title'), accent: C.green,  body: t('about.p3Body') },
+    { Icon: Globe,       tag: t('about.p4Tag'), title: t('about.p4Title'), accent: C.cyan,   body: t('about.p4Body') },
+  ]
+
+  // ── Tech stack ────────────────────────────────────────────────────
   const STACK = [
-    { name: 'Python 3.11',       role: 'Data pipeline · ML models',     color: '#3B82F6', pct: 95 },
-    { name: 'FastAPI',           role: 'REST analytics + NLP API',       color: '#22C55E', pct: 88 },
-    { name: 'React + Vite',      role: 'NOC dashboard frontend',         color: '#8B5CF6', pct: 90 },
-    { name: 'Scikit-learn',      role: 'Anomaly detection · clustering', color: '#F59E0B', pct: 85 },
-    { name: 'XGBoost',           role: 'Forecasting · root cause RCA',   color: '#CF0A2C', pct: 88 },
-    { name: 'Prophet',           role: 'Time-series seasonality',        color: '#06B6D4', pct: 78 },
-    { name: 'Leaflet.js',        role: 'Geospatial complaint map',       color: '#22C55E', pct: 72 },
-    { name: 'Pandas · NumPy',    role: 'Data wrangling · feature eng.',  color: '#6366F1', pct: 93 },
+    { name: 'Python 3.11',     role: 'Data pipeline · ML models',        color: C.blue,   pct: 95, Icon: Code2   },
+    { name: 'FastAPI',         role: 'REST analytics + NLP API',          color: C.green,  pct: 88, Icon: Zap     },
+    { name: 'React + Vite',    role: 'NOC dashboard frontend',            color: C.purple, pct: 90, Icon: Layers  },
+    { name: 'Scikit-learn',    role: 'Anomaly detection · NLP classifier',color: C.amber,  pct: 85, Icon: Brain   },
+    { name: 'XGBoost',         role: 'Forecasting · RCA classification',  color: C.red,    pct: 88, Icon: BarChart3},
+    { name: 'Prophet + ARIMA', role: 'Time-series seasonality',           color: C.cyan,   pct: 78, Icon: TrendingUp},
+    { name: 'Leaflet.js',      role: 'Geospatial complaint map',          color: C.green,  pct: 72, Icon: MapPin  },
+    { name: 'Pandas · NumPy',  role: 'Data wrangling · feature eng.',     color: '#6366F1',pct: 93, Icon: Database},
   ]
 
-  const KPIs = [
-    { value: '50K+',   label: 'Complaints decoded',       color: C.red    },
-    { value: '552K',   label: 'KPI data points',          color: C.blue   },
-    { value: '201',    label: 'Cell sites monitored',     color: C.green  },
-    { value: '24',     label: 'Governorates covered',     color: C.purple },
-    { value: '89%+',   label: 'RCA classification acc.',  color: C.amber  },
-    { value: '2.91',   label: 'Forecast MAE (compl/day)', color: C.cyan   },
-    { value: '18 mo',  label: 'Historical data range',    color: '#14B8A6'},
-    { value: '6',      label: 'ML modules deployed',      color: C.orange },
+  // ── ML notebook steps ─────────────────────────────────────────────
+  const ML_STEPS = [
+    { nb: 'NB 01', color: C.blue,   Icon: Database,  title: 'EDA & Data Quality',
+      desc: 'Missing value analysis, outlier detection, complaint distribution by region, service type, and time dimension. Establishes data quality baseline before any feature engineering.',
+      outputs: ['complaints_clean.parquet', 'figures/d1_*.png'] },
+    { nb: 'NB 02', color: C.purple, Icon: GitBranch, title: 'Cleaning & Feature Engineering',
+      desc: 'NaN imputation, normalisation, KPI rolling windows, lag features, temporal encodings. Produces the feature matrix that feeds all downstream ML models.',
+      outputs: ['feature_matrix.parquet', 'kpi_daily_agg.parquet'] },
+    { nb: 'NB 03', color: C.cyan,   Icon: MapPin,    title: 'Spatio-Temporal Analysis',
+      desc: "Geospatial hotspot mapping, hourly density heatmaps, region × KPI cross-correlation. Surfaces where and when network QoE degrades across Tunisia's 24 governorates.",
+      outputs: ['spatiotemporal_features.parquet', 'figures/d2_*.png'] },
+    { nb: 'NB 04', color: C.amber,  Icon: Network,   title: 'Correlation & Root Cause',
+      desc: 'Pearson/Spearman KPI correlations, Granger causality, QoE degradation event analysis. Links KPI drops directly to complaint volume spikes and service impact.',
+      outputs: ['correlation_matrix.parquet', 'reports/d3_*.csv'] },
+    { nb: 'NB 05', color: C.red,    Icon: Brain,     title: 'ML Models — D4',
+      desc: 'Production training: Isolation Forest anomaly detection, XGBoost + Prophet + ARIMA ensemble forecasting, XGBoost root cause classification, K-Means subscriber segmentation. All models serialised to disk.',
+      outputs: ['models/anomaly/', 'models/prediction/', 'models/classification/', 'models/clustering/'] },
   ]
 
+  // ── Resource cards ────────────────────────────────────────────────
+  const DOCS = [
+    { Icon: BookOpen,    iconColor: C.blue,   title: t('about.docNoc'),    desc: t('about.docNocDesc'),    badge: { variant: 'blue',  label: '.docx'  }, href: '/docs/SpiriComp_NOC_UserGuide.docx',        type: 'download' },
+    { Icon: FileText,    iconColor: C.green,  title: t('about.docKpi'),    desc: t('about.docKpiDesc'),    badge: { variant: 'green', label: '.docx'  }, href: '/docs/SpiriComp_KPI_Reference.docx',         type: 'download' },
+    { Icon: Github,      iconColor: C.text,   title: t('about.docGithub'), desc: t('about.docGithubDesc'), badge: { variant: 'red',   label: 'GitHub' }, href: 'https://github.com/Ouerghi23',               type: 'external' },
+    { Icon: Activity,    iconColor: C.amber,  title: t('about.docApi'),    desc: t('about.docApiDesc'),    badge: { variant: 'amber', label: 'Live'   }, href: 'http://localhost:8000/docs',                 type: 'external' },
+    { Icon: Users,       iconColor: C.cyan,   title: t('about.docPortal'), desc: t('about.docPortalDesc'), badge: { variant: 'cyan',  label: 'AR/FR/EN'}, href: '/form',                                    type: 'external' },
+    { Icon: ShieldCheck, iconColor: C.green,  title: t('about.docHealth'), desc: t('about.docHealthDesc'), badge: { variant: 'green', label: 'Health' }, href: 'http://localhost:8000/api/analytics/status', type: 'external' },
+  ]
+
+  // ── Meta info row ─────────────────────────────────────────────────
+  const META = [
+    [t('about.metaProject'),  t('about.metaProjectVal')],
+    [t('about.metaPartner'),  t('about.metaPartnerVal')],
+    [t('about.metaOperator'), t('about.metaOperatorVal')],
+    [t('about.metaData'),     t('about.metaDataVal')],
+    [t('about.metaYear'),     t('about.metaYearVal')],
+    [t('about.metaAuthor'),   t('about.metaAuthorVal')],
+  ]
+
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <div style={{ background: C.bg, minHeight: '100vh', color: C.text }}>
-      <div style={{ padding: '24px 24px 64px' }}>
 
-        <PageHeader
-          title="About SpiriComp"
-          subtitle="PFE Master Engineering · Huawei Technologies Tunisia · 2026"
-          badges={['PFE 2026', 'Open Source', 'NOC Intelligence', 'github.com/Ouerghi23']}
-        />
+      <style>{`
+        @keyframes about-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
+        .about-pillar:hover  { border-color:rgba(207,10,44,.22)!important; background:rgba(207,10,44,.025)!important; transform:translateY(-3px); box-shadow:0 12px 32px rgba(207,10,44,.07); }
+        .about-partner:hover { border-color:rgba(207,10,44,.2)!important; transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.25); }
+        .about-doc:hover     { border-color:rgba(207,10,44,.25)!important; background:rgba(207,10,44,.025)!important; transform:translateY(-2px); }
+      `}</style>
 
-        {/* ── Project overview ── */}
-        <Card style={{ marginBottom: 24, padding: '32px 36px', borderLeft: '3px solid #CF0A2C', background: 'linear-gradient(135deg, rgba(207,10,44,.04) 0%, rgba(255,255,255,.01) 100%)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: '#CF0A2C', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 16 }}>Project Overview</div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: C.text, lineHeight: 1.3, marginBottom: 16 }}>
-                From Raw KPI Data to<br />Production NOC Intelligence
-              </h2>
-              <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.9, fontWeight: 300 }}>
-                SpiriComp is a Projet de Fin d'Études (PFE) Master Engineering platform developed in collaboration with Huawei Technologies Tunisia. It ingests 18 months of Ooredoo Tunisia network data — 50,000+ customer complaints and 552,000 KPI sessions — and transforms it into actionable, real-time NOC intelligence through six machine learning modules.
-              </p>
-              <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.9, fontWeight: 300, marginTop: 12 }}>
-                The platform covers the full data science lifecycle: EDA, feature engineering, spatio-temporal analysis, anomaly detection, time-series forecasting, root cause classification, customer segmentation, and multilingual NLP complaint analysis — all surfaced through a production-grade React dashboard.
-              </p>
+      <div style={{ padding: '40px 48px 80px', maxWidth: 1600, margin: '0 auto' }}>
+
+        {/* ── HERO ──────────────────────────────────────────────────── */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(207,10,44,.06) 0%, rgba(255,255,255,.008) 60%)',
+          border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.red}`,
+          padding: '44px 48px', marginBottom: 1, position: 'relative', overflow: 'hidden',
+        }}>
+          {/* Grid pattern */}
+          <div style={{ position: 'absolute', inset: 0, backgroundImage: 'radial-gradient(rgba(207,10,44,.05) 1px, transparent 1px)', backgroundSize: '28px 28px', pointerEvents: 'none' }}/>
+          <div style={{ position: 'relative', zIndex: 1 }}>
+
+            {/* Live badge */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(207,10,44,.1)', border: '1px solid rgba(207,10,44,.28)', padding: '5px 14px', marginBottom: 24 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, display: 'inline-block', animation: 'about-pulse 2s ease-in-out infinite' }}/>
+              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '3px', textTransform: 'uppercase', color: C.red }}>
+                {t('about.heroBadge')}
+              </span>
             </div>
-            <div>
-              <div style={{ fontSize: 10, fontWeight: 800, color: C.textDim, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 16 }}>Context</div>
-              {[
-                ['Project',      'PFE Master Engineering'],
-                ['Institution',  'École / Université · Tunisia'],
-                ['Supervisor',   'Huawei Technologies Tunisia'],
-                ['Operator',     'Ooredoo Tunisia (dataset)'],
-                ['Year',         '2026'],
-                ['GitHub',       'github.com/Ouerghi23'],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', gap: 16, padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ fontSize: 11, color: C.textDim, fontWeight: 700, minWidth: 100, textTransform: 'uppercase', letterSpacing: .5 }}>{k}</div>
-                  <div style={{ fontSize: 12, color: C.text }}>{v}</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 40, alignItems: 'flex-start' }}>
+              <div>
+                <h1 style={{
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: 'clamp(36px,4vw,68px)', fontWeight: 900,
+                  letterSpacing: '-2px', lineHeight: .92, color: C.text, marginBottom: 22,
+                }}>
+                  {t('about.heroTitle1')}<br/>
+                  <span style={{ color: C.red, fontStyle: 'italic' }}>{t('about.heroTitle2')}</span><br/>
+                  <span style={{ color: C.textMuted, fontSize: 'clamp(22px,2.5vw,42px)', fontStyle: 'normal' }}>{t('about.heroTitle3')}</span>
+                </h1>
+
+                <p style={{ fontSize: 14, color: C.textMuted, lineHeight: 1.9, maxWidth: 640, fontWeight: 300, marginBottom: 24 }}>
+                  {t('about.heroDesc')}
+                </p>
+
+                <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+                  {(t('about.tags', { returnObjects: true }) || []).map(tag => (
+                    <span key={tag} style={{
+                      fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase',
+                      padding: '5px 14px', border: `1px solid ${C.border}`, background: 'rgba(255,255,255,.025)', color: C.textMuted,
+                    }}>
+                      {tag}
+                    </span>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              {/* Meta info block */}
+              <div style={{ background: C.bg3, border: `1px solid ${C.border}`, padding: '22px 26px', minWidth: 230 }}>
+                {META.map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 12, padding: '8px 0', borderBottom: `1px solid rgba(255,255,255,.04)` }}>
+                    <span style={{ fontSize: 9, color: C.textDim, fontWeight: 800, letterSpacing: '.5px', textTransform: 'uppercase', minWidth: 72 }}>{k}</span>
+                    <span style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{v}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </Card>
+        </div>
 
-        {/* ── KPI metrics ── */}
-        <SectionHeader>Platform Metrics</SectionHeader>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-          {KPIs.map((k, i) => (
-            <div key={i} style={{ background: C.surface, border: `1px solid ${C.border}`, borderTop: `2px solid ${k.color}`, padding: '18px 20px' }}>
-              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 32, fontWeight: 900, color: k.color, letterSpacing: '-1px', marginBottom: 6 }}>{k.value}</div>
-              <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: .5 }}>{k.label}</div>
+        {/* ── KPI STRIP ─────────────────────────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,.04)', marginBottom: 1 }}>
+          {KPIS.map((k, i) => (
+            <div key={i} style={{ background: C.bg3, padding: '20px 22px', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${k.color}, transparent)` }}/>
+              <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 32, fontWeight: 900, color: k.color, letterSpacing: '-1px', lineHeight: 1, marginBottom: 6 }}>
+                {k.value}
+              </div>
+              <div style={{ fontSize: 9, color: C.textMuted, letterSpacing: '1.5px', textTransform: 'uppercase', fontWeight: 600 }}>
+                {k.label}
+              </div>
             </div>
           ))}
         </div>
 
-        {/* ── Architecture ── */}
-        <SectionHeader>System Architecture</SectionHeader>
-        <div style={{ marginBottom: 24 }}>
-          <ArchDiagram />
+        {/* ── INNOVATION PILLARS ─────────────────────────────────────── */}
+        <div style={{ marginTop: 52 }}>
+          <SLabel>{t('about.pillarsSection')}</SLabel>
+          <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(22px,2.5vw,36px)', fontWeight: 900, color: C.text, letterSpacing: '-1px', marginBottom: 6 }}>
+            {t('about.pillarsTitle')}
+          </h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t('about.pillarsSub')}</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 1, background: 'rgba(255,255,255,.04)', marginBottom: 1 }}>
+          {PILLARS.map(p => <PillarCard key={p.tag} {...p}/>)}
         </div>
 
-        {/* ── Tech stack ── */}
-        <SectionHeader>Technology Stack</SectionHeader>
-        <Card style={{ marginBottom: 24, padding: '28px 28px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 40px' }}>
+        {/* ── STRATEGIC PARTNERS ───────────────────────────────────── */}
+        <div style={{ marginTop: 52 }}>
+          <SLabel>{t('about.partnerSection')}</SLabel>
+          <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(22px,2.5vw,36px)', fontWeight: 900, color: C.text, letterSpacing: '-1px', marginBottom: 6 }}>
+            {t('about.partnerTitle')}
+          </h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t('about.partnerSub')}</p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)', marginBottom: 1 }}>
+          <PartnerCard Icon={Building2}  name={t('about.huaweiName')}  role={t('about.huaweiRole')}  color={C.red}  detail={t('about.huaweiDetail')}/>
+          <PartnerCard Icon={Smartphone} name={t('about.ooredooName')} role={t('about.ooredooRole')} color={C.blue} detail={t('about.ooredooDetail')}/>
+        </div>
+
+        {/* ── SYSTEM ARCHITECTURE ─────────────────────────────────── */}
+        <div style={{ marginTop: 52 }}>
+          <SLabel>{t('about.archSection')}</SLabel>
+          <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(22px,2.5vw,36px)', fontWeight: 900, color: C.text, letterSpacing: '-1px', marginBottom: 6 }}>
+            {t('about.archTitle')}
+          </h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t('about.archSub')}</p>
+        </div>
+        <ArchDiagram t={t}/>
+
+        {/* ── ML PIPELINE ─────────────────────────────────────────── */}
+        <div style={{ marginTop: 52 }}>
+          <SLabel>{t('about.mlSection')}</SLabel>
+          <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(22px,2.5vw,36px)', fontWeight: 900, color: C.text, letterSpacing: '-1px', marginBottom: 6 }}>
+            {t('about.mlTitle')}
+          </h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t('about.mlSub')}</p>
+        </div>
+        <Panel style={{ padding: '24px 28px' }}>
+          {ML_STEPS.map((step, i) => (
+            <div key={step.nb} style={{ display: 'flex', gap: 20, paddingBottom: i < 4 ? 24 : 0, borderBottom: i < 4 ? `1px solid ${C.border}` : 'none', marginBottom: i < 4 ? 24 : 0 }}>
+              {/* Step icon */}
+              <div style={{ flexShrink: 0, width: 52, height: 52, background: `${step.color}14`, border: `1px solid ${step.color}35`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                <step.Icon size={14} color={step.color}/>
+                <div style={{ fontSize: 8, fontWeight: 900, color: step.color, textAlign: 'center', letterSpacing: '.3px' }}>{step.nb}</div>
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{step.title}</div>
+                  <div style={{ height: 1, flex: 1, background: `${step.color}30` }}/>
+                </div>
+                <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.75, marginBottom: 10, fontWeight: 300 }}>{step.desc}</p>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {step.outputs.map(o => (
+                    <code key={o} style={{ fontSize: 9, background: 'rgba(255,255,255,.04)', border: `1px solid ${C.border}`, padding: '2px 9px', color: C.textMuted, letterSpacing: '.3px' }}>
+                      {o}
+                    </code>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </Panel>
+
+        {/* ── TECH STACK ───────────────────────────────────────────── */}
+        <div style={{ marginTop: 52 }}>
+          <SLabel>{t('about.stackSection')}</SLabel>
+          <h2 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(22px,2.5vw,36px)', fontWeight: 900, color: C.text, letterSpacing: '-1px', marginBottom: 6 }}>
+            {t('about.stackTitle')}
+          </h2>
+          <p style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t('about.stackSub')}</p>
+        </div>
+        <Panel style={{ padding: '26px 28px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 40px' }}>
             {STACK.map(item => (
               <div key={item.name} style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <item.Icon size={13} color={item.color}/>
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.name}</span>
-                    <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 10 }}>{item.role}</span>
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{item.role}</span>
                   </div>
-                  <span style={{ fontSize: 11, color: item.color, fontWeight: 700, fontFamily: 'monospace' }}>{item.pct}%</span>
+                  <span style={{ fontSize: 11, color: item.color, fontWeight: 800, fontFamily: 'monospace', flexShrink: 0 }}>{item.pct}%</span>
                 </div>
-                <div style={{ height: 3, background: 'rgba(255,255,255,.05)', borderRadius: 2 }}>
-                  <div style={{ height: '100%', width: `${item.pct}%`, background: item.color, borderRadius: 2, transition: 'width 1s cubic-bezier(.22,1,.36,1)' }} />
+                <div style={{ height: 3, background: 'rgba(255,255,255,.05)' }}>
+                  <div style={{ height: '100%', width: `${item.pct}%`, background: item.color, transition: 'width 1s cubic-bezier(.22,1,.36,1)' }}/>
                 </div>
               </div>
             ))}
           </div>
-        </Card>
+        </Panel>
 
-        {/* ── GitHub + documents ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginBottom: 24 }}>
+        {/* ── AUTHOR + RESOURCES ───────────────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 28, marginTop: 52 }}>
+          {/* Author */}
           <div>
-            <SectionHeader>Engineer Profile</SectionHeader>
-            <GithubProfile username="Ouerghi23" />
+            <SLabel>{t('about.authorSection')}</SLabel>
+            <GithubProfile username="Ouerghi23" t={t}/>
           </div>
+
+          {/* Resources */}
           <div>
-            <SectionHeader>Resources & Documents</SectionHeader>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <DocCard
-                icon="📘"
-                title="NOC User Guide"
-                desc="Complete guide for NOC engineers — dashboard features, KPIs, alert interpretation, and workflow."
-                badge={{ variant: 'blue', label: '.docx' }}
-                href="/docs/SpiriComp_NOC_UserGuide.docx"
-                type="download"
-              />
-              <DocCard
-                icon="📊"
-                title="KPI/KQI Reference"
-                desc="Full reference for all KPIs and KQIs used in SpiriComp — definitions, thresholds, and formulas."
-                badge={{ variant: 'green', label: '.docx' }}
-                href="/docs/SpiriComp_KPI_Reference.docx"
-                type="download"
-              />
-              <DocCard
-                icon="🐙"
-                title="GitHub Repository"
-                desc="Full source code — notebooks, backend API, React dashboard, NLP pipeline."
-                badge={{ variant: 'red', label: 'GitHub' }}
-                href="https://github.com/Ouerghi23"
-                type="external"
-              />
-              <DocCard
-                icon="🔌"
-                title="API Documentation"
-                desc="FastAPI auto-generated docs — all endpoints, request/response schemas, and examples."
-                badge={{ variant: 'amber', label: 'Live' }}
-                href="http://localhost:8000/docs"
-                type="external"
-              />
-              <DocCard
-                icon="📝"
-                title="Client Portal"
-                desc="Multilingual complaint submission form — Arabic, French, English — for Ooredoo customers."
-                badge={{ variant: 'cyan', label: 'AR/FR/EN' }}
-                href="http://localhost:8000/form"
-                type="external"
-              />
-              <DocCard
-                icon="📡"
-                title="API Status"
-                desc="Live API health check — confirms all analytics and NLP endpoints are operational."
-                badge={{ variant: 'green', label: 'Health' }}
-                href="http://localhost:8000/api/analytics/status"
-                type="external"
-              />
+            <SLabel>{t('about.resourceSection')}</SLabel>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
+              {DOCS.map(d => <DocCard key={d.title} {...d}/>)}
             </div>
           </div>
         </div>
-
-        {/* ── ML Pipeline timeline ── */}
-        <SectionHeader>ML Pipeline — Notebook Sequence</SectionHeader>
-        <Card style={{ padding: '24px 28px', marginBottom: 24 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {[
-              { nb: 'NB 01', title: 'EDA & Data Quality',         desc: 'Missing value analysis, outlier detection, complaint distribution by region/service/time.', color: '#3B82F6', outputs: ['complaints_clean.parquet', 'figures/d1_*.png'] },
-              { nb: 'NB 02', title: 'Cleaning & Feature Eng.',    desc: 'NaN imputation, normalisation, KPI rolling windows, lag features, temporal encodings.', color: '#8B5CF6', outputs: ['feature_matrix.parquet', 'kpi_daily_agg.parquet'] },
-              { nb: 'NB 03', title: 'Spatio-Temporal Analysis',   desc: 'Geospatial hotspot mapping, hourly density heatmaps, region×KPI cross-correlation.', color: '#06B6D4', outputs: ['spatiotemporal_features.parquet', 'figures/d2_*.png'] },
-              { nb: 'NB 04', title: 'Correlation & Root Cause',   desc: 'Pearson/Spearman KPI correlations, Granger causality, QoE degradation event analysis.', color: '#F59E0B', outputs: ['correlation_matrix.parquet', 'reports/d3_*.csv'] },
-              { nb: 'NB 05', title: 'ML Models (D4)',             desc: 'Anomaly detection, 7-day forecasting, root cause classification, customer segmentation.', color: '#CF0A2C', outputs: ['models/anomaly/', 'models/prediction/', 'models/classification/', 'models/clustering/'] },
-            ].map((step, i) => (
-              <div key={step.nb} style={{ display: 'flex', gap: 20, paddingBottom: 24, borderBottom: i < 4 ? `1px solid ${C.border}` : 'none', marginBottom: i < 4 ? 24 : 0 }}>
-                <div style={{ flexShrink: 0, width: 52, height: 52, background: `${step.color}18`, border: `1px solid ${step.color}40`, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 2 }}>
-                  <div style={{ fontSize: 10, fontWeight: 900, color: step.color, textAlign: 'center', lineHeight: 1.2 }}>{step.nb.split(' ').join('\n')}</div>
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{step.title}</div>
-                    <div style={{ height: 1, flex: 1, background: `${step.color}30` }} />
-                  </div>
-                  <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.7, marginBottom: 8 }}>{step.desc}</p>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {step.outputs.map(o => (
-                      <code key={o} style={{ fontSize: 9, background: 'rgba(255,255,255,.04)', border: `1px solid ${C.border}`, padding: '2px 8px', borderRadius: 3, color: C.textMuted }}>{o}</code>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
 
       </div>
     </div>

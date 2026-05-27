@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from 'react-router-dom';
-
+import { useTranslation } from 'react-i18next';
+import LanguageToggle from '../components/LanguageToggle';
 import logoImg from "../assets/images/logo_1.png";
 import coverImg from "../assets/images/cover.jpg";
 import serverImg from "../assets/images/server.png";
@@ -17,14 +18,12 @@ const IconSignal = ({ size = 20, color = "currentColor" }) => (
     <path d="M2 20h.01M7 20v-4M12 20v-8M17 20V4M22 20v-4"/>
   </svg>
 );
-
 const IconMap = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>
     <line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/>
   </svg>
 );
-
 const IconCpu = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="4" width="16" height="16" rx="2"/>
@@ -32,20 +31,17 @@ const IconCpu = ({ size = 24, color = "currentColor" }) => (
     <path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/>
   </svg>
 );
-
 const IconTrendingUp = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/>
     <polyline points="17 6 23 6 23 12"/>
   </svg>
 );
-
 const IconSearch = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
   </svg>
 );
-
 const IconUsers = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
@@ -53,31 +49,26 @@ const IconUsers = ({ size = 24, color = "currentColor" }) => (
     <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
   </svg>
 );
-
 const IconMessageSquare = ({ size = 24, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 );
-
 const IconArrowRight = ({ size = 16, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
   </svg>
 );
-
 const IconArrowUpRight = ({ size = 14, color = "currentColor" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
   </svg>
 );
-
 const IconChevronLeft = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="15 18 9 12 15 6"/>
   </svg>
 );
-
 const IconChevronRight = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="9 18 15 12 9 6"/>
@@ -89,66 +80,68 @@ const IconQuote = () => (
     <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/>
   </svg>
 );
-
 const IconStar = () => (
   <svg width="13" height="13" viewBox="0 0 24 24" fill="#CF0A2C">
     <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
   </svg>
 );
-// ─── Data ─────────────────────────────────────────────────────
-// ─── Data ─────────────────────────────────────────────────────
+
+// ─── Data (Updated to use keys) ─────────────────────────────
 const STATS = [
-  { value: 50,  suffix: "K+", label: "Complaints\nAnalyzed" },
-  { value: 552, suffix: "K",  label: "KPI\nSessions" },
-  { value: 201, suffix: "",   label: "Cell\nSites" },
-  { value: 24,  suffix: "",   label: "Governorates\nCovered" },
+  { value: 50,  suffix: "K+", labelKey: "landing.statsComplaints" },
+  { value: 552, suffix: "K",  labelKey: "landing.statsKpi" },
+  { value: 5 , suffix: "K",   labelKey: "landing.statsSites" },
+  { value: 24,  suffix: "",   labelKey: "landing.statsGovernorates" },
 ];
 
 const MODULES = [
-  { icon: IconMap,            title: "Spatio-Temporal\nHotspots",   desc: "Geospatial clustering of complaint patterns across 24 governorates and 201 cell sites.", tag: "GIS" },
-  { icon: IconCpu,            title: "ML Anomaly\nDetection",       desc: "Isolation Forest & Autoencoder models for real-time network degradation detection.", tag: "ML" },
-  { icon: IconTrendingUp,     title: "Predictive\nForecasting",     desc: "XGBoost + Prophet forecast complaint surges 7 days ahead with high precision.", tag: "AI" },
-  { icon: IconSearch,         title: "Root Cause\nAnalysis",        desc: "SHAP-powered explainability linking KPIs to customer complaints.", tag: "SHAP" },
-  { icon: IconUsers,          title: "Customer\nSegmentation",      desc: "K-Means & DBSCAN clustering for targeted QoE interventions.", tag: "UX" },
-  { icon: IconMessageSquare,  title: "NLP\nClassification",         desc: "Multilingual BERT-based classification of complaint texts.", tag: "NLP" },
+  { icon: IconMap,            titleKey: "landing.modGisTitle",   descKey: "landing.modGisDesc",   tag: "GIS" },
+  { icon: IconCpu,            titleKey: "landing.modMlTitle",     descKey: "landing.modMlDesc",     tag: "ML" },
+  { icon: IconTrendingUp,     titleKey: "landing.modAiTitle",     descKey: "landing.modAiDesc",     tag: "AI" },
+  { icon: IconSearch,         titleKey: "landing.modRcaTitle",    descKey: "landing.modRcaDesc",    tag: "Analytics" },
+  { icon: IconUsers,          titleKey: "landing.modUxTitle",     descKey: "landing.modUxDesc",     tag: "UX" },
+  { icon: IconMessageSquare,  titleKey: "landing.modNlpTitle",    descKey: "landing.modNlpDesc",    tag: "NLP" },
 ];
 
- const TESTIMONIALS = [
+const TESTIMONIALS = [
   {
     name: "Karim Mansouri",
     role: "Senior NOC Engineer",
-    company: "Ooredoo Tunisia",
+    company: "Major Telecom Operator",
     av: av1Img,
-    text: "SpiriComp has transformed our complaint management workflow. Tasks that previously required hours of manual KPI correlation are now completed in seconds. The anomaly detection module has already prevented three major network outages.",
+    textKey: "landing.testi1",
   },
   {
     name: "Sana Ouerghi",
     role: "Network Quality Manager",
-    company: "Huawei Technologies Tunisia",
+    company: "Leading Telecom Vendor",
     av: av2Img,
-    text: "The forecasting module is exceptional. We can now anticipate complaint surges seven days in advance. Our customer satisfaction score has increased by 23% over six months as a direct result of this proactive capability.",
+    textKey: "landing.testi2",
   },
   {
     name: "Ahmed Trabelsi",
     role: "Data Science Lead",
     company: "Telecom Analytics Division",
     av: av3Img,
-    text: "The root cause analysis powered by SHAP is remarkably insightful. It not only identifies the anomaly — it precisely explains which KPI triggered the surge. Our engineers value the transparency and actionable intelligence it provides.",
+    textKey: "landing.testi3",
   },
   {
     name: "Leila Benmoussa",
     role: "Customer Experience Director",
-    company: "Mobile Operator Tunisia",
+    company: "Mobile Operator",
     av: av4Img,
-    text: "Before SpiriComp, we operated entirely in reactive mode. Today, we are fully proactive. The NLP pipeline automatically tags every incoming complaint, giving us real-time visibility into network quality across all regions.",
+    textKey: "landing.testi4",
   },
 ];
+
+// Ticker items are usually technical terms, keeping them hardcoded or map them if you add keys
 const TICKER_ITEMS = [
   "QoE Scoring Engine", "QoS Degradation Detection", "KQI · KPI Correlation",
   "Spatio-Temporal Analysis", "ML Anomaly Detection", "XGBoost Forecasting",
   "SHAP Root Cause", "K-Means Segmentation", "NLP Classification",
   "24 Governorates", "50K+ Réclamations", "Huawei NOC"
 ];
+
 // ─── Animated Counter ─────────────────────────────────────────
 function Counter({ target, suffix }) {
   const [val, setVal] = useState(0);
@@ -180,6 +173,7 @@ function Counter({ target, suffix }) {
 
   return <span ref={ref}>{val}{suffix}</span>;
 }
+
 // ─── Scroll Reveal ────────────────────────────────────────────
 function Reveal({ children, delay = 0 }) {
   const ref = useRef(null);
@@ -208,18 +202,17 @@ function Reveal({ children, delay = 0 }) {
 // ─── Main Landing Page ────────────────────────────────────────
 export default function LandingPage({ onEnter }) {
   const navigate = useNavigate();
+  const { t } = useTranslation(); // Initialisation de la traduction
   const [scrolled, setScrolled] = useState(false);
   const [activeModule, setActiveModule] = useState(0);
   const [testiIdx, setTestiIdx] = useState(0);
 
-  // Scroll handler
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 80);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Auto-rotate featured module
   useEffect(() => {
     const interval = setInterval(() => {
       setActiveModule(prev => (prev + 1) % MODULES.length);
@@ -238,7 +231,7 @@ export default function LandingPage({ onEnter }) {
         *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:3px}
         ::-webkit-scrollbar-track{background:#080808}
-     ::-webkit-scrollbar-thumb { background: #CF0A2C; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #CF0A2C; border-radius: 3px; }
 
         @keyframes kenburns {
           0% { transform: scale(1) translate(0,0) }
@@ -581,7 +574,7 @@ export default function LandingPage({ onEnter }) {
               letterSpacing: "-.5px",
               color: '#fff'
             }}>
-           Spiri<span style={{ color: "#CF0A2C" }}>Comp</span>
+              Spiri<span style={{ color: "#CF0A2C" }}>Comp</span>
             </div>
             <div style={{ 
               fontSize: 8, 
@@ -590,7 +583,7 @@ export default function LandingPage({ onEnter }) {
               marginTop: 2, 
               fontWeight: 700 
             }}>
-              BY HUAWEI
+              {t('brand.by')}
             </div>
           </div>
         </Link>
@@ -604,30 +597,30 @@ export default function LandingPage({ onEnter }) {
           transform: "translateX(-50%)" 
         }}>
           {[
-            { label: "Overview", path: "/dashboard" },
-            { label: "Complaint Map", path: "/dashboard/map" },
-            { label: "Anomaly Feed", path: "/dashboard/anomalies" },
-            { label: "Forecasting", path: "/dashboard/forecast" },
-            { label: "Root Cause Analysis", path: "/dashboard/root-cause" },
-            { label: "User Segments", path: "/dashboard/segments" },
-            { label: "NLP Analysis", path: "/dashboard/nlp" }
-          ].map(({ label, path }) => (
-            <Link key={label} to={path} className="nav-link">
-              {label}
+            { labelKey: "nav.overview", path: "/dashboard" },
+            { labelKey: "nav.map", path: "/dashboard/map" },
+            { labelKey: "nav.anomalies", path: "/dashboard/anomalies" },
+            { labelKey: "nav.forecast", path: "/dashboard/forecast" },
+            { labelKey: "nav.rootcause", path: "/dashboard/root-cause" },
+            { labelKey: "nav.segments", path: "/dashboard/segments" },
+            { labelKey: "nav.nlp", path: "/dashboard/nlp" }
+          ].map(({ labelKey, path }) => (
+            <Link key={labelKey} to={path} className="nav-link">
+              {t(labelKey)}
             </Link>
           ))}
         </div>
 
         {/* Actions */}
         <div className="nav-actions" style={{ display: "flex", gap: 10, alignItems: "center" }}>
-
+          <LanguageToggle />
           <button 
             className="btn-primary" 
             style={{ padding: "9px 24px", fontSize: 11 }} 
             onClick={onEnter}
             aria-label="Launch SpiriComp"
           >
-            Launch <IconArrowUpRight size={12} color="white" />
+            {t('landing.launch')} <IconArrowUpRight size={12} color="white" />
           </button>
         </div>
       </nav>
@@ -713,12 +706,10 @@ export default function LandingPage({ onEnter }) {
         }} />
 
         {/* Content */}
-        <div style={{ 
+       <div style={{ 
           position: "relative", 
           width: "100%", 
-          maxWidth: 1200, 
-          margin: "0 auto", 
-          padding: "0 48px", 
+          padding: "0 7%", 
           zIndex: 1 
         }}>
           {/* Live badge */}
@@ -752,7 +743,7 @@ export default function LandingPage({ onEnter }) {
                 textTransform: "uppercase", 
                 color: "#FF4060" 
               }}>
-                Live Network Intelligence
+                {t('landing.liveBadge')}
               </span>
             </div>
             <span style={{ 
@@ -767,7 +758,7 @@ export default function LandingPage({ onEnter }) {
           {/* Title */}
           <h1 className="hero-title" style={{ 
             fontFamily: "'Barlow Condensed',sans-serif", 
-            fontSize: "clamp(44px, 7.5vw, 92px)", 
+            fontSize: "clamp(28px, 5vw, 64px)",
             fontWeight: 900, 
             lineHeight: .96, 
             letterSpacing: "-2px", 
@@ -775,8 +766,8 @@ export default function LandingPage({ onEnter }) {
             animation: "slide-in .65s .12s ease both", 
             whiteSpace: "nowrap" 
           }}>
-            INTELLIGENT NETWORK{" "}
-            <span style={{ color: "#CF0A2C", fontStyle: "italic" }}>COMPLAINT</span>
+            {t('landing.heroTitle1')}{" "}
+            <span style={{ color: "#CF0A2C", fontStyle: "italic" }}>{t('landing.heroTitle2')}</span>
           </h1>
           <h2 style={{ 
             fontFamily: "'Barlow Condensed',sans-serif", 
@@ -787,8 +778,7 @@ export default function LandingPage({ onEnter }) {
             marginBottom: 32, 
             animation: "slide-in .65s .18s ease both" 
           }}>
-         
-Advanced Analytics & Network Intelligence Platform
+            {t('landing.heroSubtitle')}
           </h2>
 
           {/* Description */}
@@ -801,7 +791,8 @@ Advanced Analytics & Network Intelligence Platform
             animation: "slide-in .65s .24s ease both", 
             fontWeight: 300 
           }}>
-SpiriComp ingests and correlates 50K+ customer complaints with 552K network KPI sessions across 201 cell sites and 24 governorates — detecting QoE degradation, forecasting complaint surges, and empowering NOC engineers to resolve issues proactively before SLA violations occur.          </p>
+            {t('landing.heroDesc')}
+          </p>
 
           {/* CTAs */}
           <div style={{ 
@@ -816,11 +807,12 @@ SpiriComp ingests and correlates 50K+ customer complaints with 552K network KPI 
               onClick={onEnter}
               aria-label="Open NOC Dashboard"
             >
-              Access NOC Dashboard
- <IconArrowRight size={15} color="white" />
+              {t('landing.accessDashboard')}
+              <IconArrowRight size={15} color="white" />
             </button>
-            <button className="btn-ghost" style={{ fontSize: 13, padding: "15px 40px" }}>
-Explore Platform Capabilities            </button>
+            <Link to="/dashboard/about" className="btn-ghost" style={{ fontSize: 13, padding: "15px 40px", textDecoration: "none" }}>
+              {t('landing.explorePlatform')}
+            </Link>
           </div>
         </div>
 
@@ -848,8 +840,7 @@ Explore Platform Capabilities            </button>
             letterSpacing: 4, 
             textTransform: "uppercase" 
           }}>
-       Scroll to Explore
-
+            {t('landing.scrollExplore')}
           </span>
         </div>
       </section>
@@ -867,7 +858,7 @@ Explore Platform Capabilities            </button>
           background: "rgba(255,255,255,.04)" 
         }}>
           {STATS.map((s, i) => (
-            <Reveal key={s.label} delay={i * .06}>
+            <Reveal key={s.labelKey} delay={i * .06}>
               <div className="stat-block">
                 <div style={{ 
                   fontFamily: "'Barlow Condensed',sans-serif", 
@@ -889,7 +880,7 @@ Explore Platform Capabilities            </button>
                   lineHeight: 1.6, 
                   fontWeight: 500 
                 }}>
-                  {s.label}
+                  {t(s.labelKey)}
                 </div>
               </div>
             </Reveal>
@@ -937,7 +928,7 @@ Explore Platform Capabilities            </button>
                   letterSpacing: 2, 
                   fontWeight: 700 
                 }}>
-                  201 SITES · ACTIFS
+                  {t('landing.statsSites')} {t('landing.activeSites')}
                 </span>
               </div>
             </div>
@@ -951,7 +942,7 @@ Explore Platform Capabilities            </button>
             borderLeft: "1px solid rgba(255,255,255,.05)" 
           }}>
             <Reveal>
-              <div className="section-label">Infrastructure Analysis</div>
+              <div className="section-label">{t('landing.infraSection')}</div>
               <h2 style={{ 
                 fontFamily: "'Barlow Condensed',sans-serif", 
                 fontSize: "clamp(28px, 3.5vw, 48px)", 
@@ -960,13 +951,13 @@ Explore Platform Capabilities            </button>
                 lineHeight: 1.0, 
                 marginBottom: 22 
               }}>
-                2201 Cell Sites.<br />
+                {t('landing.infraH2')} <br />
                 <span style={{ 
                   color: "rgba(255,255,255,.28)", 
                   fontWeight: 400, 
                   fontStyle: "italic" 
                 }}>
-One Unified View.
+                  {t('landing.infraH2b')}
                 </span>
               </h2>
               <p style={{ 
@@ -976,14 +967,15 @@ One Unified View.
                 fontWeight: 300, 
                 maxWidth: 400 
               }}>
-SpiriComp ingests KPI data from every cell site across 24 governorates, building a real-time picture of network health correlated with customer complaints and QoE degradation events.              </p>
+                {t('landing.infraDesc')}
+              </p>
               <button 
                 className="btn-primary" 
                 style={{ marginTop: 36, alignSelf: "flex-start" }} 
                 onClick={() => navigate('/dashboard/map')}
                 aria-label="View Complaint Map"
               >
-                View Complaint Map <IconArrowRight size={14} color="white" />
+                {t('landing.viewMap')} <IconArrowRight size={14} color="white" />
               </button>
             </Reveal>
           </div>
@@ -1005,8 +997,7 @@ SpiriComp ingests KPI data from every cell site across 24 governorates, building
             borderRight: "1px solid rgba(255,255,255,.05)" 
           }}>
             <Reveal>
-              <div className="section-label">Predictive Intelligence
-</div>
+              <div className="section-label">{t('landing.predictSection')}</div>
               <h2 style={{ 
                 fontFamily: "'Barlow Condensed',sans-serif", 
                 fontSize: "clamp(28px, 3.5vw, 48px)", 
@@ -1015,9 +1006,8 @@ SpiriComp ingests KPI data from every cell site across 24 governorates, building
                 lineHeight: 1.0, 
                 marginBottom: 22 
               }}>
-                7 Days Ahead.
-<br />
-                <span style={{ color: "#CF0A2C", fontStyle: "italic" }}>MAE = 2.91/day.</span>
+                {t('landing.predictH2')}<br />
+                <span style={{ color: "#CF0A2C", fontStyle: "italic" }}>{t('landing.predictH2b')}</span>
               </h2>
               <p style={{ 
                 fontSize: 14, 
@@ -1026,14 +1016,15 @@ SpiriComp ingests KPI data from every cell site across 24 governorates, building
                 fontWeight: 300, 
                 maxWidth: 400 
               }}>
-XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engineers critical time to act proactively and prevent SLA violations.              </p>
+                {t('landing.predictDesc')}
+              </p>
               <div style={{ display: "flex", gap: 10, marginTop: 28, flexWrap: "wrap" }}>
                 {[
-                  ["XGBoost", "Primary Model"],
-                  ["Prophet", "Seasonality"],
-                  ["MAE 2.91", "Precision"]
-                ].map(([label, sublabel]) => (
-                  <div key={label} style={{ 
+                  { labelKey: "modelAdvanced", subKey: "modelAdvancedSub" },
+                  { labelKey: "modelTemporal", subKey: "modelTemporalSub" },
+                  { labelKey: "modelAccuracy", subKey: "modelAccuracySub" }
+                ].map((item) => (
+                  <div key={item.labelKey} style={{ 
                     border: "1px solid rgba(255,255,255,.07)", 
                     padding: "9px 16px", 
                     background: "rgba(255,255,255,.02)" 
@@ -1044,7 +1035,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                       fontWeight: 800, 
                       color: "rgba(255,255,255,.85)" 
                     }}>
-                      {label}
+                      {t(`landing.${item.labelKey}`)}
                     </div>
                     <div style={{ 
                       fontSize: 9, 
@@ -1053,7 +1044,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                       letterSpacing: 2, 
                       textTransform: "uppercase" 
                     }}>
-                      {sublabel}
+                      {t(`landing.${item.subKey}`)}
                     </div>
                   </div>
                 ))}
@@ -1064,7 +1055,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                 onClick={() => navigate('/dashboard/forecast')}
                 aria-label="Open Forecasting"
               >
-                Open Forecasting <IconArrowRight size={14} color="white" />
+                {t('landing.openForecast')} <IconArrowRight size={14} color="white" />
               </button>
             </Reveal>
           </div>
@@ -1116,7 +1107,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
               gap: 20 
             }}>
               <div>
-                <div className="section-label">Platform Capabilities</div>
+                <div className="section-label">{t('landing.platformSection')}</div>
                 <h2 style={{ 
                   fontFamily: "'Barlow Condensed',sans-serif", 
                   fontSize: "clamp(30px, 4.5vw, 58px)", 
@@ -1124,13 +1115,13 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                   letterSpacing: "-1.5px", 
                   lineHeight: .96 
                 }}>
-                  SIX PILLARS OF<br />
+                  {t('landing.sixPillars')}<br />
                   <span style={{ 
                     color: "rgba(255,255,255,.2)", 
                     fontWeight: 400, 
                     fontStyle: "italic" 
                   }}>
-                    NETWORK INTELLIGENCE
+                    {t('landing.networkIntel')}
                   </span>
                 </h2>
               </div>
@@ -1140,7 +1131,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                 onClick={onEnter}
                 aria-label="Access All Modules"
               >
-                Access All Modules <IconArrowUpRight size={13} />
+                {t('landing.accessModules')} <IconArrowUpRight size={13} />
               </button>
             </div>
           </Reveal>
@@ -1155,7 +1146,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
               const Icon = m.icon;
               const isActive = activeModule === i;
               return (
-                <Reveal key={m.title} delay={i * .06}>
+                <Reveal key={m.titleKey} delay={i * .06}>
                   <div 
                     className={`module-card ${isActive ? "active" : ""}`}
                     onMouseEnter={() => setActiveModule(i)}
@@ -1190,7 +1181,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                       whiteSpace: "pre-line", 
                       color: isActive ? "#fff" : "rgba(255,255,255,.8)" 
                     }}>
-                      {m.title}
+                      {t(m.titleKey)}
                     </h3>
                     <p style={{ 
                       fontSize: 13, 
@@ -1198,7 +1189,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                       lineHeight: 1.8, 
                       fontWeight: 300 
                     }}>
-                      {m.desc}
+                      {t(m.descKey)}
                     </p>
                     <div style={{ 
                       marginTop: 22, 
@@ -1212,7 +1203,7 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                       textTransform: "uppercase", 
                       transition: "color .3s" 
                     }}>
-                      EXPLORE <IconArrowUpRight size={10} color="currentColor" />
+                      {t('landing.explore')} <IconArrowUpRight size={10} color="currentColor" />
                     </div>
                   </div>
                 </Reveal>
@@ -1276,13 +1267,13 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                   letterSpacing: "-1.5px", 
                   lineHeight: .95 
                 }}>
-                  FROM REACTIVE FIXES<br />TO PREDICTIVE<br />
+                  {t('landing.bannerH2a')} <br />{t('landing.bannerH2b')}<br />
                   <span style={{ 
                     color: "rgba(255,255,255,.4)", 
                     fontWeight: 400, 
                     fontStyle: "italic" 
                   }}>
-                    INTELLIGENCE.
+                    {t('landing.bannerH2c')}
                   </span>
                 </h2>
                 <p style={{ 
@@ -1293,7 +1284,8 @@ XGBoost & Prophet forecast complaint peaks before they occur — giving NOC engi
                   maxWidth: 420, 
                   lineHeight: 1.75 
                 }}>
-Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months of Ooredoo Tunisia data.                </p>
+                  {t('landing.bannerDesc')}
+                </p>
               </div>
             </Reveal>
             <button 
@@ -1325,7 +1317,7 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
               }}
               aria-label="Launch SpiriComp"
             >
-              LAUNCH SPIRICOMP <IconArrowRight size={15} color="currentColor" />
+              {t('landing.launchBtn')} <IconArrowRight size={15} color="currentColor" />
             </button>
           </div>
         </div>
@@ -1348,8 +1340,7 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
               gap: 20 
             }}>
               <div>
-                <div className="section-label">Trusted by Industry Professionals
-</div>
+                <div className="section-label">{t('landing.trustedSection')}</div>
                 <h2 style={{ 
                   fontFamily: "'Barlow Condensed',sans-serif", 
                   fontSize: "clamp(28px, 4vw, 54px)", 
@@ -1357,14 +1348,13 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                   letterSpacing: "-1.5px", 
                   lineHeight: .96 
                 }}>
-                  WHAT NOC ENGINEERS<br />
+                  {t('landing.whatEngineers')}<br />
                   <span style={{ 
                     color: "rgba(255,255,255,.2)", 
                     fontWeight: 400, 
                     fontStyle: "italic" 
                   }}>
-                   SAY ABOUT SPIRICOMP
-
+                    {t('landing.sayAbout')}
                   </span>
                 </h2>
               </div>
@@ -1425,8 +1415,8 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
             gap: 1, 
             background: "rgba(255,255,255,.04)" 
           }}>
-            {TESTIMONIALS.map((t, i) => (
-              <Reveal key={t.name} delay={i * .07}>
+            {TESTIMONIALS.map((tItem, i) => (
+              <Reveal key={tItem.name} delay={i * .07}>
                 <div className="testi-card" style={{ 
                   opacity: i === testiIdx || i === (testiIdx + 1) % TESTIMONIALS.length ? 1 : .35, 
                   transition: "opacity .45s" 
@@ -1447,7 +1437,7 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                     marginBottom: 32, 
                     fontStyle: "italic" 
                   }}>
-                    "{t.text}"
+                    "{t(tItem.textKey)}"
                   </p>
                   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                     <div style={{ 
@@ -1458,8 +1448,8 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                       flexShrink: 0 
                     }}>
                       <img 
-                        src={t.av} 
-                        alt={t.name} 
+                        src={tItem.av} 
+                        alt={tItem.name} 
                         style={{ width: "100%", height: "100%", objectFit: "cover" }} 
                       />
                     </div>
@@ -1469,14 +1459,14 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                         fontWeight: 700, 
                         color: "rgba(255,255,255,.88)" 
                       }}>
-                        {t.name}
+                        {tItem.name}
                       </div>
                       <div style={{ 
                         fontSize: 11, 
                         color: "rgba(255,255,255,.32)", 
                         marginTop: 2 
                       }}>
-                        {t.role}
+                        {tItem.role}
                       </div>
                       <div style={{ 
                         fontSize: 10, 
@@ -1485,7 +1475,7 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                         fontWeight: 700, 
                         letterSpacing: .5 
                       }}>
-                        {t.company}
+                        {tItem.company}
                       </div>
                     </div>
                   </div>
@@ -1566,7 +1556,7 @@ Reduce MTTR by correlating 552K KPI sessions with 50K complaints over 18 months 
                 lineHeight: 1.8, 
                 fontWeight: 300 
               }}>
-Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technologies Tunisia.
+                Telecom Complaint Analytics & Network Intelligence Platform — {t('brand.by')}
               </p>
               <div style={{ 
                 display: "inline-flex", 
@@ -1599,11 +1589,14 @@ Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technolog
               {[
                 { 
                   h: "Platform", 
-                  items: ["Dashboard", "Complaint Map", "Anomaly Feed", "Forecasting", "Root Cause Analysis", "Segmentation", "NLP Analysis"] 
+                  items: [
+                    {k:"nav.overview"}, {k:"nav.map"}, {k:"nav.anomalies"}, 
+                    {k:"nav.forecast"}, {k:"nav.rootcause"}, {k:"nav.segments"}, {k:"nav.nlp"}
+                  ] 
                 },
                 { 
                   h: "Resources", 
-                  items: ["KPI/KQI Docs", "PFE Report", "GitHub", "Architecture", "NOC Guide"] 
+                  items: ["KPI/KQI Docs", "PFE Report", "GitHub", "Architecture", "NOC Guide"] // Pas de clés trouvées pour ceux-ci
                 },
               ].map(col => (
                 <div key={col.h}>
@@ -1617,9 +1610,9 @@ Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technolog
                   }}>
                     {col.h}
                   </div>
-                  {col.items.map(item => (
+                  {col.items.map((item, idx) => (
                     <div 
-                      key={item} 
+                      key={idx} 
                       className="nav-link" 
                       style={{ 
                         display: "block", 
@@ -1631,7 +1624,7 @@ Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technolog
                       role="button"
                       tabIndex={0}
                     >
-                      {item}
+                      {item.k ? t(item.k) : item}
                     </div>
                   ))}
                 </div>
@@ -1654,10 +1647,10 @@ Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technolog
               fontWeight: 400, 
               letterSpacing: .5 
             }}>
-© 2026 SpiriComp — Huawei Technologies Tunisia · PFE Engineering
+              © 2026 SpiriComp — {t('brand.by')} · PFE Engineering · Ouerghi Chaima
             </p>
             <div style={{ display: "flex", gap: 24 }}>
-              {["Privacy", "Terms", "Contact"].map(l => (
+              {["privacy", "terms", "contact"].map(l => (
                 <span 
                   key={l} 
                   className="nav-link" 
@@ -1665,7 +1658,7 @@ Telecom Complaint Analytics & Network Intelligence Platform — Huawei Technolog
                   role="button"
                   tabIndex={0}
                 >
-                  {l}
+                  {t(`landing.${l}`)}
                 </span>
               ))}
             </div>

@@ -1,0 +1,101 @@
+# .github/workflows/release.yml
+# ─────────────────────────────────────────────────────────────────────
+# SpiriComp — Release
+#
+# Triggered when you push a version tag: git tag v1.0.0 && git push --tags
+#
+# What it does:
+#   1. Runs the full CI (backend + frontend)
+#   2. Builds the frontend bundle
+#   3. Creates a GitHub Release with:
+#      - Auto-generated changelog (commits since last tag)
+#      - Frontend build as downloadable zip artifact
+# ─────────────────────────────────────────────────────────────────────
+
+name: SpiriComp Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'   # triggers on v1.0.0, v2.1.3, etc.
+
+jobs:
+  release:
+    name: 🚀 Release ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # needed to create GitHub Release
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history for changelog
+
+      # ── Backend check ─────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create data directories
+        run: |
+          mkdir -p data/nlp data/processed
+          mkdir -p models/nlp models/anomaly models/prediction models/clustering
+
+      - name: NLP self-test
+        run: python src/nlp/multilingual_nlp_pipeline.py
+
+      # ── Frontend build ────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        run: npm run build
+        env:
+          VITE_API_URL: http://localhost:8000
+
+      - name: Zip frontend build
+        run: zip -r spiricomp-frontend-${{ github.ref_name }}.zip dist/
+
+      # ── GitHub Release ────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: SpiriComp ${{ github.ref_name }}
+          generate_release_notes: true   # auto-changelog from commits
+          files: |
+            spiricomp-frontend-${{ github.ref_name }}.zip
+          body: |
+            ## SpiriComp ${{ github.ref_name }}
+
+            **Stack:** FastAPI · React/Vite · sklearn · Leaflet · ApexCharts
+
+            ### Modules
+            - 🔴 Anomaly Detection (Isolation Forest + Z-Score)
+            - 📈 Spike Forecasting (XGBoost + Prophet + ARIMA)
+            - 🗺️  Geographic Complaint Map (Leaflet)
+            - 👥 Customer Segmentation (K-Means + DBSCAN)
+            - 🌐 Multilingual NLP (AR/FR/EN)
+
+            ### Installation
+            ```bash
+            # Backend
+            pip install -r requirements.txt
+            uvicorn src.api.analytics_api:app --reload --port 8000
+
+            # Frontend
+            npm install && npm run dev
+            ```
