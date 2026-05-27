@@ -94,7 +94,7 @@ jobs:
             ```bash
             # Backend
             pip install -r requirements.txt
-            uvicorn src.api.analytics_api:app --reload --port 8000
+            uvicorn src.nlp.analytics_api:app --reload --port 8000
 
             # Frontend
             npm install && npm run dev

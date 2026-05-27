@@ -65,7 +65,7 @@ jobs:
         run: |
           python -c "
           import sys; sys.path.insert(0, '.')
-          from src.api.analytics_api import app
+          from src.nlp.analytics_api import app
           print('FastAPI OK —', len(app.routes), 'routes registered')
           "
 
