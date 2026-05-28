@@ -89,7 +89,9 @@ jobs:
 
       - name: Build React app
         working-directory: ./compspirit
-        run: npm run build
+        run: |
+         chmod +x node_modules/.bin/vite
+         npm run build
         env:
           VITE_API_URL: http://localhost:8000
 
