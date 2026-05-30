@@ -59,12 +59,24 @@ jobs:
           print('DB OK —', db.count(), 'rows')
           "
 
+      # FIX: analytics_api est dans src/nlp/ pas src/api/
       - name: FastAPI import test
         run: |
           python -c "
           import sys; sys.path.insert(0, '.')
-          from src.api.analytics_api import app
+          from src.nlp.analytics_api import app
           print('FastAPI OK —', len(app.routes), 'routes registered')
+          "
+
+      - name: NLP routes test
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from src.nlp.nlp_api import router
+          paths = [getattr(r, 'path', '') for r in router.routes]
+          assert '/api/complaints/submit' in paths
+          assert '/api/complaints'        in paths
+          print('NLP routes OK:', paths)
           "
 
   # ── Frontend ───────────────────────────────────────────────────────
@@ -78,13 +90,17 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install all npm dependencies
+      - name: Install npm dependencies
         working-directory: ./compspirit
         run: npm install --legacy-peer-deps
 
-      - name: Fix node-releases for PostCSS/autoprefixer
+      # FIX: caniuse-lite corrompu → reinstalle proprement
+      - name: Reinstall caniuse-lite and PostCSS deps
         working-directory: ./compspirit
-        run: npm install node-releases browserslist autoprefixer --legacy-peer-deps
+        run: |
+          npm install caniuse-lite@latest --legacy-peer-deps
+          npm install browserslist@latest --legacy-peer-deps
+          npm install autoprefixer@latest --legacy-peer-deps
 
       - name: Build React app
         working-directory: ./compspirit
