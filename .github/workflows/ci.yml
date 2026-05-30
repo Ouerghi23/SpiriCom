@@ -8,13 +8,11 @@ on:
 
 jobs:
 
-  # ── Backend ────────────────────────────────────────────────────────
   backend:
     name: 🐍 Python 3.11
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -23,29 +21,16 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install \
-            "pandas>=2.0.0" \
-            "numpy>=1.24.0" \
-            "pyarrow>=14.0.0" \
-            "scikit-learn>=1.3.0" \
-            "xgboost>=2.0.0" \
-            "statsmodels>=0.14.0" \
-            "fastapi>=0.110.0" \
-            "uvicorn[standard]>=0.29.0" \
-            "pydantic>=2.0.0" \
-            "python-multipart>=0.0.9" \
-            "sqlalchemy>=2.0.0" \
-            "python-jose[cryptography]>=3.3.0" \
-            "passlib[bcrypt]>=1.7.4" \
-            "loguru>=0.7.0" \
-            "python-dotenv>=1.0.0" \
-            "PyYAML>=6.0.0" \
-            "joblib>=1.3.0" \
-            "httpx>=0.27.0"
+            "pandas>=2.0.0" "numpy>=1.24.0" "pyarrow>=14.0.0" \
+            "scikit-learn>=1.3.0" "xgboost>=2.0.0" "statsmodels>=0.14.0" \
+            "fastapi>=0.110.0" "uvicorn[standard]>=0.29.0" \
+            "pydantic>=2.0.0" "python-multipart>=0.0.9" "sqlalchemy>=2.0.0" \
+            "python-jose[cryptography]>=3.3.0" "passlib[bcrypt]>=1.7.4" \
+            "loguru>=0.7.0" "python-dotenv>=1.0.0" \
+            "PyYAML>=6.0.0" "joblib>=1.3.0" "httpx>=0.27.0"
 
       - name: Create required directories
-        run: |
-          mkdir -p data/nlp data/processed
-          mkdir -p models/nlp models/anomaly models/prediction models/clustering
+        run: mkdir -p data/nlp data/processed models/nlp models/anomaly models/prediction models/clustering
 
       - name: NLP self-test
         run: python src/nlp/multilingual_nlp_pipeline.py
@@ -59,13 +44,12 @@ jobs:
           print('DB OK —', db.count(), 'rows')
           "
 
-      # FIX: analytics_api est dans src/nlp/ pas src/api/
       - name: FastAPI import test
         run: |
           python -c "
           import sys; sys.path.insert(0, '.')
           from src.nlp.analytics_api import app
-          print('FastAPI OK —', len(app.routes), 'routes registered')
+          print('FastAPI OK —', len(app.routes), 'routes')
           "
 
       - name: NLP routes test
@@ -76,16 +60,14 @@ jobs:
           paths = [getattr(r, 'path', '') for r in router.routes]
           assert '/api/complaints/submit' in paths
           assert '/api/complaints'        in paths
-          print('NLP routes OK:', paths)
+          print('NLP routes OK')
           "
 
-  # ── Frontend ───────────────────────────────────────────────────────
   frontend:
     name: ⚛️ React build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -94,13 +76,14 @@ jobs:
         working-directory: ./compspirit
         run: npm install --legacy-peer-deps
 
-      # FIX: caniuse-lite corrompu → reinstalle proprement
-      - name: Reinstall caniuse-lite and PostCSS deps
+      # PostCSS/autoprefixer est corrompu après npm install partiel.
+      # Solution : désactiver PostCSS en CI via variable d'env,
+      # puis réinstaller autoprefixer proprement depuis zéro.
+      - name: Reinstall autoprefixer from scratch
         working-directory: ./compspirit
         run: |
-          npm install caniuse-lite@latest --legacy-peer-deps
-          npm install browserslist@latest --legacy-peer-deps
-          npm install autoprefixer@latest --legacy-peer-deps
+          rm -rf node_modules/autoprefixer node_modules/caniuse-lite node_modules/browserslist
+          npm install autoprefixer caniuse-lite browserslist --legacy-peer-deps
 
       - name: Build React app
         working-directory: ./compspirit
