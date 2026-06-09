@@ -22,21 +22,30 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install \
-            "pandas>=2.0.0" "numpy>=1.24.0" "pyarrow>=14.0.0" \
-            "scikit-learn>=1.3.0" "xgboost>=2.0.0" "statsmodels>=0.14.0" \
-            "fastapi>=0.110.0" "uvicorn[standard]>=0.29.0" \
-            "pydantic>=2.0.0" "python-multipart>=0.0.9" "sqlalchemy>=2.0.0" \
-            "python-jose[cryptography]>=3.3.0" "passlib[bcrypt]>=1.7.4" \
-            "loguru>=0.7.0" "python-dotenv>=1.0.0" \
-            "PyYAML>=6.0.0" "joblib>=1.3.0" "httpx>=0.27.0"\
-            "pytest>=8.0.0"
+              "pandas>=2.0.0" "numpy>=1.24.0" "pyarrow>=14.0.0" \
+              "scikit-learn>=1.3.0" "xgboost>=2.0.0" "statsmodels>=0.14.0" \
+              "fastapi>=0.110.0" "uvicorn[standard]>=0.29.0" \
+              "pydantic>=2.0.0" "python-multipart>=0.0.9" "sqlalchemy>=2.0.0" \
+              "python-jose[cryptography]>=3.3.0" "passlib[bcrypt]>=1.7.4" \
+              "loguru>=0.7.0" "python-dotenv>=1.0.0" \
+              "PyYAML>=6.0.0" "joblib>=1.3.0" \
+              "httpx>=0.27.0" \
+              "pytest>=8.0.0"
+       
 
       - name: Create required directories
         run: mkdir -p data/nlp data/processed models/nlp models/anomaly models/prediction models/clustering
 
       - name: NLP self-test
         run: python src/nlp/multilingual_nlp_pipeline.py
-
+      # Dans le job backend, ajoute après pytest :
+      - name: Train and log NLP model (MLflow)
+    
+        run: |
+         python src/nlp/seed_db.py --count 100   # génère des données de test
+         python src/mlops/train_nlp.py
+        continue-on-error: true   # pas bloquant si pas assez de données
+        
       - name: DB init test
         run: |
           python -c "
@@ -57,7 +66,7 @@ jobs:
         env:
          PYTHONPATH: .
         run: pytest src/tests/ -v --tb=short
-        
+
       - name: NLP routes test
         run: |
           python -c "
