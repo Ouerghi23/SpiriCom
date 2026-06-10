@@ -5,14 +5,17 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  
 
 jobs:
 
   backend:
-    name: 🐍 Python 3.11
+    name: 🐍 Python
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -31,21 +34,19 @@ jobs:
               "PyYAML>=6.0.0" "joblib>=1.3.0" \
               "httpx>=0.27.0" \
               "pytest>=8.0.0"
-       
 
       - name: Create required directories
         run: mkdir -p data/nlp data/processed models/nlp models/anomaly models/prediction models/clustering
 
       - name: NLP self-test
         run: python src/nlp/multilingual_nlp_pipeline.py
-      # Dans le job backend, ajoute après pytest :
+
       - name: Train and log NLP model (MLflow)
-    
         run: |
-         python src/nlp/seed_db.py --count 100   # génère des données de test
-         python src/mlops/train_nlp.py
-        continue-on-error: true   # pas bloquant si pas assez de données
-        
+          python src/nlp/seed_db.py --count 100
+          python src/mlops/train_nlp.py
+        continue-on-error: true
+
       - name: DB init test
         run: |
           python -c "
@@ -62,9 +63,10 @@ jobs:
           from src.nlp.analytics_api import app
           print('FastAPI OK —', len(app.routes), 'routes')
           "
+
       - name: Run pytest
         env:
-         PYTHONPATH: .
+          PYTHONPATH: .
         run: pytest src/tests/ -v --tb=short
 
       - name: NLP routes test
@@ -74,20 +76,23 @@ jobs:
           from src.nlp.nlp_api import router
           paths = [getattr(r, 'path', '') for r in router.routes]
           assert '/api/complaints/submit' in paths
-          assert '/api/complaints'        in paths
+          assert '/api/complaints' in paths
           print('NLP routes OK')
           "
+
       - name: pip security check
         run: |
           pip install pip-audit
           pip-audit --skip-editable
         continue-on-error: true
 
+
   frontend:
     name: ⚛️ React build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -98,9 +103,6 @@ jobs:
         working-directory: ./compspirit
         run: npm install --legacy-peer-deps
 
-      # PostCSS/autoprefixer est corrompu après npm install partiel.
-      # Solution : désactiver PostCSS en CI via variable d'env,
-      # puis réinstaller autoprefixer proprement depuis zéro.
       - name: Reinstall autoprefixer from scratch
         working-directory: ./compspirit
         run: |
@@ -118,7 +120,30 @@ jobs:
       - name: Show build size
         working-directory: ./compspirit
         run: du -sh dist/
+
       - name: npm security audit
         working-directory: ./compspirit
         run: npm audit --audit-level=high
         continue-on-error: true
+
+
+  deploy-frontend:
+    name: 🚀 Deploy to Vercel
+    needs: frontend
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        working-directory: ./compspirit
+        run: npm install --global vercel
+
+      - name: Deploy to Vercel
+        working-directory: ./compspirit
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
