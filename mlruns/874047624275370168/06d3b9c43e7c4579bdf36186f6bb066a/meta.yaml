@@ -1,0 +1,14 @@
+artifact_uri: file:///C:/Users/c50057188/Desktop/PFE_Ouerghi/mlruns/874047624275370168/06d3b9c43e7c4579bdf36186f6bb066a/artifacts
+end_time: 1780161909770
+entry_point_name: ''
+experiment_id: '874047624275370168'
+lifecycle_stage: active
+run_id: 06d3b9c43e7c4579bdf36186f6bb066a
+run_name: nlp-complaint-classifier
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1780161892870
+status: 3
+tags: []
+user_id: c50057188

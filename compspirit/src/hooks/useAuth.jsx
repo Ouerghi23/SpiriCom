@@ -1,42 +1,80 @@
-// src/hooks/useAuth.js
-// ─────────────────────────────────────────────────────────────────────
-// JWT auth hook — stores token in sessionStorage (cleared on tab close).
-// Use localStorage instead if you want persistence across browser restarts.
-// ─────────────────────────────────────────────────────────────────────
+// src/hooks/useAuth.jsx
 
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 import axios from 'axios'
 
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+// ── Storage helpers ───────────────────────────────────────────────────
+const readToken = () =>
+  sessionStorage.getItem('spiricomp_token') ||
+  localStorage.getItem('spiricomp_token') || null
+
+const readUser = () => {
+  const raw = sessionStorage.getItem('spiricomp_user') ||
+              localStorage.getItem('spiricomp_user')
+  try { return raw ? JSON.parse(raw) : null } catch { return null }
+}
+
+const writeSession = (tokenData, persistent = false) => {
+  const store = persistent ? localStorage : sessionStorage
+  store.setItem('spiricomp_token', tokenData.access_token || '')
+  store.setItem('spiricomp_user', JSON.stringify({
+    username:  tokenData.username,
+    full_name: tokenData.full_name || tokenData.username,
+    role:      (tokenData.role || 'engineer').toLowerCase(),
+  }))
+}
+
+const clearSession = () => {
+  ['spiricomp_token', 'spiricomp_user'].forEach(k => {
+    localStorage.removeItem(k)
+    sessionStorage.removeItem(k)
+  })
+}
+
+// ── Context ───────────────────────────────────────────────────────────
 const AuthContext = createContext(null)
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const KEY = 'spiricomp_token'
-const USER_KEY = 'spiricomp_user'
-
-// ── Provider ──────────────────────────────────────────────────────────
+// ── AuthProvider ──────────────────────────────────────────────────────
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => sessionStorage.getItem(KEY))
-  const [user,  setUser]  = useState(() => {
-    const raw = sessionStorage.getItem(USER_KEY)
-    return raw ? JSON.parse(raw) : null
-  })
+  const [token,   setToken]   = useState(readToken)
+  const [user,    setUser]    = useState(readUser)
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState(null)
 
-  const login = useCallback(async (username, password) => {
+  // Sync across tabs (e.g. logout in another tab)
+  useEffect(() => {
+    const onStorage = () => {
+      setToken(readToken())
+      setUser(readUser())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  // ── login ─────────────────────────────────────────────────────────
+  const login = useCallback(async (username, password, remember = false) => {
     setLoading(true)
     setError(null)
     try {
-      // FastAPI OAuth2 expects form-encoded body
-      const form = new URLSearchParams({ username, password })
-      const res  = await axios.post(`${API}/api/auth/login`, form, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      })
-      const { access_token, ...userInfo } = res.data
-      sessionStorage.setItem(KEY,      access_token)
-      sessionStorage.setItem(USER_KEY, JSON.stringify(userInfo))
-      setToken(access_token)
-      setUser(userInfo)
+      // MUST use URLSearchParams — OAuth2PasswordRequestForm requires
+      // application/x-www-form-urlencoded, not JSON
+      const form = new URLSearchParams()
+      form.append('username', username)
+      form.append('password', password)
+
+      const res = await axios.post(`${API}/api/auth/login`, form)
+
+      writeSession(res.data, remember)
+
+      const u = {
+        username:  res.data.username,
+        full_name: res.data.full_name || res.data.username,
+        role:      (res.data.role || 'engineer').toLowerCase(),
+      }
+      setToken(res.data.access_token)
+      setUser(u)
       return true
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed')
@@ -46,9 +84,9 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // ── logout ────────────────────────────────────────────────────────
   const logout = useCallback(() => {
-    sessionStorage.removeItem(KEY)
-    sessionStorage.removeItem(USER_KEY)
+    clearSession()
     setToken(null)
     setUser(null)
   }, [])
@@ -60,32 +98,38 @@ export function AuthProvider({ children }) {
   )
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────
+// ── useAuth hook ──────────────────────────────────────────────────────
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>')
   return ctx
 }
 
-// ── Axios interceptor — attach token to every request ─────────────────
-// Call this once in main.jsx after AuthProvider is mounted.
+// ── setupAxiosAuth ────────────────────────────────────────────────────
+// Called once in main.jsx before the React tree mounts.
+// Attaches Bearer token to every axios request.
+// Redirects to /login on 401.
+let _interceptorSetUp = false
 export function setupAxiosAuth() {
+  if (_interceptorSetUp) return
+  _interceptorSetUp = true
+
   axios.interceptors.request.use(config => {
-    const token = sessionStorage.getItem(KEY)
+    const token = readToken()
     if (token) config.headers.Authorization = `Bearer ${token}`
     return config
   })
 
-  // Auto-logout on 401
   axios.interceptors.response.use(
     res => res,
     err => {
       if (err.response?.status === 401) {
-        sessionStorage.removeItem(KEY)
-        sessionStorage.removeItem(USER_KEY)
+        clearSession()
         window.location.href = '/login'
       }
       return Promise.reject(err)
     }
   )
 }
+
+export default useAuth

@@ -1,0 +1,414 @@
+{
+  "dataset": "Dataset 2 — churn_features + churn_scores",
+  "target_column": "risk_level",
+  "classes": [
+    "Critical",
+    "High",
+    "Low",
+    "Medium"
+  ],
+  "n_features": 24,
+  "feature_cols": [
+    "avg_packet_loss",
+    "avg_latency_ms",
+    "client_rtt_ms",
+    "voip_quality",
+    "session_active_rate",
+    "ratio_5g",
+    "total_traffic",
+    "traffic_5g",
+    "duration",
+    "nightly_ratio",
+    "gaming_ratio",
+    "social_ratio",
+    "traffic_diversity",
+    "brand_encoded",
+    "brand_freq",
+    "brand_churn_rate",
+    "generation_numeric",
+    "is_5g_capable",
+    "days_since_last_activity",
+    "activity_recency_score",
+    "province_encoded",
+    "province_freq",
+    "province_churn_rate",
+    "congestion_level"
+  ],
+  "ratio_threshold": 0.1,
+  "n_5g_subscribers": 1157,
+  "xgb_report": {
+    "accuracy": 0.9357,
+    "f1_macro": 0.9226,
+    "f1_weighted": 0.9364,
+    "cv_f1_mean": 0.908,
+    "cv_f1_std": 0.0055,
+    "classification_report": {
+      "Critical": {
+        "precision": 0.9896,
+        "recall": 0.9744,
+        "f1-score": 0.9819,
+        "support": 195
+      },
+      "High": {
+        "precision": 0.7807,
+        "recall": 0.8725,
+        "f1-score": 0.8241,
+        "support": 102
+      },
+      "Low": {
+        "precision": 0.9547,
+        "recall": 0.9547,
+        "f1-score": 0.9547,
+        "support": 287
+      },
+      "Medium": {
+        "precision": 0.9406,
+        "recall": 0.9192,
+        "f1-score": 0.9298,
+        "support": 396
+      },
+      "macro avg": {
+        "precision": 0.9164,
+        "recall": 0.9302,
+        "f1-score": 0.9226,
+        "support": 980
+      },
+      "weighted avg": {
+        "precision": 0.9378,
+        "recall": 0.9357,
+        "f1-score": 0.9364,
+        "support": 980
+      }
+    }
+  },
+  "feature_importance": [
+    {
+      "feature": "duration",
+      "importance_xgb": 0.12763,
+      "shap_mean": 1.83237,
+      "shap_5g": 1.25522
+    },
+    {
+      "feature": "ratio_5g",
+      "importance_xgb": 0.18074,
+      "shap_mean": 1.54093,
+      "shap_5g": 1.97581
+    },
+    {
+      "feature": "traffic_diversity",
+      "importance_xgb": 0.05348,
+      "shap_mean": 0.69861,
+      "shap_5g": 0.68241
+    },
+    {
+      "feature": "total_traffic",
+      "importance_xgb": 0.13903,
+      "shap_mean": 0.50484,
+      "shap_5g": 0.90066
+    },
+    {
+      "feature": "province_churn_rate",
+      "importance_xgb": 0.03692,
+      "shap_mean": 0.42672,
+      "shap_5g": 0.27697
+    },
+    {
+      "feature": "generation_numeric",
+      "importance_xgb": 0.07486,
+      "shap_mean": 0.38397,
+      "shap_5g": 0.22091
+    },
+    {
+      "feature": "brand_churn_rate",
+      "importance_xgb": 0.02931,
+      "shap_mean": 0.2432,
+      "shap_5g": 0.18109
+    },
+    {
+      "feature": "gaming_ratio",
+      "importance_xgb": 0.01944,
+      "shap_mean": 0.22911,
+      "shap_5g": 0.32003
+    },
+    {
+      "feature": "nightly_ratio",
+      "importance_xgb": 0.02128,
+      "shap_mean": 0.21259,
+      "shap_5g": 0.19764
+    },
+    {
+      "feature": "days_since_last_activity",
+      "importance_xgb": 0.01253,
+      "shap_mean": 0.16087,
+      "shap_5g": 0.16549
+    },
+    {
+      "feature": "province_encoded",
+      "importance_xgb": 0.01112,
+      "shap_mean": 0.15033,
+      "shap_5g": 0.13872
+    },
+    {
+      "feature": "social_ratio",
+      "importance_xgb": 0.02084,
+      "shap_mean": 0.13865,
+      "shap_5g": 0.16451
+    },
+    {
+      "feature": "province_freq",
+      "importance_xgb": 0.01565,
+      "shap_mean": 0.11789,
+      "shap_5g": 0.08842
+    },
+    {
+      "feature": "voip_quality",
+      "importance_xgb": 0.0364,
+      "shap_mean": 0.11534,
+      "shap_5g": 0.08689
+    },
+    {
+      "feature": "brand_freq",
+      "importance_xgb": 0.01771,
+      "shap_mean": 0.11272,
+      "shap_5g": 0.08515
+    },
+    {
+      "feature": "congestion_level",
+      "importance_xgb": 0.01589,
+      "shap_mean": 0.10311,
+      "shap_5g": 0.09351
+    },
+    {
+      "feature": "session_active_rate",
+      "importance_xgb": 0.04847,
+      "shap_mean": 0.09235,
+      "shap_5g": 0.13969
+    },
+    {
+      "feature": "client_rtt_ms",
+      "importance_xgb": 0.01723,
+      "shap_mean": 0.07498,
+      "shap_5g": 0.0608
+    },
+    {
+      "feature": "brand_encoded",
+      "importance_xgb": 0.01151,
+      "shap_mean": 0.06535,
+      "shap_5g": 0.05347
+    },
+    {
+      "feature": "avg_latency_ms",
+      "importance_xgb": 0.01725,
+      "shap_mean": 0.06227,
+      "shap_5g": 0.06787
+    },
+    {
+      "feature": "traffic_5g",
+      "importance_xgb": 0.05474,
+      "shap_mean": 0.05861,
+      "shap_5g": 0.07146
+    },
+    {
+      "feature": "avg_packet_loss",
+      "importance_xgb": 0.0138,
+      "shap_mean": 0.03947,
+      "shap_5g": 0.03438
+    },
+    {
+      "feature": "activity_recency_score",
+      "importance_xgb": 0.0116,
+      "shap_mean": 0.03177,
+      "shap_5g": 0.03328
+    },
+    {
+      "feature": "is_5g_capable",
+      "importance_xgb": 0.01259,
+      "shap_mean": 0.00846,
+      "shap_5g": 0.0089
+    }
+  ],
+  "shap_per_risk_level": {
+    "Critical": [
+      {
+        "feature": "ratio_5g",
+        "shap": 4.225512
+      },
+      {
+        "feature": "total_traffic",
+        "shap": 1.295182
+      },
+      {
+        "feature": "duration",
+        "shap": 0.762857
+      },
+      {
+        "feature": "traffic_diversity",
+        "shap": 0.691909
+      },
+      {
+        "feature": "social_ratio",
+        "shap": 0.262988
+      }
+    ],
+    "High": [
+      {
+        "feature": "duration",
+        "shap": 2.20682
+      },
+      {
+        "feature": "traffic_diversity",
+        "shap": 0.931342
+      },
+      {
+        "feature": "generation_numeric",
+        "shap": 0.78951
+      },
+      {
+        "feature": "ratio_5g",
+        "shap": 0.72724
+      },
+      {
+        "feature": "province_churn_rate",
+        "shap": 0.6701
+      }
+    ],
+    "Low": [
+      {
+        "feature": "duration",
+        "shap": 3.269162
+      },
+      {
+        "feature": "traffic_diversity",
+        "shap": 0.905191
+      },
+      {
+        "feature": "province_churn_rate",
+        "shap": 0.734024
+      },
+      {
+        "feature": "generation_numeric",
+        "shap": 0.573529
+      },
+      {
+        "feature": "ratio_5g",
+        "shap": 0.533891
+      }
+    ],
+    "Medium": [
+      {
+        "feature": "duration",
+        "shap": 1.090655
+      },
+      {
+        "feature": "ratio_5g",
+        "shap": 0.677087
+      },
+      {
+        "feature": "traffic_diversity",
+        "shap": 0.265987
+      },
+      {
+        "feature": "total_traffic",
+        "shap": 0.195085
+      },
+      {
+        "feature": "gaming_ratio",
+        "shap": 0.185512
+      }
+    ]
+  },
+  "top_5g_root_causes": [
+    {
+      "feature": "ratio_5g",
+      "shap_5g": 1.9758107662200928
+    },
+    {
+      "feature": "duration",
+      "shap_5g": 1.255224585533142
+    },
+    {
+      "feature": "total_traffic",
+      "shap_5g": 0.9006596803665161
+    },
+    {
+      "feature": "traffic_diversity",
+      "shap_5g": 0.6824089884757996
+    },
+    {
+      "feature": "gaming_ratio",
+      "shap_5g": 0.3200303614139557
+    },
+    {
+      "feature": "province_churn_rate",
+      "shap_5g": 0.2769732177257538
+    },
+    {
+      "feature": "generation_numeric",
+      "shap_5g": 0.22090840339660645
+    },
+    {
+      "feature": "nightly_ratio",
+      "shap_5g": 0.19763721525669098
+    }
+  ],
+  "top_5g_hi_root_causes": [
+    {
+      "feature": "ratio_5g",
+      "shap_hi": 2.0635323524475098
+    },
+    {
+      "feature": "duration",
+      "shap_hi": 1.1108702421188354
+    },
+    {
+      "feature": "total_traffic",
+      "shap_hi": 0.9421006441116333
+    },
+    {
+      "feature": "traffic_diversity",
+      "shap_hi": 0.6806890368461609
+    },
+    {
+      "feature": "gaming_ratio",
+      "shap_hi": 0.32832586765289307
+    },
+    {
+      "feature": "province_churn_rate",
+      "shap_hi": 0.28905028104782104
+    },
+    {
+      "feature": "generation_numeric",
+      "shap_hi": 0.22563254833221436
+    },
+    {
+      "feature": "nightly_ratio",
+      "shap_hi": 0.19722221791744232
+    }
+  ],
+  "confusion_matrix": [
+    [
+      97.43589743589743,
+      2.051282051282051,
+      0.5128205128205128,
+      0.0
+    ],
+    [
+      1.9607843137254901,
+      87.25490196078431,
+      0.0,
+      10.784313725490197
+    ],
+    [
+      0.0,
+      0.34843205574912894,
+      95.47038327526133,
+      4.181184668989547
+    ],
+    [
+      0.0,
+      5.05050505050505,
+      3.0303030303030303,
+      91.91919191919192
+    ]
+  ]
+}

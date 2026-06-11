@@ -1,0 +1,10 @@
+artifact_location: file:///C:/Users/c50057188/Desktop/PFE_Ouerghi/mlruns/874047624275370168/models/m-d1ca08ce1bc746a0b070bbe890ce3f13/artifacts
+creation_timestamp: 1780161902659
+experiment_id: '874047624275370168'
+last_updated_timestamp: 1780161909739
+model_id: m-d1ca08ce1bc746a0b070bbe890ce3f13
+model_type: null
+name: nlp_classifier
+source_run_id: 06d3b9c43e7c4579bdf36186f6bb066a
+status: 2
+status_message: null

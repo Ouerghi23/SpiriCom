@@ -1,135 +1,122 @@
 // src/pages/AnomalyFeed.jsx
 // ─────────────────────────────────────────────────────────────────────
-// NOC Anomaly Detection Feed
+// SpiriCom NOC Dashboard — Anomaly Detection Page (v2, UI.jsx aligned)
 //
-// Changes from original:
-//   - Custom Ico SVG factory replaced with Lucide React
-//   - Full react-i18next translation (anomaly.* + common.* keys)
-//   - All hardcoded English strings replaced with t() calls
-//   - Logic and layout 100% preserved
+// MIGRATION (vs previous version):
+//  AF-1  Duplicated HW / gapColor / SectionLabel / StatBlock /
+//        ChartPanel removed — imported from components/UI. Component-
+//        scoped PURPLE/AMBER/GREEN/ORANGE/CYAN constants deleted.
+//        af-pulse → noc-pulse; hover via noc-stat / noc-panel.
+//  AF-2  SEVERITY USES THE FULL ALARM LADDER. The old donut/badges
+//        rendered Critical AND High as the same red — on an anomaly
+//        page that distinction is the point. Now: Critical→critical,
+//        High→major, Medium→minor, Low→normal across the donut, the
+//        table badges, and the score coloring (>0.85 critical,
+//        >0.7 major, matching the 0.7 alert-threshold annotation,
+//        which is also major now).
+//  AF-3  Anomaly scatter points = detected alarms → ALARM.critical
+//        (legitimate alarm red — this page is the reason the ladder
+//        exists). Consensus & high-severity KPIs → ALARM.critical
+//        with alert pulse. Everything that is a COUNT, not an alarm —
+//        top-regions bars, driver-frequency bars — → blueRamp (the
+//        old red-shade ramp made every region look on fire).
+//  AF-4  Hero pill → live/offline status pattern (green online /
+//        critical offline) like NLP & Segments, replacing the purple
+//        identity pill. h1 italic accent stays the one brand red.
+//        Method-card accents: IF→purple #8B5CF6, Statistical→teal
+//        #14B8A6 (was amber, which read as a warning), Consensus→
+//        ALARM.critical (it IS the high-confidence alarm set).
+//  AF-5  regions strip BOTH ' Governorate' and ' Gouvernorat';
+//        events-table accent + count badge → blue chrome; scatter
+//        marker stroke → T.bgCard; error banner → AlertBanner.
+//  AF-6  Typography floor ≥10px; EmptyState icon component API;
+//        region select gets aria-label.
 // ─────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react'
-import { useTranslation }      from 'react-i18next'
-import ReactApexChart          from 'react-apexcharts'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useTranslation }   from 'react-i18next'
+import ReactApexChart        from 'react-apexcharts'
 import {
   Database, Search, TrendingUp, Target, Link, AlertTriangle,
   Activity, Globe, Radio, GitBranch, CheckCircle2,
-  ChevronDown, ArrowUpDown, Wifi, WifiOff,
+  ChevronDown, ArrowUpDown,
 } from 'lucide-react'
-import { Badge, Spinner, EmptyState, baseChartOptions } from '../components/UI'
+import {
+  HW, ALARM, FONT, gapColor, gridLine, blueRamp,
+  SectionLabel, StatBlock, ChartPanel, GapGrid,
+  AlertBanner, Badge, Spinner, EmptyState, baseChartOptions,
+  sevDim, sevBd,
+} from '../components/UI'
+import { useTheme }     from '../context/ThemeContext'
 import { analyticsApi } from '../api/client'
 
-// ── Colour palette ────────────────────────────────────────────────────
-const C = {
-  bg:        '#080808',
-  bg2:       '#0C0C0C',
-  bg3:       '#0A0A0A',
-  border:    'rgba(255,255,255,.055)',
-  text:      '#F8FAFC',
-  textMuted: 'rgba(248,250,252,.5)',
-  textDim:   'rgba(248,250,252,.32)',
-  red:       '#CF0A2C',
-  redLight:  '#FF4060',
-  blue:      '#3B82F6',
-  cyan:      '#22D3EE',
-  green:     '#22C55E',
-  amber:     '#F59E0B',
-  orange:    '#F97316',
-  purple:    '#A855F7',
+// ── AF-2: one severity ladder for the whole page ─────────────────────
+const SEV = {
+  Critical: ALARM.critical,
+  High:     ALARM.major,
+  Medium:   ALARM.minor,
+  Low:      ALARM.normal,
+}
+const SEV_BADGE = {
+  Critical: 'critical', High: 'major', Medium: 'minor', Low: 'normal',
+}
+const SCORE_ALERT = 0.7   // shared by score coloring + chart annotation
+
+// ── Method identity (categorical, AF-4) ──────────────────────────────
+const METHOD = { if: '#8B5CF6', stat: '#14B8A6', consensus: ALARM.critical }
+
+// ── Drivers chart builder (outside component) — AF-3: blueRamp ───────
+function buildDriversChart(events, base, t, T) {
+  const drivers = {}
+  events.forEach(e => {
+    const d = e.top_anomaly_driver || 'Unknown'
+    drivers[d] = (drivers[d] || 0) + 1
+  })
+  const list = Object.entries(drivers)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+
+  return {
+    series: [{ name: t('anomaly.occurrences'), data: list.map(d => d[1]) }],
+    options: {
+      ...base,
+      chart:       { ...base.chart, type: 'bar' },
+      plotOptions: { bar: { horizontal: true, borderRadius: 0,
+        barHeight: '60%', distributed: true } },
+      colors: list.map((_, i) => blueRamp(i)),
+      xaxis: {
+        categories: list.map(d =>
+          d[0].replace(/_/g, ' ').replace('mean', '').trim()),
+        labels:     { style: { fontSize: '10px', colors: T.textMuted } },
+        axisBorder: { show: false },
+        axisTicks:  { show: false },
+      },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted },
+        maxWidth: 120 } },
+      dataLabels: {
+        enabled: true, textAnchor: 'start', offsetX: 8,
+        style: { fontSize: '10px', fontWeight: 700, colors: [T.text],
+          fontFamily: FONT.display },
+      },
+      legend: { show: false },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3,
+        xaxis: { lines: { show: false } } },
+      tooltip: {
+        theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v} ${t('anomaly.occurrences')}` },
+      },
+    },
+  }
 }
 
-// ── Section label ─────────────────────────────────────────────────────
-const SectionLabel = ({ children, action, sub }) => (
-  <div style={{ marginTop: 40, marginBottom: 16 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div style={{
-        fontSize: 10, fontWeight: 800, color: C.red,
-        letterSpacing: '4.5px', textTransform: 'uppercase',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <span style={{ width: 22, height: 1, background: C.red, display: 'inline-block', flexShrink: 0 }}/>
-        {children}
-      </div>
-      {action && <div style={{ flexShrink: 0 }}>{action}</div>}
-    </div>
-    {sub && (
-      <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px', marginTop: 5, paddingLeft: 34 }}>
-        {sub}
-      </div>
-    )}
-  </div>
-)
-
-// ── KPI stat block ────────────────────────────────────────────────────
-const StatBlock = ({ label, value, unit, color, icon: IconComp, sub }) => (
-  <div className="af-stat-block" style={{
-    background: C.bg3, border: `1px solid ${C.border}`,
-    padding: '24px 20px', position: 'relative', overflow: 'hidden',
-    transition: 'all .3s cubic-bezier(.22,1,.36,1)', cursor: 'default',
-  }}>
-    <div style={{
-      position: 'absolute', top: 0, left: '12%', right: '12%', height: 1,
-      background: `linear-gradient(90deg, transparent, ${color || C.red}, transparent)`,
-    }}/>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: C.textDim, letterSpacing: '1.8px', textTransform: 'uppercase', lineHeight: 1.5 }}>
-        {label}
-      </span>
-      {IconComp && (
-        <div style={{
-          width: 26, height: 26, border: `1px solid ${(color || C.red)}30`,
-          background: `${color || C.red}10`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          <IconComp size={12} color={color || C.red}/>
-        </div>
-      )}
-    </div>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: sub ? 8 : 0 }}>
-      <span style={{
-        fontFamily: "'Barlow Condensed', sans-serif",
-        fontSize: 34, fontWeight: 900, color: color || C.red,
-        lineHeight: 1, letterSpacing: '-1px',
-      }}>
-        {value}
-      </span>
-      {unit && <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{unit}</span>}
-    </div>
-    {sub && <div style={{ fontSize: 9, color: C.textDim, letterSpacing: '1px', textTransform: 'uppercase' }}>{sub}</div>}
-  </div>
-)
-
-// ── Chart panel ───────────────────────────────────────────────────────
-const ChartPanel = ({ title, sub, children, action, style = {} }) => (
-  <div className="af-chart-panel" style={{
-    background: C.bg2, border: `1px solid ${C.border}`,
-    padding: '22px 24px', position: 'relative', overflow: 'hidden',
-    transition: 'border-color .3s', ...style,
-  }}>
-    <div className="af-panel-accent" style={{
-      position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
-      background: `linear-gradient(90deg, transparent, ${C.red}, transparent)`,
-      transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease',
-    }}/>
-    {(title || sub || action) && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <div>
-          {title && <div style={{ fontSize: 12, fontWeight: 700, color: C.text, letterSpacing: '.5px', marginBottom: 3 }}>{title}</div>}
-          {sub   && <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px' }}>{sub}</div>}
-        </div>
-        {action && <div style={{ flexShrink: 0, marginLeft: 16 }}>{action}</div>}
-      </div>
-    )}
-    {children}
-  </div>
-)
-
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 export default function AnomalyFeed() {
-  const { t } = useTranslation()
+  const { t }        = useTranslation()
+  const { theme: T } = useTheme()
+  const GAP          = gapColor(T)
+  const base         = useMemo(() => baseChartOptions(T), [T])
 
   const [summary,   setSummary]   = useState(null)
   const [timeline,  setTimeline]  = useState([])
@@ -140,51 +127,275 @@ export default function AnomalyFeed() {
   const [selRegion, setSelRegion] = useState(null)
   const [apiOnline, setApiOnline] = useState(true)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [sumRes, regRes] = await Promise.all([
-          analyticsApi.anomaliesSummary(),
-          analyticsApi.anomalyRegions(),
-        ])
-        const s    = sumRes.data?.summary || {}
-        const regs = regRes.data?.regions || []
-        setSummary(s)
-        setEvents(s.consensus_events || [])
-        setRegions(regs)
-        if (regs.length > 0) {
-          setSelRegion(regs[0])
-          const tlRes = await analyticsApi.anomaliesTimeline(regs[0])
-          setTimeline(tlRes.data?.timeline || [])
-        }
-        setApiOnline(true)
-      } catch (err) {
-        console.error('Anomaly fetch error:', err)
-        setApiOnline(false)
-        setError(`FastAPI offline — ${t('anomaly.noDataDesc')}`)
-      } finally {
-        setLoading(false)
+  const fetchData = useCallback(async () => {
+    try {
+      const [sumRes, regRes] = await Promise.all([
+        analyticsApi.anomaliesSummary(),
+        analyticsApi.anomalyRegions(),
+      ])
+      const s    = sumRes.data?.summary || {}
+      const regs = regRes.data?.regions || []
+      setSummary(s)
+      setEvents(s.consensus_events || [])
+      setRegions(regs)
+      if (regs.length > 0) {
+        setSelRegion(regs[0])
+        const tlRes = await analyticsApi.anomaliesTimeline(regs[0])
+        setTimeline(tlRes.data?.timeline || [])
       }
+      setApiOnline(true)
+    } catch (err) {
+      console.error('Anomaly fetch error:', err)
+      setApiOnline(false)
+      setError(`FastAPI offline — ${t('anomaly.noDataDesc')}`)
+    } finally {
+      setLoading(false)
     }
-    fetchData()
-  }, [])
+  }, [t])
 
-  const handleRegionChange = async (region) => {
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleRegionChange = useCallback(async region => {
     setSelRegion(region)
     try {
       const tlRes = await analyticsApi.anomaliesTimeline(region)
       setTimeline(tlRes.data?.timeline || [])
-    } catch {
-      setTimeline([])
-    }
-  }
+    } catch { setTimeline([]) }
+  }, [])
+
+  // ── All hooks BEFORE any early return ────────────────────────────
+  const topRegions    = summary?.top_regions || []
+  const anomalyPoints = useMemo(
+    () => timeline.filter(d => d.anomaly_flag === 1), [timeline])
+
+  const sevCounts = useMemo(() => {
+    const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 }
+    events.forEach(e => {
+      if (e.if_severity && counts[e.if_severity] !== undefined)
+        counts[e.if_severity]++
+    })
+    return counts
+  }, [events])
+
+  const sevTotal = useMemo(() =>
+    sevCounts.Critical + sevCounts.High + sevCounts.Medium + sevCounts.Low,
+    [sevCounts])
+
+  const highSevCount = useMemo(() =>
+    events.filter(e =>
+      e.if_severity === 'Critical' || e.if_severity === 'High').length,
+    [events])
+
+  const kpis = useMemo(() => [
+    { label: t('anomaly.kpiTotal'),
+      value: (summary?.total || 0).toLocaleString(),
+      color: HW.blue, icon: Database, sub: t('anomaly.subFullData') },
+    { label: t('anomaly.kpiIf'), value: summary?.if_count || 0,
+      color: METHOD.if, icon: Search, sub: t('anomaly.subIf') },
+    { label: t('anomaly.kpiStat'), value: summary?.stat_count || 0,
+      color: METHOD.stat, icon: TrendingUp, sub: t('anomaly.subStat') },
+    { label: t('anomaly.kpiConsensus'), value: summary?.consensus || 0,
+      color: ALARM.critical, icon: Target,
+      alert: (summary?.consensus || 0) > 0, sub: t('anomaly.subBoth') },
+    { label: t('anomaly.kpiUnion'), value: summary?.union || 0,
+      color: '#F97316', icon: Link, sub: t('anomaly.subEither') },
+    { label: t('anomaly.kpiHigh'), value: highSevCount,
+      color: ALARM.critical, icon: AlertTriangle,
+      alert: highSevCount > 0, sub: t('anomaly.subHighSev') },
+    { label: t('anomaly.kpiRate'), value: `${summary?.rate_pct || 0}%`,
+      color: HW.blueLight, icon: Activity, sub: t('anomaly.subTotal') },
+    { label: t('anomaly.kpiRegions'), value: topRegions.length,
+      color: HW.blue, icon: Globe, sub: t('anomaly.subGov') },
+  ], [summary, highSevCount, topRegions, t])
+
+  const tableEvents = useMemo(() =>
+    [...events].sort((a, b) =>
+      (b.combined_score || 0) - (a.combined_score || 0)).slice(0, 14),
+    [events]
+  )
+
+  // AF-4: method identity — categorical + consensus alarm
+  const methodCards = useMemo(() => [
+    {
+      Icon: GitBranch, title: t('anomaly.ifTitle'),
+      tag: t('anomaly.mlTag'), accent: METHOD.if,
+      desc: t('anomaly.ifDesc'),
+      metrics: [`${summary?.if_count || 0} ${t('anomaly.ifMetric1')}`,
+        t('anomaly.ifMetric2')],
+    },
+    {
+      Icon: Activity, title: t('anomaly.statTitle'),
+      tag: t('anomaly.statsTag'), accent: METHOD.stat,
+      desc: t('anomaly.statDesc'),
+      metrics: [`${summary?.stat_count || 0} ${t('anomaly.statMetric1')}`,
+        t('anomaly.statMetric2')],
+    },
+    {
+      Icon: CheckCircle2, title: t('anomaly.consensusTitle'),
+      tag: t('anomaly.highConfTag'), accent: METHOD.consensus,
+      desc: t('anomaly.consensusDesc'),
+      metrics: [`${summary?.consensus || 0} ${t('anomaly.consensusMetric1')}`,
+        t('anomaly.consensusMetric2')],
+    },
+  ], [summary, t])
+
+  // AF-3: score line purple (method identity); detected points = alarms
+  const timelineChart = useMemo(() => timeline.length > 0 ? {
+    series: [
+      { name: t('anomaly.timeline'), type: 'area',
+        data: timeline.map(d => ({ x: d.date, y: d.combined_score || 0 })) },
+      { name: t('anomaly.noData'), type: 'scatter',
+        data: anomalyPoints.map(d => ({ x: d.date, y: d.combined_score || 0 })) },
+    ],
+    options: {
+      ...base,
+      chart:  { ...base.chart, type: 'line', stacked: false },
+      colors: [METHOD.if, ALARM.critical],
+      stroke: { curve: 'smooth', width: [2, 0] },
+      markers: {
+        size: [0, 8], strokeWidth: [0, 2],
+        strokeColors: ['transparent', T.bgCard],   // AF-5
+        hover: { size: 9 },
+      },
+      fill: {
+        type: ['gradient', 'solid'],
+        gradient: { shade: 'dark', type: 'vertical',
+          gradientToColors: ['transparent'],
+          opacityFrom: 0.28, opacityTo: 0.01, stops: [0, 95] },
+      },
+      xaxis: {
+        type: 'datetime',
+        labels: { format: 'dd MMM',
+          style: { fontSize: '10px', colors: T.textMuted } },
+        axisBorder: { show: false }, axisTicks: { show: false },
+      },
+      yaxis: {
+        min: 0,
+        title: { text: 'Combined Score',
+          style: { color: T.textMuted, fontSize: '10px', fontWeight: 400 } },
+        labels: { style: { fontSize: '10px', colors: T.textMuted },
+          formatter: v => v?.toFixed(2) },
+      },
+      // AF-2: threshold annotation = major (matches score coloring)
+      annotations: {
+        yaxis: [{
+          y: SCORE_ALERT,
+          borderColor: ALARM.major, borderWidth: 1, strokeDashArray: 5,
+          label: {
+            text: t('anomaly.alertThreshold'),
+            position: 'right', offsetX: -8,
+            style: { background: sevDim(ALARM.major, '14'),
+              color: ALARM.major, fontSize: '10px', fontWeight: 600,
+              padding: { top: 3, right: 6, bottom: 3, left: 6 } },
+          },
+        }],
+      },
+      tooltip: {
+        shared: false, intersect: true,
+        x: { format: 'dd MMM yyyy' },
+        y: {
+          formatter: (val, { seriesIndex }) =>
+            seriesIndex === 1
+              ? `${t('anomaly.detectedScore')} ${val?.toFixed(3)}`
+              : val?.toFixed(3),
+        },
+      },
+      legend: {
+        position: 'top', horizontalAlign: 'left',
+        labels: { colors: T.textMuted }, markers: { radius: 2 },
+        itemMargin: { horizontal: 16 },
+      },
+      grid: {
+        borderColor: gridLine(T), strokeDashArray: 3,
+        xaxis: { lines: { show: false } },
+        yaxis: { lines: { show: true } },
+      },
+    },
+  } : null, [timeline, anomalyPoints, base, t, T])
+
+  // AF-3: anomaly-day COUNTS are magnitude → blueRamp (was red shades)
+  // AF-5: strip both EN and FR region suffixes
+  const regionsChart = useMemo(() => topRegions.length > 0 ? {
+    series: [{ name: t('anomaly.anomalyDays'),
+      data: topRegions.map(r => r.count) }],
+    options: {
+      ...base,
+      chart:       { ...base.chart, type: 'bar' },
+      plotOptions: { bar: { horizontal: true, borderRadius: 0,
+        barHeight: '58%', distributed: true } },
+      colors: topRegions.map((_, i) => blueRamp(i)),
+      dataLabels: {
+        enabled: true, textAnchor: 'start', offsetX: 8,
+        style: { fontSize: '10px', fontWeight: 700, colors: [T.text],
+          fontFamily: FONT.display },
+      },
+      xaxis: {
+        categories: topRegions.map(r => (r.region || '')
+          .replace(' Governorate', '').replace(' Gouvernorat', '')),
+        labels:     { style: { fontSize: '10px', colors: T.textMuted } },
+        axisBorder: { show: false }, axisTicks: { show: false },
+      },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted },
+        maxWidth: 110 } },
+      legend: { show: false },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3,
+        xaxis: { lines: { show: false } } },
+      tooltip: {
+        theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v} ${t('anomaly.anomalyDays')}` },
+      },
+    },
+  } : null, [topRegions, base, t, T])
+
+  // AF-2: full ladder — Critical/High/Medium/Low all distinct
+  const severityDonutOptions = useMemo(() => ({
+    ...base,
+    chart:  { ...base.chart, type: 'donut' },
+    labels: ['Critical', 'High', 'Medium', 'Low'],
+    colors: [SEV.Critical, SEV.High, SEV.Medium, SEV.Low],
+    stroke: { width: 2, colors: [T.bgCard] },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: '68%',
+          labels: {
+            show: true,
+            name:  { fontSize: '11px', color: T.textMuted, offsetY: -6 },
+            value: { fontFamily: FONT.display, fontSize: '28px',
+              fontWeight: 900, color: T.text, offsetY: 4,
+              formatter: v => `${v}` },
+            total: { show: true, label: 'Total', fontSize: '10px',
+              color: T.textMuted, formatter: () => `${sevTotal}` },
+          },
+        },
+      },
+    },
+    legend: { position: 'bottom', horizontalAlign: 'center', fontSize: '11px',
+      labels: { colors: T.textMuted },
+      itemMargin: { horizontal: 10, vertical: 4 } },
+    dataLabels: { enabled: false },
+    tooltip: {
+      theme: T.mode === 'dark' ? 'dark' : 'light',
+      y: { formatter: v => `${v} ${t('anomaly.eventsCount')} (${
+        sevTotal > 0 ? ((v / sevTotal) * 100).toFixed(1) : 0}%)` },
+    },
+  }), [base, T, sevTotal, t])
+
+  const driversChart = useMemo(() =>
+    events.length > 0 ? buildDriversChart(events, base, t, T) : null,
+    [events, base, t, T]
+  )
 
   // ── Loading ───────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ padding: '40px 48px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 48 }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, display: 'inline-block', animation: 'af-pulse 1.8s infinite' }}/>
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: C.purple }}>
+    <div style={{ padding: '40px 48px', background: T.bg, minHeight: '100vh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10,
+        marginBottom: 48 }}>
+        <span style={{ width: 6, height: 6, borderRadius: '50%',
+          background: HW.blue, display: 'inline-block',
+          animation: 'noc-pulse 1.8s infinite' }}/>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
+          textTransform: 'uppercase', color: HW.blue }}>
           {t('common.loading')}
         </span>
       </div>
@@ -192,251 +403,85 @@ export default function AnomalyFeed() {
     </div>
   )
 
-  // Anomaly points — only flag === 1
-  const anomalyPoints = timeline.filter(d => d.anomaly_flag === 1)
-
-  const topRegions = summary?.top_regions || []
-
-  // ── KPI tiles ─────────────────────────────────────────────────────
-  const kpis = [
-    { label: t('anomaly.kpiTotal'),     value: (summary?.total     || 0).toLocaleString(), color: C.blue,   Icon: Database,      sub: t('anomaly.subFullData')  },
-    { label: t('anomaly.kpiIf'),        value:  summary?.if_count   || 0,                  color: C.purple, Icon: Search,        sub: t('anomaly.subIf')        },
-    { label: t('anomaly.kpiStat'),      value:  summary?.stat_count || 0,                  color: C.amber,  Icon: TrendingUp,    sub: t('anomaly.subStat')      },
-    { label: t('anomaly.kpiConsensus'), value:  summary?.consensus  || 0,                  color: C.red,    Icon: Target,        sub: t('anomaly.subBoth')      },
-    { label: t('anomaly.kpiUnion'),     value:  summary?.union      || 0,                  color: C.orange, Icon: Link,          sub: t('anomaly.subEither')    },
-    { label: t('anomaly.kpiHigh'),      value:  events.filter(e => e.if_severity === 'High').length, color: C.red, Icon: AlertTriangle, sub: t('anomaly.subHighSev') },
-    { label: t('anomaly.kpiRate'),      value: `${summary?.rate_pct || 0}%`,               color: C.cyan,   Icon: Activity,      sub: t('anomaly.subTotal')     },
-    { label: t('anomaly.kpiRegions'),   value:  topRegions.length,                         color: C.cyan,   Icon: Globe,         sub: t('anomaly.subGov')       },
-  ]
-
-  // ── Severity counts ────────────────────────────────────────────────
-  const sevCounts = { High: 0, Medium: 0, Low: 0 }
-  events.forEach(e => { if (e.if_severity && sevCounts[e.if_severity] !== undefined) sevCounts[e.if_severity]++ })
-  const sevTotal = sevCounts.High + sevCounts.Medium + sevCounts.Low
-
-  // ── Timeline chart ─────────────────────────────────────────────────
-  const timelineChart = timeline.length > 0 ? {
-    series: [
-      { name: t('anomaly.timeline'),  type: 'area',    data: timeline.map(d => ({ x: d.date, y: d.combined_score || 0 })) },
-      { name: t('anomaly.noData'),    type: 'scatter', data: anomalyPoints.map(d => ({ x: d.date, y: d.combined_score || 0 })) },
-    ],
-    options: {
-      ...baseChartOptions,
-      chart:  { ...baseChartOptions?.chart, type: 'line', stacked: false, background: 'transparent', animations: { enabled: false } },
-      colors: [C.purple, C.red],
-      stroke: { curve: 'smooth', width: [2, 0] },
-      markers: {
-        size: [0, 8], strokeWidth: [0, 2],
-        strokeColors: ['transparent', '#fff'], hover: { size: 9 },
-      },
-      fill: {
-        type: ['gradient', 'solid'],
-        gradient: { shade: 'dark', type: 'vertical', gradientToColors: ['transparent'], opacityFrom: 0.28, opacityTo: 0.01, stops: [0, 95] },
-      },
-      xaxis: {
-        type: 'datetime',
-        labels:     { format: 'dd MMM', style: { fontSize: '10px', colors: C.textMuted } },
-        axisBorder: { show: false }, axisTicks: { show: false },
-      },
-      yaxis: {
-        min:    0,
-        title:  { text: 'Combined Score', style: { color: C.textMuted, fontSize: '10px', fontWeight: 400 } },
-        labels: { style: { fontSize: '10px', colors: C.textMuted }, formatter: v => v?.toFixed(2) },
-      },
-      annotations: {
-        yaxis: [{
-          y: 0.7, borderColor: C.amber, borderWidth: 1, strokeDashArray: 5,
-          label: {
-            text: t('anomaly.alertThreshold'), position: 'right', offsetX: -8,
-            style: { background: 'rgba(245,158,11,.1)', color: C.amber, fontSize: '9px', fontWeight: 600, padding: { top: 3, right: 6, bottom: 3, left: 6 } },
-          },
-        }],
-      },
-      tooltip: {
-        shared: false, intersect: true,
-        x: { format: 'dd MMM yyyy' },
-        y: { formatter: (val, { seriesIndex }) =>
-          seriesIndex === 1
-            ? `${t('anomaly.detectedScore')} ${val?.toFixed(3)}`
-            : val?.toFixed(3)
-        },
-      },
-      legend: {
-        position: 'top', horizontalAlign: 'left',
-        labels: { colors: C.textMuted }, markers: { radius: 2 }, itemMargin: { horizontal: 16 },
-      },
-      grid: { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3, xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
-    },
-  } : null
-
-  // ── Top regions chart ──────────────────────────────────────────────
-  const regionsChart = topRegions.length > 0 ? {
-    series: [{ name: t('anomaly.anomalyDays'), data: topRegions.map(r => r.count) }],
-    options: {
-      ...baseChartOptions,
-      chart:       { ...baseChartOptions?.chart, type: 'bar', background: 'transparent', animations: { enabled: false } },
-      plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '58%', distributed: true } },
-      colors:      topRegions.map((_, i) => {
-        const p = [C.red, '#D41F35', '#DA2E3C', '#E04050', '#E65060', '#EC6070']
-        return p[i] || C.red
-      }),
-      dataLabels: {
-        enabled: true, textAnchor: 'start', offsetX: 8,
-        style: { fontSize: '10px', fontWeight: 700, colors: [C.text], fontFamily: "'Barlow Condensed',sans-serif" },
-      },
-      xaxis: {
-        categories: topRegions.map(r => r.region?.replace(' Gouvernorat', '') || ''),
-        labels: { style: { fontSize: '10px', colors: C.textMuted } },
-        axisBorder: { show: false }, axisTicks: { show: false },
-      },
-      yaxis:  { labels: { style: { fontSize: '10px', colors: C.textMuted }, maxWidth: 110 } },
-      legend: { show: false },
-      grid:   { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3, xaxis: { lines: { show: false } } },
-      tooltip: { theme: 'dark', y: { formatter: v => `${v} ${t('anomaly.anomalyDays')}` } },
-    },
-  } : null
-
-  // ── Drivers chart builder ──────────────────────────────────────────
-  const buildDriversChart = (eventList) => {
-    const drivers = {}
-    eventList.forEach(e => { const d = e.top_anomaly_driver || 'Unknown'; drivers[d] = (drivers[d] || 0) + 1 })
-    const list = Object.entries(drivers).sort((a, b) => b[1] - a[1]).slice(0, 8)
-    return {
-      series:  [{ name: t('anomaly.occurrences'), data: list.map(d => d[1]) }],
-      labels:  list.map(d => d[0].replace(/_/g, ' ').replace('mean', '').trim()),
-      palette: [C.red, C.amber, C.purple, C.blue, C.cyan, C.orange, C.green, C.redLight],
-    }
-  }
-
-  // ── Severity donut ─────────────────────────────────────────────────
-  const severityDonutOptions = {
-    ...baseChartOptions,
-    chart:   { ...baseChartOptions?.chart, type: 'donut', background: 'transparent', animations: { enabled: false } },
-    labels:  ['High', 'Medium', 'Low'],
-    colors:  [C.red, C.amber, C.green],
-    stroke:  { width: 2, colors: [C.bg2] },
-    plotOptions: {
-      pie: {
-        donut: {
-          size: '68%',
-          labels: {
-            show:  true,
-            name:  { fontSize: '11px', color: C.textMuted, offsetY: -6 },
-            value: { fontFamily: "'Barlow Condensed',sans-serif", fontSize: '28px', fontWeight: 900, color: C.text, offsetY: 4, formatter: v => `${v}` },
-            total: { show: true, label: 'Total', fontSize: '10px', color: C.textMuted, formatter: () => `${sevTotal}` },
-          },
-        },
-      },
-    },
-    legend:     { position: 'bottom', horizontalAlign: 'center', fontSize: '11px', labels: { colors: C.textMuted }, itemMargin: { horizontal: 10, vertical: 4 } },
-    dataLabels: { enabled: false },
-    tooltip:    { theme: 'dark', y: { formatter: v => `${v} ${t('anomaly.eventsCount')} (${sevTotal > 0 ? ((v / sevTotal) * 100).toFixed(1) : 0}%)` } },
-  }
-
-  // ── Methodology cards ──────────────────────────────────────────────
-  const methodCards = [
-    {
-      Icon:     GitBranch,
-      title:    t('anomaly.ifTitle'),
-      tag:      t('anomaly.mlTag'),
-      tagColor: C.purple,
-      desc:     t('anomaly.ifDesc'),
-      metrics:  [`${summary?.if_count || 0} ${t('anomaly.ifMetric1')}`, t('anomaly.ifMetric2')],
-      accent:   C.purple,
-    },
-    {
-      Icon:     Activity,
-      title:    t('anomaly.statTitle'),
-      tag:      t('anomaly.statsTag'),
-      tagColor: C.amber,
-      desc:     t('anomaly.statDesc'),
-      metrics:  [`${summary?.stat_count || 0} ${t('anomaly.statMetric1')}`, t('anomaly.statMetric2')],
-      accent:   C.amber,
-    },
-    {
-      Icon:     CheckCircle2,
-      title:    t('anomaly.consensusTitle'),
-      tag:      t('anomaly.highConfTag'),
-      tagColor: C.red,
-      desc:     t('anomaly.consensusDesc'),
-      metrics:  [`${summary?.consensus || 0} ${t('anomaly.consensusMetric1')}`, t('anomaly.consensusMetric2')],
-      accent:   C.red,
-    },
-  ]
-
-  const tableEvents = [...events]
-    .sort((a, b) => (b.combined_score || 0) - (a.combined_score || 0))
-    .slice(0, 14)
-
   // ── Render ────────────────────────────────────────────────────────
   return (
-    <div style={{ background: C.bg, minHeight: '100vh', color: C.text }}>
-
+    <div style={{ background: T.bg, minHeight: '100vh', color: T.text,
+      transition: 'background .3s' }}>
       <style>{`
-        @keyframes af-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
-        .af-stat-block:hover { border-color:rgba(207,10,44,.22)!important; background:rgba(207,10,44,.03)!important; transform:translateY(-2px); box-shadow:0 8px 24px rgba(207,10,44,.07); }
-        .af-chart-panel:hover { border-color:rgba(207,10,44,.2)!important; }
-        .af-chart-panel:hover .af-panel-accent { transform:scaleX(1)!important; }
-        .af-module-card:hover { border-color:rgba(207,10,44,.22)!important; background:rgba(207,10,44,.028)!important; transform:translateY(-2px); box-shadow:0 8px 32px rgba(207,10,44,.08); }
-        .af-module-card:hover .af-module-accent { transform:scaleX(1)!important; }
-        .af-table-row:hover td { background:rgba(255,255,255,.018)!important; }
-        .af-select {
-          appearance:none; background:${C.bg3}; color:${C.text};
-          border:1px solid ${C.border}; padding:8px 36px 8px 14px;
-          font-size:11px; font-weight:600; font-family:'Inter',system-ui;
-          letter-spacing:.5px; cursor:pointer; outline:none; transition:border-color .2s;
+        .af-module-card { transition: all .35s cubic-bezier(.22,1,.36,1); }
+        .af-module-card:hover {
+          border-color: ${HW.blueBd} !important;
+          background:   ${HW.blueDim} !important;
+          transform:    translateY(-2px);
         }
-        .af-select:hover, .af-select:focus { border-color:rgba(207,10,44,.4); }
-        .af-select-wrap { position:relative; display:inline-block; }
-        .af-select-wrap svg { position:absolute; right:10px; top:50%; transform:translateY(-50%); pointer-events:none; }
+        .af-module-card:hover .af-module-accent { transform: scaleX(1) !important; }
+        .af-table-row:hover td { background: ${T.bgCardHover} !important; }
       `}</style>
 
-      <div style={{ padding: '40px 48px 80px', maxWidth: 1600, margin: '0 auto' }}>
+      <div style={{ padding: '36px 44px 80px', maxWidth: 1600, margin: '0 auto' }}>
 
-        {/* ── HERO HEADER ─────────────────────────────────────────── */}
-        <div style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: 28, marginBottom: 28 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              background: 'rgba(168,85,247,.1)', border: '1px solid rgba(168,85,247,.28)', padding: '6px 14px',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.purple, display: 'inline-block', animation: 'af-pulse 2s ease-in-out infinite' }}/>
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: '#C084FC' }}>
+        {/* ══ HERO HEADER ════════════════════════════════════════════ */}
+        <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 24,
+          marginBottom: 24 }}>
+          {/* AF-4: live/offline status pattern */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10,
+            marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7,
+              background: sevDim(apiOnline ? ALARM.normal : ALARM.critical, '0E'),
+              border: `1px solid ${sevBd(apiOnline ? ALARM.normal : ALARM.critical)}`,
+              padding: '5px 13px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%',
+                background: apiOnline ? ALARM.normal : ALARM.critical,
+                display: 'inline-block',
+                animation: apiOnline ? 'noc-pulse 2s ease-in-out infinite' : 'none' }}/>
+              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
+                textTransform: 'uppercase',
+                color: apiOnline ? ALARM.normal : ALARM.critical }}>
                 {apiOnline ? t('anomaly.liveBadge') : t('anomaly.offlineBadge')}
               </span>
             </div>
-            <span style={{ fontSize: 11, color: C.textDim, letterSpacing: '1.5px' }}>
+            <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
               {t('anomaly.subtitle2')}
             </span>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between',
+            alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <div>
-              <h1 style={{
-                fontFamily: "'Barlow Condensed',sans-serif",
-                fontSize: 'clamp(28px,3.5vw,54px)', fontWeight: 900,
-                letterSpacing: '-1.5px', lineHeight: 1, color: C.text, marginBottom: 8,
-              }}>
+              {/* The ONE brand-red element on this page */}
+              <h1 style={{ fontFamily: FONT.display,
+                fontSize: 'clamp(26px, 3.5vw, 52px)', fontWeight: 900,
+                letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
+                marginBottom: 8 }}>
                 {t('anomaly.title').split(' ').slice(0, -1).join(' ')}{' '}
-                <span style={{ color: C.red, fontStyle: 'italic' }}>
+                <span style={{ color: HW.red, fontStyle: 'italic' }}>
                   {t('anomaly.title').split(' ').slice(-1)[0]}
                 </span>
               </h1>
-              <p style={{ fontSize: 13, color: C.textMuted, fontWeight: 300 }}>
+              <p style={{ fontSize: 13, color: T.textMuted, fontWeight: 300 }}>
                 {t('anomaly.subtitle')} · {topRegions.length} {t('anomaly.affected')}
               </p>
             </div>
+
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
-                { label: apiOnline ? t('anomaly.onlineLabel') : t('anomaly.offlineLabel'), color: apiOnline ? C.green : C.red, bd: apiOnline ? 'rgba(34,197,94,.28)' : 'rgba(207,10,44,.28)', bg: apiOnline ? 'rgba(34,197,94,.08)' : 'rgba(207,10,44,.08)' },
-                { label: t('anomaly.ifBadge'),        color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
-                { label: t('anomaly.statBadge'),      color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
-                { label: t('anomaly.consensusBadge'), color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
+                { label: apiOnline ? t('anomaly.onlineLabel')
+                                   : t('anomaly.offlineLabel'),
+                  color: apiOnline ? ALARM.normal : ALARM.critical,
+                  bd: sevBd(apiOnline ? ALARM.normal : ALARM.critical),
+                  bg: sevDim(apiOnline ? ALARM.normal : ALARM.critical, '0A') },
+                { label: t('anomaly.ifBadge'), color: T.textMuted, bd: T.border,
+                  bg: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' },
+                { label: t('anomaly.statBadge'), color: T.textMuted, bd: T.border,
+                  bg: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' },
+                { label: t('anomaly.consensusBadge'), color: T.textMuted,
+                  bd: T.border,
+                  bg: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' },
               ].map((b, i) => (
-                <span key={i} style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase',
-                  padding: '5px 14px', border: `1px solid ${b.bd}`, background: b.bg, color: b.color,
-                }}>
+                <span key={i} style={{ fontSize: 10, fontWeight: 800,
+                  letterSpacing: '1.5px', textTransform: 'uppercase',
+                  padding: '5px 13px', border: `1px solid ${b.bd}`,
+                  background: b.bg, color: b.color }}>
                   {b.label}
                 </span>
               ))}
@@ -444,155 +489,134 @@ export default function AnomalyFeed() {
           </div>
         </div>
 
-        {/* ── ERROR BANNER ────────────────────────────────────────── */}
+        {/* Error banner — AF-5 */}
         {error && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.28)',
-            padding: '12px 20px', marginBottom: 24,
-          }}>
-            <AlertTriangle size={14} color={C.amber}/>
-            <span style={{ fontSize: 12, color: C.amber }}>{error}</span>
-          </div>
+          <AlertBanner severity="minor" icon={AlertTriangle}
+            title={t('common.error') || 'ERROR'} message={error}/>
         )}
 
-        {/* ── KPI TILES ───────────────────────────────────────────── */}
-        <SectionLabel sub={t('anomaly.kpiSub')}>
-          {t('anomaly.kpiSection')}
-        </SectionLabel>
+        {/* ══ KPI TILES ═══════════════════════════════════════════════ */}
+        <SectionLabel sub={t('anomaly.kpiSub')}>{t('anomaly.kpiSection')}</SectionLabel>
+        <GapGrid columns="repeat(4,1fr)">
+          {kpis.map((kpi, i) => <StatBlock key={i} {...kpi}/>)}
+        </GapGrid>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-          {kpis.map((kpi, i) => (
-            <StatBlock key={i} label={kpi.label} value={kpi.value} color={kpi.color} icon={kpi.Icon} sub={kpi.sub}/>
-          ))}
-        </div>
-
-        {/* ── TIMELINE + REGIONS ───────────────────────────────────── */}
+        {/* ══ TIMELINE + REGIONS ══════════════════════════════════════ */}
         <SectionLabel sub={t('anomaly.timelineSub')}>
           {t('anomaly.timelineSection')}
         </SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-
-          {/* Timeline */}
-          <ChartPanel sub={selRegion ? `${t('anomaly.regionLabel')}: ${selRegion}` : t('anomaly.regionLabel')}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 18, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 9, color: C.textDim, letterSpacing: '2px', textTransform: 'uppercase', fontWeight: 700 }}>
+        <GapGrid columns="2fr 1fr">
+          <ChartPanel sub={selRegion
+            ? `${t('anomaly.regionLabel')}: ${selRegion}`
+            : t('anomaly.regionLabel')}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center',
+              marginBottom: 16, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '2px',
+                textTransform: 'uppercase', fontWeight: 700 }}>
                 {t('anomaly.regionLabel')}
               </span>
-              <div className="af-select-wrap">
-                <select
-                  value={selRegion || ''}
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <select value={selRegion || ''}
                   onChange={e => handleRegionChange(e.target.value)}
-                  className="af-select"
-                >
+                  aria-label={t('anomaly.regionLabel')}
+                  style={{
+                    appearance: 'none', background: T.bgCardHover, color: T.text,
+                    border: `1px solid ${T.border}`, padding: '7px 34px 7px 12px',
+                    fontSize: 11, fontWeight: 600, fontFamily: FONT.body,
+                    letterSpacing: '.5px', cursor: 'pointer', outline: 'none',
+                  }}>
                   {regions.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
-                <ChevronDown size={12} color={C.textDim}/>
+                <ChevronDown size={12} color={T.textDim} style={{
+                  position: 'absolute', right: 10, top: '50%',
+                  transform: 'translateY(-50%)', pointerEvents: 'none' }}/>
               </div>
               <Badge variant="purple">{selRegion}</Badge>
-              <Badge variant="red">{anomalyPoints.length} {t('anomaly.anomalyCount')}</Badge>
+              <Badge variant="critical">
+                {anomalyPoints.length} {t('anomaly.anomalyCount')}
+              </Badge>
             </div>
 
             {timelineChart ? (
-              <ReactApexChart options={timelineChart.options} series={timelineChart.series} type="line" height={300}/>
+              <ReactApexChart options={timelineChart.options}
+                series={timelineChart.series} type="line" height={300}/>
             ) : (
-              <EmptyState
-                icon={<Activity size={36} color="rgba(255,255,255,.18)"/>}
-                title={t('anomaly.noTimeline')}
-                desc={t('anomaly.noTimelineDesc')}
-              />
+              <EmptyState icon={Activity}
+                title={t('anomaly.noTimeline')} desc={t('anomaly.noTimelineDesc')}/>
             )}
           </ChartPanel>
 
-          {/* Top regions */}
-          <ChartPanel title={t('anomaly.topRegions')} sub={t('anomaly.topDriversSub')}>
+          <ChartPanel title={t('anomaly.topRegions')}
+            sub={t('anomaly.topDriversSub')}>
             {regionsChart ? (
-              <ReactApexChart options={regionsChart.options} series={regionsChart.series} type="bar" height={300}/>
+              <ReactApexChart options={regionsChart.options}
+                series={regionsChart.series} type="bar" height={300}/>
             ) : (
-              <EmptyState icon={<Globe size={36} color="rgba(255,255,255,.18)"/>} title={t('anomaly.noRegionData')}/>
+              <EmptyState icon={Globe} title={t('anomaly.noRegionData')}/>
             )}
           </ChartPanel>
-        </div>
+        </GapGrid>
 
-        {/* ── DRIVERS + SEVERITY ───────────────────────────────────── */}
+        {/* ══ DRIVERS + SEVERITY ══════════════════════════════════════ */}
         <SectionLabel sub={t('anomaly.driversSub')}>
           {t('anomaly.driversSection')}
         </SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-
-          {/* Top drivers */}
-          <ChartPanel title={t('anomaly.topDriversTitle')} sub={t('anomaly.topDriversSub')}>
-            {events.length > 0 ? (() => {
-              const { series, labels, palette } = buildDriversChart(events)
-              return (
-                <ReactApexChart
-                  options={{
-                    ...baseChartOptions,
-                    chart:       { ...baseChartOptions?.chart, type: 'bar', background: 'transparent', animations: { enabled: false } },
-                    plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '60%', distributed: true } },
-                    colors:      palette,
-                    xaxis: {
-                      categories: labels,
-                      labels:     { style: { fontSize: '10px', colors: C.textMuted } },
-                      axisBorder: { show: false }, axisTicks: { show: false },
-                    },
-                    yaxis:      { labels: { style: { fontSize: '10px', colors: C.textMuted }, maxWidth: 120 } },
-                    dataLabels: { enabled: true, textAnchor: 'start', offsetX: 8, style: { fontSize: '10px', fontWeight: 700, colors: [C.text], fontFamily: "'Barlow Condensed',sans-serif" } },
-                    legend: { show: false },
-                    grid:   { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3, xaxis: { lines: { show: false } } },
-                    tooltip: { theme: 'dark', y: { formatter: v => `${v} ${t('anomaly.occurrences')}` } },
-                  }}
-                  series={series}
-                  type="bar"
-                  height={280}
-                />
-              )
-            })() : (
-              <EmptyState icon={<Search size={36} color="rgba(255,255,255,.18)"/>} title={t('anomaly.noData')}/>
+        <GapGrid columns="1fr 1fr">
+          <ChartPanel title={t('anomaly.topDriversTitle')}
+            sub={t('anomaly.topDriversSub')}>
+            {driversChart ? (
+              <ReactApexChart options={driversChart.options}
+                series={driversChart.series} type="bar" height={280}/>
+            ) : (
+              <EmptyState icon={Search} title={t('anomaly.noData')}/>
             )}
           </ChartPanel>
 
-          {/* Severity donut */}
           <ChartPanel title={t('anomaly.sevTitle')} sub={t('anomaly.sevSub')}>
             <ReactApexChart
               options={severityDonutOptions}
-              series={[sevCounts.High, sevCounts.Medium, sevCounts.Low]}
-              type="donut"
-              height={280}
-            />
+              series={[sevCounts.Critical, sevCounts.High,
+                sevCounts.Medium, sevCounts.Low]}
+              type="donut" height={280}/>
           </ChartPanel>
-        </div>
+        </GapGrid>
 
-        {/* ── CONSENSUS EVENTS TABLE ───────────────────────────────── */}
+        {/* ══ EVENTS TABLE ════════════════════════════════════════════ */}
         <SectionLabel
-          action={<Badge variant="red">{events.length} {t('anomaly.eventsCount')}</Badge>}
-          sub={t('anomaly.eventsSub')}
-        >
+          action={<Badge variant="critical">
+            {events.length} {t('anomaly.eventsCount')}
+          </Badge>}
+          sub={t('anomaly.eventsSub')}>
           {t('anomaly.eventsSection')}
         </SectionLabel>
 
-        <div style={{ border: `1px solid ${C.border}`, overflow: 'hidden', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg, transparent, ${C.red}, transparent)` }}/>
-
+        <div style={{ border: `1px solid ${T.border}`, overflow: 'hidden',
+          position: 'relative' }}>
+          {/* AF-5: panel chrome accent — blue */}
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0,
+            height: 1.5,
+            background: `linear-gradient(90deg, transparent, ${HW.blue}, transparent)` }}/>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,.025)', borderBottom: `1px solid ${C.border}` }}>
+              <tr style={{ background: T.mode === 'dark'
+                  ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.04)',
+                borderBottom: `1px solid ${T.border}` }}>
                 {[
-                  { label: t('anomaly.topRegions'), Icon: Globe          },
-                  { label: t('anomaly.thDate'),     Icon: null            },
-                  { label: t('anomaly.thScore'),    Icon: ArrowUpDown    },
-                  { label: t('anomaly.severity'),   Icon: AlertTriangle  },
-                  { label: t('anomaly.driver'),     Icon: Search         },
+                  { label: t('anomaly.topRegions'), Icon: Globe         },
+                  { label: t('anomaly.thDate'),     Icon: null          },
+                  { label: t('anomaly.thScore'),    Icon: ArrowUpDown   },
+                  { label: t('anomaly.severity'),   Icon: AlertTriangle },
+                  { label: t('anomaly.driver'),     Icon: Search        },
                 ].map(({ label, Icon }) => (
                   <th key={label} style={{
-                    padding: '12px 16px', textAlign: 'left',
-                    fontSize: 9, fontWeight: 800, letterSpacing: '1.5px',
-                    textTransform: 'uppercase', color: C.textDim, whiteSpace: 'nowrap',
-                  }}>
+                    padding: '11px 14px', textAlign: 'left', fontSize: 10,
+                    fontWeight: 800, letterSpacing: '1.5px',
+                    textTransform: 'uppercase', color: T.textDim,
+                    whiteSpace: 'nowrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {Icon && <Icon size={11} color={C.textDim}/>}
+                      {Icon && <Icon size={11} color={T.textDim}/>}
                       {label}
                     </div>
                   </th>
@@ -602,30 +626,48 @@ export default function AnomalyFeed() {
             <tbody>
               {tableEvents.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 48, textAlign: 'center', color: C.textMuted }}>
-                    <Radio size={28} color="rgba(255,255,255,.18)"/>
-                    <div style={{ marginTop: 12, fontSize: 13 }}>{t('anomaly.noEvents')}</div>
+                  <td colSpan={5} style={{ padding: 48, textAlign: 'center',
+                    color: T.textMuted }}>
+                    <Radio size={26} color={T.textDim}/>
+                    <div style={{ marginTop: 12, fontSize: 13 }}>
+                      {t('anomaly.noEvents')}
+                    </div>
                   </td>
                 </tr>
               ) : tableEvents.map((e, i) => (
-                <tr key={i} className="af-table-row" style={{ borderBottom: `1px solid rgba(255,255,255,.04)`, transition: 'all .15s' }}>
-                  <td style={{ padding: '11px 16px', fontWeight: 700, color: C.text, fontSize: 12 }}>{e.region}</td>
-                  <td style={{ padding: '11px 16px', color: C.textMuted, fontFamily: "'Barlow Condensed',monospace", fontSize: 13, letterSpacing: '.3px' }}>{e.date}</td>
-                  <td style={{ padding: '11px 16px' }}>
+                <tr key={i} className="af-table-row" style={{
+                  borderBottom: `1px solid ${T.mode === 'dark'
+                    ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'}`,
+                  transition: 'all .15s' }}>
+                  <td style={{ padding: '10px 14px', fontWeight: 700,
+                    color: T.text, fontSize: 12 }}>{e.region}</td>
+                  <td style={{ padding: '10px 14px', color: T.textMuted,
+                    fontFamily: FONT.display, fontSize: 13,
+                    letterSpacing: '.3px' }}>
+                    {e.date}
+                  </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    {/* AF-2: score ladder shares SCORE_ALERT threshold */}
                     <span style={{
-                      fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 900, letterSpacing: '-.3px',
-                      color: (e.combined_score || 0) > 0.85 ? C.redLight : (e.combined_score || 0) > 0.7 ? C.amber : C.textMuted,
+                      fontFamily: FONT.display, fontSize: 16, fontWeight: 900,
+                      letterSpacing: '-.3px',
+                      color: (e.combined_score || 0) > 0.85 ? ALARM.critical :
+                             (e.combined_score || 0) > SCORE_ALERT ? ALARM.major :
+                             T.textMuted,
                     }}>
                       {(e.combined_score || 0).toFixed(3)}
                     </span>
                   </td>
-                  <td style={{ padding: '11px 16px' }}>
-                    <Badge variant={e.if_severity === 'High' ? 'red' : e.if_severity === 'Medium' ? 'amber' : 'green'}>
+                  <td style={{ padding: '10px 14px' }}>
+                    {/* AF-2: Critical ≠ High anymore */}
+                    <Badge variant={SEV_BADGE[e.if_severity] || 'gray'}>
                       {e.if_severity || 'N/A'}
                     </Badge>
                   </td>
-                  <td style={{ padding: '11px 16px', color: C.textMuted, fontSize: 10, letterSpacing: '.5px' }}>
-                    {(e.top_anomaly_driver || 'Unknown').replace(/_/g, ' ').replace('mean', '').trim()}
+                  <td style={{ padding: '10px 14px', color: T.textMuted,
+                    fontSize: 10, letterSpacing: '.5px' }}>
+                    {(e.top_anomaly_driver || 'Unknown')
+                      .replace(/_/g, ' ').replace('mean', '').trim()}
                   </td>
                 </tr>
               ))}
@@ -633,63 +675,62 @@ export default function AnomalyFeed() {
           </table>
         </div>
 
-        {/* ── METHODOLOGY CARDS ────────────────────────────────────── */}
+        {/* ══ METHODOLOGY CARDS ════════════════════════════════════════ */}
         <SectionLabel sub={t('anomaly.methodSub')}>
           {t('anomaly.methodSection')}
         </SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 1, background: 'rgba(255,255,255,.04)' }}>
+        <GapGrid columns="repeat(3,1fr)">
           {methodCards.map((m, i) => (
             <div key={i} className="af-module-card" style={{
-              background: C.bg3, border: `1px solid ${C.border}`,
-              padding: '32px 26px', position: 'relative', overflow: 'hidden',
-              transition: 'all .35s cubic-bezier(.22,1,.36,1)', cursor: 'default',
-            }}>
+              background: T.bgCard, border: `1px solid ${T.border}`,
+              padding: '28px 24px', position: 'relative', overflow: 'hidden',
+              cursor: 'default' }}>
               <div className="af-module-accent" style={{
-                position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
+                position: 'absolute', top: 0, left: 0, right: 0, height: 1.5,
                 background: `linear-gradient(90deg, transparent, ${m.accent}, transparent)`,
-                transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease',
-              }}/>
+                transform: 'scaleX(0)', transformOrigin: 'center',
+                transition: 'transform .4s ease' }}/>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
-                <div style={{ width: 46, height: 46, background: `${m.accent}10`, border: `1px solid ${m.accent}30`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                alignItems: 'flex-start', marginBottom: 18 }}>
+                <div style={{ width: 44, height: 44,
+                  background: `${m.accent}0E`,
+                  border: `1px solid ${m.accent}28`,
+                  display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', borderRadius: 4 }}>
                   <m.Icon size={20} color={m.accent}/>
                 </div>
-                <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '2px', padding: '3px 9px',
-                  border: `1px solid ${m.tagColor}30`, color: m.tagColor,
-                  textTransform: 'uppercase', background: `${m.tagColor}06`,
-                }}>
+                <span style={{ fontSize: 10, fontWeight: 800,
+                  letterSpacing: '2px', padding: '3px 9px',
+                  border: `1px solid ${m.accent}30`, color: m.accent,
+                  textTransform: 'uppercase', background: `${m.accent}06` }}>
                   {m.tag}
                 </span>
               </div>
 
-              <h3 style={{
-                fontFamily: "'Barlow Condensed',sans-serif",
-                fontSize: 20, fontWeight: 800, color: C.text,
-                letterSpacing: '-.3px', marginBottom: 10, lineHeight: 1.1,
-              }}>
+              <h3 style={{ fontFamily: FONT.display, fontSize: 19,
+                fontWeight: 800, color: T.text, letterSpacing: '-.3px',
+                marginBottom: 8, lineHeight: 1.1 }}>
                 {m.title}
               </h3>
-
-              <p style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.8, fontWeight: 300, marginBottom: 18 }}>
+              <p style={{ fontSize: 12, color: T.textMuted, lineHeight: 1.8,
+                fontWeight: 300, marginBottom: 16 }}>
                 {m.desc}
               </p>
-
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {m.metrics.map((met, j) => (
-                  <span key={j} style={{
-                    fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', padding: '3px 9px',
+                  <span key={j} style={{ fontSize: 10, fontWeight: 800,
+                    letterSpacing: '1.5px', padding: '3px 9px',
                     border: `1px solid ${m.accent}30`, color: m.accent,
-                    textTransform: 'uppercase', background: `${m.accent}06`,
-                  }}>
+                    textTransform: 'uppercase', background: `${m.accent}06` }}>
                     {met}
                   </span>
                 ))}
               </div>
             </div>
           ))}
-        </div>
+        </GapGrid>
 
       </div>
     </div>

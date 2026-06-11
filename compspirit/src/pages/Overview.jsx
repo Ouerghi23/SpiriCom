@@ -1,932 +1,880 @@
 // src/pages/Overview.jsx
-// ─────────────────────────────────────────────────────────────────────────────
-// Huawei SpiriComp — NOC Overview Dashboard
+// ─────────────────────────────────────────────────────────────────────
+// SpiriCom NOC Dashboard — Overview Page (v2, migrated to UI.jsx)
+// DATA: complaints_clean.parquet + analysis_results.json (NB01)
 //
-// Changes from original:
-//   - Custom SVG Ico factory replaced with Lucide React (professional icon library,
-//     already installed in node_modules). No AI-generated icons.
-//   - NOC alarm severity colors aligned with ITU-T / Huawei iManager standard:
-//       🔴 Critical  #DC2626  (network down / severe outage)
-//       🟠 Major     #EA580C  (significant degradation)
-//       🟡 Minor     #CA8A04  (warning threshold crossed)
-//       🟢 Normal    #16A34A  (operational)
-//       ⚪ Unknown   #6B7280  (no data)
-//   - Information hierarchy reordered: System Health → Alarm Banner → KPIs →
-//     Trend → Heatmap → Regional → Dataset
-//   - Axis labels, units, and tooltips made explicit throughout
-// ─────────────────────────────────────────────────────────────────────────────
+// MIGRATION (vs previous version):
+//  O-1  ~200 lines of duplicated system code removed. HW / ALARM /
+//       gapColor / SectionLabel / StatBlock / ChartPanel / PulseBar /
+//       SLABanner / SystemHealthBanner now imported from components/UI.
+//       No more T prop drilling; keyframes + hover classes come from
+//       <NocBaseStyles/> in Layout (local <style> blocks deleted).
+//  O-2  Severity rules enforced (red = alarm only):
+//       · Donut "Open" slice → ALARM.critical (was brand red); slices
+//         reordered as a pipeline: Open → In Progress → Resolved → Closed
+//       · Weekly "today" bar → full-opacity blue with other weekdays
+//         dimmed (was red — today is not an alarm)
+//       · Monthly trend markers → blue (red markers were decoration)
+//       · Type / segment / region bars → blueRamp (rainbow `distributed`
+//         palettes removed; color no longer encodes nothing)
+//       · Hero "LIVE NETWORK" pill → ALARM.normal (live = healthy);
+//         redundant green "Live" badge on the right removed
+//  O-3  Hardcoded insights replaced with computed values:
+//       · Weekly strip (peak day / peak volume / weekend avg / delta)
+//       · Section subtitles (top type %, top segments %, monthly peak)
+//       · Z-score badge derived from SPIKE_SIGMA constant (badge said
+//         2σ while the threshold used 2.5σ)
+//       · Premium-segment share now divided by segment total (was
+//         divided by overall total — wrong denominator)
+//  O-4  monthlyData no longer filters `count > 300` (a quiet month
+//       would silently vanish). The last month is dropped only when
+//       date_max shows it is genuinely partial.
+//  O-5  "UPDATED" shows data fetch time (lastUpdated state), not
+//       render time.
+//  O-6  Spike scatter strokeColors → T.bgCard (was #fff — glowed in
+//       light mode). dataLabels use T.text.
+//  O-7  Typography floor ≥10px for data-bearing labels.
+//  O-8  Thresholds named: SLA_OPEN_THRESHOLD, UNRESOLVED_THRESHOLD,
+//       SPIKE_SIGMA — single place to tune, UI text derives from them.
+// ─────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect } from 'react'
-import { useTranslation }      from 'react-i18next'
-import ReactApexChart           from 'react-apexcharts'
+import { useState, useEffect, useCallback } from 'react'
+import { useTranslation }                   from 'react-i18next'
+import ReactApexChart                       from 'react-apexcharts'
 import {
-  Signal, Activity, Users, Globe, Calendar, Database,
-  Radio, AlertTriangle, TrendingUp, LayoutGrid, Map,
-  CheckCircle2, Cpu, Wifi, BarChart3, Clock, RefreshCw,
+  Activity, Users, Globe, Calendar, Database,
+  AlertTriangle, TrendingUp, TrendingDown,
+  CheckCircle2, BarChart3, Clock, RefreshCw, Minus,
+  ShieldAlert, Zap, Wifi,
 } from 'lucide-react'
 
-import { analyticsApi }         from '../api/client'
-import { Badge, Spinner, EmptyState, baseChartOptions } from '../components/UI'
+import { analyticsApi } from '../api/client'
+import {
+  HW, ALARM, FONT, gapColor, gridLine, blueRamp,
+  SectionLabel, StatBlock, ChartPanel, GapGrid, StatStrip,
+  AlertBanner, InfoCard, Badge, Spinner, EmptyState,
+  baseChartOptions,
+} from '../components/UI'
+import { useTheme } from '../context/ThemeContext'
 
-// ── NOC Alarm Colour System (ITU-T aligned) ───────────────────────────────────
-// Use ONLY these tokens throughout the component — never hardcode alarm colours
-// inline.  This makes future theme changes a single-line edit.
-const ALARM = {
-  critical: '#DC2626',   // P1 — Network down / severe outage
-  major:    '#EA580C',   // P2 — Significant degradation
-  minor:    '#CA8A04',   // P3 — Warning threshold crossed
-  normal:   '#16A34A',   // OK — Operational
-  unknown:  '#6B7280',   // No data / indeterminate
+// ── O-8: named thresholds — UI text derives from these ───────────────
+const SLA_OPEN_THRESHOLD   = 30    // % open above which SLA is breached
+const UNRESOLVED_THRESHOLD = 40    // % unresolved escalation point
+const SPIKE_SIGMA          = 2.5   // z-score threshold for spike flag
+
+const DELTA_ICONS = { up: TrendingUp, down: TrendingDown, flat: Minus }
+
+const DOW_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const DOW_FULL  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
+                   'Friday', 'Saturday', 'Sunday']
+
+const avg = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0)
+
+// ── Status grouping (domain logic — stays in the page) ───────────────
+function groupStatuses(by_status = {}) {
+  const closed   = (by_status['CLOSED'] || 0) +
+                   (by_status['CLOSED ALERT RESOLVED'] || 0) +
+                   (by_status['CLOSED REFUNDED'] || 0) +
+                   (by_status['CLOSED DTFO'] || 0)
+  const open_    = by_status['OPEN'] || 0
+  const in_prog  = (by_status['IN PROGRESS RETURN FOR PROCESSING'] || 0) +
+                   (by_status['IN PROGRESS DT'] || 0) +
+                   (by_status['INPROGRESS'] || 0) +
+                   (by_status['IN PROGRESS RETURN NOT COMPLETE'] || 0) +
+                   (by_status['IN PROGRESS UNFOUNDED RETURN'] || 0)
+  const resolved = (by_status['RESOLVED'] || 0) + (by_status['RESOLVED DT'] || 0)
+  return { closed, open: open_, in_progress: in_prog, resolved }
 }
 
-// ── Dashboard Colour Palette ──────────────────────────────────────────────────
-const C = {
-  // Backgrounds
-  bg:     '#080808',
-  bg2:    '#0C0C0C',
-  bg3:    '#0A0A0A',
-  bg4:    '#0E0E0E',
-  border: 'rgba(255,255,255,.055)',
+// ── French → English complaint-type normalization ─────────────────────
+const normalizeType = k => k
+  .replace('DÉBIT FAIBLE', 'Slow').replace('INTERNET MOBILE', 'Internet')
+  .replace('ECHEC ÉMISSION/RÉCEPTION APPEL', 'Call Failure')
+  .replace("PAS D'ACCÈS", 'No Access')
+  .replace('ECHEC CONNEXION', 'Conn. Fail')
+  .replace('PAS DE COUVERTURE VOIX', 'No Voice Coverage')
+  .replace('COUPURE DE CONNEXION', 'Internet Drop')
+  .replace("COUPURE D'APPEL", 'Call Drop')
+  .replace('MAUVAISE QUALITÉ DE SON', 'Poor Voice Quality')
 
-  // Text
-  text:     '#F8FAFC',
-  textMuted:'rgba(248,250,252,.50)',
-  textDim:  'rgba(248,250,252,.32)',
-
-  // Data series (charts)
-  blue:   '#3B82F6',
-  cyan:   '#22D3EE',
-  green:  ALARM.normal,
-  amber:  ALARM.minor,
-  red:    ALARM.critical,
-  orange: ALARM.major,
-  purple: '#A855F7',
-  teal:   '#14B8A6',
-
-  // Huawei brand accent
-  huawei: '#CF0A2C',
-}
-
-// ── QoE Heatmap Ranges (aligned with alarm scale) ────────────────────────────
-const HEATMAP_RANGES = [
-  { from: 0,  to: 45,  color: '#450A0A', name: 'Critical'  },  // < 45 → Critical
-  { from: 45, to: 60,  color: '#991B1B', name: 'Very Poor' },  // 45–60 → Major
-  { from: 60, to: 70,  color: '#C2410C', name: 'Poor'      },  // 60–70 → Minor
-  { from: 70, to: 80,  color: '#B45309', name: 'Fair'      },  // 70–80 → Warning
-  { from: 80, to: 90,  color: '#3F6212', name: 'Good'      },  // 80–90 → Normal
-  { from: 90, to: 100, color: '#14532D', name: 'Excellent' },  // > 90  → Excellent
-]
-
-const REGION_COLORS = [
-  '#1659C5','#2066CC','#2B73D2','#3680D9',
-  '#418DE0','#4C9AE7','#57A7EE','#62B4F4','#6DC1FA','#78CEFF',
-]
-
-// KPI tile icon mapping — one Lucide icon per KPI in the META order
-const KPI_ICONS = [Signal, Activity, AlertTriangle, Users, Radio, TrendingUp, Globe, Cpu]
-
-// ── Base ApexCharts options (dark theme) ─────────────────────────────────────
-const base = {
-  ...baseChartOptions,
-  chart: {
-    ...baseChartOptions?.chart,
-    foreColor:  C.textMuted,
-    background: 'transparent',
-    animations: { enabled: false },    // disable for real-time readability
-    toolbar:    { show: false },
-    zoom:       { enabled: false },
-  },
-  grid:    { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3 },
-  tooltip: {
-    theme: 'dark',
-    style: { fontSize: '11px', fontFamily: "'Barlow Condensed', system-ui" },
-  },
-}
-
-// ── Alarm state helper ────────────────────────────────────────────────────────
-// Returns the appropriate ALARM colour for a KPI tile based on its delta.
-const getKpiAlarmColor = kpi => {
-  if (kpi.delta == null) return C.blue
-  const improving   = kpi.good ? kpi.delta >= 0 : kpi.delta <= 0
-  const magnitude   = Math.abs(kpi.delta)
-  if (!improving && magnitude > 10) return ALARM.critical
-  if (!improving && magnitude > 5)  return ALARM.major
-  if (!improving && magnitude > 2)  return ALARM.minor
-  if (improving)                    return ALARM.normal
-  return C.blue
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// Sub-components
-// ════════════════════════════════════════════════════════════════════════════
-
-// ── SectionLabel ─────────────────────────────────────────────────────────────
-const SectionLabel = ({ children, action, sub }) => (
-  <div style={{ marginTop: 40, marginBottom: 18 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div style={{
-        fontSize: 10, fontWeight: 800, color: C.huawei,
-        letterSpacing: '4.5px', textTransform: 'uppercase',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <span style={{ width: 22, height: 1, background: C.huawei, display: 'inline-block', flexShrink: 0 }}/>
-        {children}
-      </div>
-      {action && <div style={{ flexShrink: 0 }}>{action}</div>}
-    </div>
-    {sub && (
-      <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px', marginTop: 6, paddingLeft: 34 }}>
-        {sub}
-      </div>
-    )}
-  </div>
-)
-
-// ── StatBlock (KPI Tile) ──────────────────────────────────────────────────────
-const StatBlock = ({ label, value, unit, delta, good, color, icon: IconComp, sub }) => {
-  const accent     = color || C.blue
-  const deltaColor = good ? (delta >= 0 ? ALARM.normal : ALARM.critical)
-                          : (delta >= 0 ? ALARM.critical : ALARM.normal)
-  return (
-    <div className="ov-stat-block" style={{
-      background:  C.bg3,
-      border:      `1px solid ${C.border}`,
-      padding:     '28px 22px',
-      position:    'relative',
-      overflow:    'hidden',
-      transition:  'all .3s cubic-bezier(.22,1,.36,1)',
-      cursor:      'default',
-    }}>
-      {/* Top accent line — colour encodes alarm severity */}
-      <div style={{
-        position: 'absolute', top: 0, left: '12%', right: '12%', height: 2,
-        background: `linear-gradient(90deg, transparent, ${accent}, transparent)`,
-      }}/>
-
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-        <span style={{
-          fontSize: 9, fontWeight: 700, color: C.textDim,
-          letterSpacing: '1.8px', textTransform: 'uppercase', lineHeight: 1.5,
-        }}>
-          {label}
-        </span>
-        {IconComp && (
-          <div style={{
-            width: 28, height: 28,
-            border: `1px solid ${accent}30`, background: `${accent}10`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-          }}>
-            {/* Lucide icons receive size + color as props */}
-            <IconComp size={13} color={accent}/>
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 10 }}>
-        <span style={{
-          fontFamily:    "'Barlow Condensed', sans-serif",
-          fontSize:      38,
-          fontWeight:    900,
-          color:         accent,
-          lineHeight:    1,
-          letterSpacing: '-1.5px',
-        }}>
-          {value}
-        </span>
-        {unit && (
-          <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
-            {unit}
-          </span>
-        )}
-      </div>
-
-      {(delta !== undefined || sub) && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          {delta != null && (
-            <span style={{
-              fontSize: 11, fontWeight: 700, color: deltaColor,
-              display: 'inline-flex', alignItems: 'center', gap: 3,
-            }}>
-              {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
-            </span>
-          )}
-          {sub && (
-            <span style={{ fontSize: 9, color: C.textDim, letterSpacing: '1.5px', textTransform: 'uppercase' }}>
-              {sub}
-            </span>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ── SystemHealthBanner ────────────────────────────────────────────────────────
-// Priority 1: always the first element a NOC engineer sees.
-function SystemHealthBanner({ kpis, spikeCount, total }) {
-  const { t } = useTranslation()
-
-  const spikeRate = total > 0 ? spikeCount / total : 0
-  const degraded  = kpis.filter(k => {
-    if (k.delta == null) return false
-    const ok = k.good ? k.delta >= 0 : k.delta <= 0
-    return !ok && Math.abs(k.delta) > 5
-  }).length
-
-  // Alarm state determination — maps to ITU-T alarm levels
-  let statusKey = 'overview.nominal'
-  let dotColor  = ALARM.normal
-  let border    = `${ALARM.normal}40`
-  let bg        = `${ALARM.normal}0D`
-  let StatusIcon = CheckCircle2
-
-  if (spikeRate > 0.1 || degraded >= 3) {
-    statusKey  = 'overview.critical'
-    dotColor   = ALARM.critical
-    border     = `${ALARM.critical}4D`
-    bg         = `${ALARM.critical}12`
-    StatusIcon = AlertTriangle
-  } else if (spikeRate > 0.05 || degraded >= 1) {
-    statusKey  = 'overview.degraded'
-    dotColor   = ALARM.minor
-    border     = `${ALARM.minor}4D`
-    bg         = `${ALARM.minor}12`
-    StatusIcon = AlertTriangle
-  }
-
-  const detail = [
-    degraded   > 0 ? `${degraded} ${t('overview.kpiDegraded')}`  : null,
-    spikeCount > 0 ? `${spikeCount} ${t('overview.spikes')}`      : null,
-    degraded === 0 && spikeCount === 0 ? t('overview.allNormal')   : null,
-  ].filter(Boolean).join(' · ')
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14,
-      background: bg, border: `1px solid ${border}`, padding: '11px 22px', marginBottom: 1,
-    }}>
-      {/* Pulsing severity dot */}
-      <span style={{
-        width: 6, height: 6, borderRadius: '50%', background: dotColor,
-        display: 'inline-block', animation: 'ov-pulse 2s ease-in-out infinite', flexShrink: 0,
-      }}/>
-
-      <span style={{
-        fontSize: 9, fontWeight: 800, color: dotColor,
-        letterSpacing: '2.5px', textTransform: 'uppercase', flexShrink: 0,
-      }}>
-        {t('overview.health')} — {t(statusKey)}
-      </span>
-
-      <span style={{ width: 1, height: 12, background: border, flexShrink: 0 }}/>
-      <StatusIcon size={12} color={dotColor}/>
-      <span style={{ fontSize: 11, color: C.textMuted }}>{detail}</span>
-
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <Clock size={11} color={C.textDim}/>
-        <span style={{ fontSize: 9, color: C.textDim, letterSpacing: '2px', textTransform: 'uppercase' }}>
-          {t('overview.updated')}
-        </span>
-        <span style={{
-          fontFamily: "'Barlow Condensed', monospace",
-          fontSize: 13, fontWeight: 700, color: C.textMuted,
-        }}>
-          {new Date().toLocaleTimeString()}
-        </span>
-      </div>
-    </div>
-  )
-}
-
-// ── PulseBar (trend summary strip) ───────────────────────────────────────────
-function PulseBar({ spikeCount, total, today, roll7 }) {
-  const { t }     = useTranslation()
-  const spikeRate = total > 0 ? ((spikeCount / total) * 100).toFixed(1) : 0
-  const delta     = today != null && roll7 != null ? today - roll7 : null
-  const deltaSign = delta > 0 ? '+' : ''
-  const deltaColor = delta > 0 ? ALARM.critical : delta < 0 ? ALARM.normal : C.textMuted
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-      {[
-        { labelKey: 'overview.spikeEvents',   value: spikeCount,                                          color: spikeCount > 0 ? ALARM.minor : ALARM.normal },
-        { labelKey: 'overview.spikeRate',     value: `${spikeRate}%`,                                    color: +spikeRate > 5  ? ALARM.critical : ALARM.normal },
-        { labelKey: 'overview.todayVsAvg',    value: delta != null ? `${deltaSign}${delta?.toFixed(0)}` : '—', color: deltaColor },
-        { labelKey: 'overview.daysRecorded',  value: total,                                               color: C.blue },
-      ].map(it => (
-        <div key={it.labelKey} style={{
-          background: C.bg3, padding: '12px 20px',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <span style={{ fontSize: 9, color: C.textDim, letterSpacing: '2px', textTransform: 'uppercase', fontWeight: 700 }}>
-            {t(it.labelKey)}
-          </span>
-          <span style={{
-            fontFamily: "'Barlow Condensed', sans-serif",
-            fontSize: 18, fontWeight: 800, color: it.color, letterSpacing: '-.5px',
-          }}>
-            {it.value}
-          </span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── ChartPanel ────────────────────────────────────────────────────────────────
-const ChartPanel = ({ title, sub, children, action, style = {} }) => (
-  <div className="ov-chart-panel" style={{
-    background: C.bg2, border: `1px solid ${C.border}`, padding: '22px 24px',
-    position: 'relative', overflow: 'hidden', transition: 'border-color .3s', ...style,
-  }}>
-    <div className="ov-panel-accent" style={{
-      position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
-      background: `linear-gradient(90deg, transparent, ${C.huawei}, transparent)`,
-      transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease',
-    }}/>
-    {(title || sub || action) && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
-        <div>
-          {title && <div style={{ fontSize: 12, fontWeight: 700, color: C.text, letterSpacing: '.5px', marginBottom: 3 }}>{title}</div>}
-          {sub   && <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px' }}>{sub}</div>}
-        </div>
-        {action && <div style={{ flexShrink: 0, marginLeft: 16 }}>{action}</div>}
-      </div>
-    )}
-    {children}
-  </div>
-)
-
-// ════════════════════════════════════════════════════════════════════════════
-// MAIN COMPONENT
-// ════════════════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════════
+// MAIN EXPORT
+// ════════════════════════════════════════════════════════════════════
 export default function Overview() {
-  const { t, i18n } = useTranslation()
+  const { t }        = useTranslation()
+  const { theme: T } = useTheme()
+  const GAP          = gapColor(T)
 
-  const [overview, setOverview] = useState(null)
-  const [kpis,     setKpis]     = useState([])
-  const [trend,    setTrend]    = useState([])
-  const [regions,  setRegions]  = useState([])
-  const [heatmap,  setHeatmap]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [error,    setError]    = useState(null)
-  const [lastFetch, setLastFetch] = useState(null)
+  // ── State ─────────────────────────────────────────────────────────
+  const [overview,    setOverview]    = useState(null)
+  const [trend,       setTrend]       = useState([])
+  const [regions,     setRegions]     = useState([])
+  const [dow,         setDow]         = useState({})
+  const [status,      setStatus]      = useState({})
+  const [analysis,    setAnalysis]    = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
+  const [refreshing,  setRefreshing]  = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)   // O-5
 
-  const fetchData = async () => {
+  // ── Fetch ─────────────────────────────────────────────────────────
+  const fetchData = useCallback(async (background = false) => {
     try {
       setError(null)
-      const [ov, kp, tr, rg, hm] = await Promise.all([
+      background ? setRefreshing(true) : setLoading(true)
+
+      const [ovRes, trRes, rgRes, dowRes, stRes] = await Promise.allSettled([
         analyticsApi.overview(),
-        analyticsApi.kpiTiles(),
         analyticsApi.complaintsTrend(),
         analyticsApi.complaintsByRegion(),
-        analyticsApi.kpiHeatmap(),
+        analyticsApi.complaintsDow(),
+        analyticsApi.complaintsStatus(),
       ])
-      setOverview(ov.data)
-      setKpis(kp.data?.tiles      || [])
-      setTrend(tr.data?.trend     || [])
-      setRegions(rg.data?.regions || [])
-      setHeatmap(hm.data?.series  || [])
-      setLastFetch(new Date())
-    } catch (err) {
-      console.error('Dashboard fetch error:', err)
+
+      if (ovRes.status  === 'fulfilled') setOverview(ovRes.value.data)
+      if (trRes.status  === 'fulfilled') setTrend(trRes.value.data?.trend || [])
+      if (rgRes.status  === 'fulfilled') setRegions(rgRes.value.data?.regions || [])
+      if (dowRes.status === 'fulfilled') setDow(dowRes.value.data?.dow || {})
+      if (stRes.status  === 'fulfilled') setStatus(stRes.value.data?.status || {})
+
+      try {
+        const anRes = await analyticsApi.analysisResults()
+        setAnalysis(anRes.data)
+      } catch { /* fallback: derive from overview data */ }
+
+      setLastUpdated(new Date())   // O-5: data time, not render time
+    } catch {
       setError(t('overview.connectionError'))
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }
+  }, [t])
 
   useEffect(() => {
-    fetchData()
-    // Auto-refresh every 5 minutes — appropriate for NOC operational tempo
-    const interval = setInterval(fetchData, 5 * 60 * 1000)
+    fetchData(false)
+    const interval = setInterval(() => fetchData(true), 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchData])
 
-  // ── Loading state ─────────────────────────────────────────────────────────
+  const base = baseChartOptions(T)
+
+  // ── Loading ───────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ padding: '40px 48px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 48 }}>
-        <Wifi size={14} color={ALARM.normal} style={{ animation: 'ov-pulse 1.8s infinite' }}/>
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: C.huawei }}>
-          {t('overview.initializing')}
+    <div style={{ padding: '40px 48px', background: T.bg, minHeight: '100vh' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 40 }}>
+        <Wifi size={14} color={ALARM.normal}
+          style={{ animation: 'noc-pulse 1.8s ease-in-out infinite' }}/>
+        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
+          textTransform: 'uppercase', color: HW.blue }}>
+          {t('overview.initializing') || 'INITIALIZING NOC'}
         </span>
       </div>
       <Spinner size={48}/>
     </div>
   )
 
-  // ── Error state ───────────────────────────────────────────────────────────
+  // ── Error ─────────────────────────────────────────────────────────
   if (error) return (
-    <div style={{ padding: '40px 48px' }}>
-      <div style={{
-        background: `${ALARM.major}12`, border: `1px solid ${ALARM.major}40`,
-        padding: '20px 28px', display: 'flex', alignItems: 'center', gap: 16, marginTop: 40,
-      }}>
-        <AlertTriangle size={24} color={ALARM.major}/>
+    <div style={{ padding: '40px 48px', background: T.bg, minHeight: '100vh' }}>
+      <div style={{ background: `${ALARM.major}10`, border: `1px solid ${ALARM.major}40`,
+        padding: '20px 28px', display: 'flex', alignItems: 'center', gap: 16, marginTop: 40 }}>
+        <AlertTriangle size={22} color={ALARM.major}/>
         <div>
-          <div style={{ color: ALARM.major, fontSize: 13, fontWeight: 700, letterSpacing: '.5px', marginBottom: 4 }}>
+          <div style={{ color: ALARM.major, fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
             {t('overview.connectionError')}
           </div>
-          <div style={{ color: C.textMuted, fontSize: 12 }}>{error}</div>
+          <div style={{ color: T.textMuted, fontSize: 12 }}>{error}</div>
         </div>
-        <button
-          onClick={fetchData}
-          style={{
-            marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
-            background: 'transparent', border: `1px solid ${C.border}`,
-            color: C.textMuted, padding: '6px 14px', cursor: 'pointer', fontSize: 11,
-          }}
-        >
-          <RefreshCw size={12}/> {t('common.retry')}
+        <button onClick={() => fetchData(false)}
+          style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6,
+            background: 'transparent', border: `1px solid ${T.border}`, color: T.textMuted,
+            padding: '6px 14px', cursor: 'pointer', fontSize: 11, fontFamily: 'inherit' }}>
+          <RefreshCw size={12}/> {t('common.retry') || 'Retry'}
         </button>
       </div>
     </div>
   )
 
-  // ── Derived values ────────────────────────────────────────────────────────
+  // ══ Derived values ══════════════════════════════════════════════
   const spikeCount    = trend.filter(d => d.is_spike).length
   const todayVal      = trend.length > 0 ? trend[trend.length - 1]?.total_complaints : null
   const roll7Val      = trend.length > 0 ? trend[trend.length - 1]?.roll7 : null
-  const svcVals       = overview?.by_service || {}
-  const svcTotal      = Object.values(svcVals).reduce((a, b) => a + b, 0)
   const regionsSorted = [...regions].sort((a, b) => b.total_complaints - a.total_complaints)
 
-  const vals     = trend.map(d => d.total_complaints).filter(v => v != null)
-  const meanC    = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0
-  const stdC     = vals.length > 0 ? Math.sqrt(vals.reduce((s, v) => s + (v - meanC) ** 2, 0) / vals.length) : 0
-  const spikeThr = Math.round(meanC + 2.5 * stdC)
+  const totalComplaints = overview?.total_complaints || analysis?.overview?.total_complaints || 0
+  const unresolved      = analysis?.overview?.unresolved_pct || 0
+  const statusGroups    = groupStatuses(analysis?.by_status || status)
+  const openPct         = totalComplaints > 0
+    ? (statusGroups.open / totalComplaints) * 100 : 0
+  const slaBreached     = openPct > SLA_OPEN_THRESHOLD
 
-  // ── Chart: Complaint Trend ────────────────────────────────────────────────
+  // ── System health severity (computed) ─────────────────────────────
+  const spikeRate = trend.length > 0 ? spikeCount / trend.length : 0
+  const healthSeverity =
+    spikeRate > 0.10 ? 'critical' :
+    spikeRate > 0.05 ? 'minor'    : 'normal'
+  const healthText =
+    healthSeverity === 'critical' ? (t('overview.critical') || 'CRITICAL') :
+    healthSeverity === 'minor'    ? (t('overview.degraded') || 'DEGRADED') :
+                                    (t('overview.nominal')  || 'NOMINAL')
+
+  // ── Monthly trend (O-4: partial-month handled honestly) ───────────
+  const monthlyEntries = analysis?.monthly_trend
+    ? Object.entries(analysis.monthly_trend)
+        .sort(([a], [b]) => new Date(a) - new Date(b))
+    : []
+  let monthlyData = monthlyEntries.map(([k, v]) => ({
+    month: new Date(k).toLocaleString('en', { month: 'short' }),
+    count: v,
+  }))
+  const dateMaxStr = analysis?.overview?.date_max || overview?.date_max
+  if (dateMaxStr && monthlyEntries.length > 1) {
+    const dMax    = new Date(dateMaxStr)
+    const lastKey = new Date(monthlyEntries[monthlyEntries.length - 1][0])
+    const daysInM = new Date(dMax.getFullYear(), dMax.getMonth() + 1, 0).getDate()
+    const partial = lastKey.getMonth() === dMax.getMonth()
+                 && lastKey.getFullYear() === dMax.getFullYear()
+                 && dMax.getDate() < daysInM
+    if (partial) monthlyData = monthlyData.slice(0, -1)
+  }
+
+  // O-3: monthly insight computed
+  const peakMonth = monthlyData.length
+    ? monthlyData.reduce((m, d) => (d.count > m.count ? d : m), monthlyData[0])
+    : null
+
+  // ── DOW (O-3: weekly insights computed) ───────────────────────────
+  const dowData    = Object.keys(dow).length > 0 ? dow : analysis?.dow_distribution || {}
+  const dowValues  = DOW_ORDER.map(d => dowData[d] || 0)
+  const hasDow     = dowValues.some(v => v > 0)
+  const todayDow   = DOW_ORDER[new Date().getDay() === 0 ? 6 : new Date().getDay() - 1]
+  const peakIdx    = dowValues.indexOf(Math.max(...dowValues))
+  const peakDay    = hasDow ? DOW_FULL[peakIdx] : '—'
+  const weekdayAvg = avg(dowValues.slice(0, 5))
+  const weekendAvg = avg(dowValues.slice(5))
+  const wkdDelta   = weekendAvg > 0
+    ? ((weekdayAvg - weekendAvg) / weekendAvg) * 100 : null
+
+  // ── Complaint types (O-3: top type computed) ──────────────────────
+  const complaintTypes = analysis?.by_sub_sub_category || {}
+  const typeLabels = Object.keys(complaintTypes).map(normalizeType)
+  const typeValues = Object.values(complaintTypes)
+  const typeTotal  = typeValues.reduce((a, b) => a + b, 0)
+  const topTypeIdx = typeValues.length ? typeValues.indexOf(Math.max(...typeValues)) : -1
+  const topType    = topTypeIdx >= 0 ? typeLabels[topTypeIdx] : null
+  const topTypePct = topTypeIdx >= 0 && typeTotal > 0
+    ? (typeValues[topTypeIdx] / typeTotal) * 100 : 0
+
+  // ── Segments (O-3: top-2 computed, correct denominator) ───────────
+  const segmentData = analysis?.by_segment || {}
+  const segSorted   = Object.entries(segmentData).sort((a, b) => b[1] - a[1])
+  const segLabels   = segSorted.map(([k]) => k)
+  const segValues   = segSorted.map(([, v]) => v)
+  const segTotal    = segValues.reduce((a, b) => a + b, 0)
+  const top2Names   = segSorted.slice(0, 2).map(([k]) => k)
+  const top2Pct     = segTotal > 0
+    ? (segSorted.slice(0, 2).reduce((s, [, v]) => s + v, 0) / segTotal) * 100 : 0
+
+  // ── Spike threshold from trend (badge derives from SPIKE_SIGMA) ───
+  const vals     = trend.map(d => d.total_complaints).filter(v => v != null)
+  const meanC    = avg(vals)
+  const stdC     = vals.length
+    ? Math.sqrt(vals.reduce((s, v) => s + (v - meanC) ** 2, 0) / vals.length) : 0
+  const spikeThr = Math.round(meanC + SPIKE_SIGMA * stdC)
+
+  // ══ Charts ══════════════════════════════════════════════════════
+
+  // 1. Complaint trend — area + spike scatter + 7d rolling + threshold
   const trendChart = {
     series: [
-      {
-        name: t('overview.dailyComplaints'),
-        type: 'area',
-        data: trend.map(d => ({ x: d.date, y: d.total_complaints })),
-      },
-      {
-        name: t('overview.anomalySpike'),
-        type: 'scatter',
-        data: trend.filter(d => d.is_spike).map(d => ({ x: d.date, y: d.total_complaints })),
-      },
-      {
-        name: t('overview.avgLine'),
-        type: 'line',
-        data: trend.map(d => ({ x: d.date, y: d.roll7 != null ? parseFloat(d.roll7.toFixed(1)) : null })),
-      },
+      { name: t('overview.dailyComplaints'), type: 'area',
+        data: trend.map(d => ({ x: d.date, y: d.total_complaints })) },
+      { name: t('overview.anomalySpike'), type: 'scatter',
+        data: trend.filter(d => d.is_spike).map(d => ({ x: d.date, y: d.total_complaints })) },
+      { name: t('overview.avgLine'), type: 'line',
+        data: trend.map(d => ({ x: d.date, y: d.roll7 != null ? parseFloat(d.roll7.toFixed(1)) : null })) },
     ],
     options: {
       ...base,
       chart:  { ...base.chart, type: 'line', stacked: false },
-      colors: [C.blue, ALARM.critical, C.cyan],
+      colors: [HW.blue, ALARM.critical, HW.blueLight],
       stroke: { curve: ['smooth', 'straight', 'smooth'], width: [2, 0, 1.5], dashArray: [0, 0, 6] },
-      markers: {
-        size:         [0, 9, 0],
-        strokeWidth:  [0, 2.5, 0],
-        strokeColors: ['transparent', '#fff', 'transparent'],
-        shape:        'circle',
-        hover:        { size: 10 },
-      },
-      fill: {
-        type:     ['gradient', 'solid', 'solid'],
-        gradient: {
-          shade: 'dark', type: 'vertical',
-          gradientToColors: ['transparent'],
-          opacityFrom: 0.22, opacityTo: 0.01, stops: [0, 95],
-        },
-      },
-      xaxis: {
-        type:       'datetime',
-        title:      { text: 'Date', style: { fontSize: '10px', color: C.textDim } },
-        labels:     { format: 'dd MMM', style: { fontSize: '10px', colors: C.textMuted } },
-        axisBorder: { show: false },
-        axisTicks:  { show: false },
-      },
-      yaxis: {
-        min:   0,
-        title: { text: t('overview.complaintsPerDay'), style: { fontSize: '10px', color: C.textMuted, fontWeight: 400 } },
-        labels: { style: { fontSize: '10px', colors: C.textMuted }, formatter: v => v?.toFixed(0) },
-      },
-      // Spike threshold annotation — visual alarm line
+      // O-6: marker ring matches card background in both themes
+      markers: { size: [0, 8, 0], strokeWidth: [0, 2, 0],
+        strokeColors: ['transparent', T.bgCard, 'transparent'], hover: { size: 10 } },
+      fill: { type: ['gradient', 'solid', 'solid'],
+        gradient: { shade: 'dark', type: 'vertical', gradientToColors: ['transparent'],
+          opacityFrom: 0.2, opacityTo: 0.01, stops: [0, 95] } },
+      xaxis: { type: 'datetime',
+        labels: { format: 'dd MMM', style: { fontSize: '10px', colors: T.textMuted } },
+        axisBorder: { show: false }, axisTicks: { show: false } },
+      yaxis: { min: 0,
+        title: { text: t('overview.complaintsPerDay') || 'Complaints/Day',
+          style: { fontSize: '10px', color: T.textMuted, fontWeight: 400 } },
+        labels: { style: { fontSize: '10px', colors: T.textMuted }, formatter: v => v?.toFixed(0) } },
       annotations: spikeThr > 0 ? {
-        yaxis: [{
-          y:               spikeThr,
-          borderColor:     ALARM.minor,
-          borderWidth:     1,
-          strokeDashArray: 5,
-          label: {
-            text:      `${t('overview.spikeThreshold')} — ${spikeThr}`,
-            position:  'right',
-            offsetX:   -8,
-            style: {
-              background: `${ALARM.minor}1A`,
-              color:      ALARM.minor,
-              fontSize:   '9px',
-              fontWeight: 600,
-              padding:    { top: 3, right: 6, bottom: 3, left: 6 },
-            },
-          },
-        }],
+        yaxis: [{ y: spikeThr, borderColor: ALARM.minor, borderWidth: 1, strokeDashArray: 5,
+          label: { text: `${t('overview.spikeThreshold') || 'Threshold'} — ${spikeThr}`,
+            position: 'right', offsetX: -8,
+            style: { background: `${ALARM.minor}1A`, color: ALARM.minor,
+              fontSize: '9px', fontWeight: 600 } } }],
       } : {},
-      tooltip: {
-        shared:    true,
-        intersect: false,
-        x:         { format: 'dd MMM yyyy' },
-        y: {
-          formatter: (val, { seriesIndex }) => {
-            if (seriesIndex === 1) return val != null ? `⚠ ${val} (spike)` : null
-            if (seriesIndex === 2) return val != null ? `${val} (7d avg)` : null
-            return val != null ? String(val) : null
-          },
-        },
-      },
-      legend: {
-        position:        'top',
-        horizontalAlign: 'left',
-        offsetY:         -4,
-        labels:          { colors: C.textMuted },
-        markers:         { radius: 2 },
-        itemMargin:      { horizontal: 16 },
-      },
-      grid: {
-        borderColor:   'rgba(255,255,255,.04)',
-        strokeDashArray: 3,
-        xaxis: { lines: { show: false } },
-        yaxis: { lines: { show: true }  },
-      },
+      tooltip: { shared: true, intersect: false, x: { format: 'dd MMM yyyy' },
+        y: { formatter: (val, { seriesIndex }) =>
+          seriesIndex === 1 ? `Alert: ${val}` :
+          seriesIndex === 2 ? `${val} (7d avg)` : String(val) } },
+      legend: { position: 'top', horizontalAlign: 'left', offsetY: -4,
+        labels: { colors: T.textMuted }, itemMargin: { horizontal: 16 } },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3,
+        xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
     },
   }
 
-  // ── Chart: QoE Heatmap ────────────────────────────────────────────────────
-  const heatChart = heatmap.length > 0 ? {
-    series: heatmap,
-    options: {
-      ...base,
-      chart: { ...base.chart, type: 'heatmap' },
-      plotOptions: {
-        heatmap: {
-          radius:       0,
-          enableShades: false,
-          colorScale:   { ranges: HEATMAP_RANGES },
-        },
-      },
-      dataLabels: { enabled: false },
-      xaxis: {
-        labels:     { rotate: -25, style: { fontSize: '9px', colors: C.textMuted } },
-        position:   'top',
-        axisBorder: { show: false },
-        axisTicks:  { show: false },
-        title:      { text: 'Month', style: { fontSize: '10px', color: C.textDim } },
-      },
-      yaxis: {
-        labels: { style: { fontSize: '10px', colors: C.textMuted }, maxWidth: 120 },
-        title:  { text: 'Region', style: { fontSize: '10px', color: C.textDim } },
-      },
-      tooltip: {
-        y: {
-          formatter: v => v != null
-            ? `QoE ${v.toFixed(1)}/100 — ${
-                v < 45 ? 'Critical' : v < 60 ? 'Very Poor' : v < 70 ? 'Poor' :
-                v < 80 ? 'Fair'     : v < 90 ? 'Good'      : 'Excellent'
-              }`
-            : 'No data',
-        },
-      },
-      legend: { show: false },
-    },
-  } : null
-
-  // ── Chart: Complaints by Service (Donut) ──────────────────────────────────
-  const svcChart = Object.keys(svcVals).length > 0 ? {
-    series: Object.values(svcVals),
+  // 2. Resolution Status donut — O-2: pipeline order, Open = critical
+  const DONUT = [
+    { label: 'Open',        value: statusGroups.open,        color: ALARM.critical },
+    { label: 'In Progress', value: statusGroups.in_progress, color: ALARM.minor    },
+    { label: 'Resolved',    value: statusGroups.resolved,    color: HW.blue        },
+    { label: 'Closed',      value: statusGroups.closed,      color: ALARM.normal   },
+  ]
+  const totalGrouped = DONUT.reduce((s, d) => s + d.value, 0)
+  const resolutionChart = totalGrouped > 0 ? {
+    series: DONUT.map(d => d.value),
     options: {
       ...base,
       chart:  { ...base.chart, type: 'donut' },
-      labels: Object.keys(svcVals),
-      colors: [C.blue, C.cyan, C.teal, C.purple, '#5B8DEF', '#2DB8C5'],
-      stroke: { width: 2, colors: [C.bg2] },
-      plotOptions: {
-        pie: {
-          donut: {
-            size:   '70%',
-            labels: {
-              show:  true,
-              name:  { fontSize: '11px', color: C.textMuted, offsetY: -6 },
-              value: {
-                fontFamily: "'Barlow Condensed', sans-serif",
-                fontSize:   '30px', fontWeight: 900, color: C.text, offsetY: 4,
-                formatter:  v => `${((+v / svcTotal) * 100).toFixed(0)}%`,
-              },
-              total: {
-                show:      true,
-                label:     t('overview.categories'),
-                fontSize:  '10px',
-                color:     C.textMuted,
-                formatter: () => String(Object.keys(svcVals).length),
-              },
-            },
-          },
-        },
-      },
-      tooltip: {
-        y: { formatter: v => `${v.toLocaleString()} (${((v / svcTotal) * 100).toFixed(1)}%)` },
-      },
-      legend: {
-        position:        'bottom',
-        horizontalAlign: 'center',
-        fontSize:        '11px',
-        labels:          { colors: C.textMuted },
-        itemMargin:      { horizontal: 8, vertical: 4 },
-      },
+      labels: DONUT.map(d => d.label),
+      colors: DONUT.map(d => d.color),
+      stroke: { width: 2, colors: [T.bgCard] },
+      plotOptions: { pie: { donut: { size: '68%', labels: {
+        show: true,
+        name:  { fontSize: '11px', color: T.textMuted, offsetY: -6 },
+        value: { fontFamily: FONT.display, fontSize: '28px', fontWeight: 900,
+          color: T.text, offsetY: 4, formatter: v => `${(+v).toLocaleString()}` },
+        total: { show: true, label: 'Total', fontSize: '10px', color: T.textMuted,
+          formatter: () => totalGrouped.toLocaleString() },
+      } } } },
+      legend: { position: 'bottom', fontSize: '11px', labels: { colors: T.textMuted },
+        itemMargin: { horizontal: 8, vertical: 4 } },
       dataLabels: { enabled: false },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v.toLocaleString()} (${((v / totalGrouped) * 100).toFixed(1)}%)` } },
     },
   } : null
 
-  // ── Chart: Complaints by Region (Horizontal Bar) ──────────────────────────
-  const regChart = regionsSorted.length > 0 ? {
-    series: [{ name: t('overview.complaints'), data: regionsSorted.map(r => r.total_complaints) }],
+  // 3. Weekly pattern — O-2: today = full blue, others dimmed, no red
+  const weeklyChart = {
+    series: [{ name: t('overview.complaints') || 'Complaints', data: dowValues }],
     options: {
       ...base,
-      chart: { ...base.chart, type: 'bar' },
-      plotOptions: {
-        bar: {
-          horizontal:   true,
-          borderRadius: 0,
-          barHeight:    '55%',
-          distributed:  true,
-          dataLabels:   { position: 'top' },
-        },
-      },
-      colors:      regionsSorted.map((_, i) => REGION_COLORS[i % REGION_COLORS.length]),
-      dataLabels:  {
-        enabled:     true,
-        textAnchor:  'start',
-        offsetX:     10,
-        style:       { fontSize: '10px', fontWeight: 600, colors: [C.text] },
-        formatter:   v => v.toLocaleString(),
-      },
-      xaxis: {
-        categories: regionsSorted.map(r => (r.region || '').replace(' Gouvernorat', '')),
-        labels:     { style: { fontSize: '11px', colors: C.textMuted } },
-        axisBorder: { show: false },
-        axisTicks:  { show: false },
-        title:      { text: t('overview.complaints'), style: { fontSize: '10px', color: C.textDim } },
-      },
-      yaxis: {
-        labels: { style: { fontSize: '11px', colors: C.textMuted }, maxWidth: 130 },
-      },
-      legend:  { show: false },
-      tooltip: { y: { formatter: v => `${v.toLocaleString()} ${t('overview.complaints')}` } },
-      grid:    { xaxis: { lines: { show: false } } },
+      chart:  { ...base.chart, type: 'bar' },
+      colors: DOW_ORDER.map(d => {
+        if (d === todayDow) return HW.blue                       // today: full
+        if (d === 'Sat' || d === 'Sun')
+          return T.mode === 'dark' ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.16)'
+        return 'rgba(0,147,213,.40)'                             // weekdays: dimmed
+      }),
+      plotOptions: { bar: { columnWidth: '72%', borderRadius: 0, distributed: true } },
+      xaxis: { categories: DOW_ORDER,
+        labels: { style: { fontSize: '11px', fontFamily: FONT.display,
+          colors: T.textMuted, fontWeight: 600 } },
+        axisBorder: { show: false }, axisTicks: { show: false } },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted },
+        formatter: v => v?.toFixed(0) } },
+      dataLabels: { enabled: true,
+        style: { fontSize: '10px', fontWeight: 700, fontFamily: FONT.display,
+          colors: [T.text] },                                   // O-6
+        formatter: v => (v > 0 ? v.toLocaleString() : '') },
+      legend: { show: false },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3,
+        xaxis: { lines: { show: false } } },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v?.toLocaleString()} complaints` } },
+    },
+  }
+
+  // 4. Monthly trend area — O-2: blue markers
+  const monthlyChart = monthlyData.length > 0 ? {
+    series: [{ name: t('overview.monthlyComplaints') || 'Monthly Complaints',
+      data: monthlyData.map(d => d.count) }],
+    options: {
+      ...base,
+      chart:  { ...base.chart, type: 'area' },
+      colors: [HW.blue],
+      stroke: { curve: 'smooth', width: 2.5 },
+      fill: { type: 'gradient', gradient: { shade: 'dark', type: 'vertical',
+        gradientToColors: ['transparent'], opacityFrom: 0.3, opacityTo: 0.01 } },
+      markers: { size: 5, colors: [HW.blue], strokeColors: T.bgCard,
+        strokeWidth: 2, hover: { size: 7 } },
+      xaxis: { categories: monthlyData.map(d => d.month),
+        labels: { style: { fontSize: '11px', fontFamily: FONT.display,
+          colors: T.textMuted, fontWeight: 600 } },
+        axisBorder: { show: false }, axisTicks: { show: false } },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted },
+        formatter: v => `${(v / 1000).toFixed(1)}k` } },
+      dataLabels: { enabled: true,
+        style: { fontSize: '10px', fontWeight: 700, fontFamily: FONT.display,
+          colors: [T.text] },
+        formatter: v => `${(v / 1000).toFixed(1)}k` },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3 },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v?.toLocaleString()} complaints` } },
     },
   } : null
 
-  // ── Dataset summary cards ─────────────────────────────────────────────────
-  const infoCards = [
-    { labelKey: 'overview.totalComplaints', value: overview?.total_complaints?.toLocaleString() || '—', color: ALARM.critical, Icon: Database   },
-    { labelKey: 'overview.uniqueSubs',      value: overview?.unique_msisdns?.toLocaleString()   || '—', color: C.blue,         Icon: Users       },
-    { labelKey: 'overview.geoCoverage',     value: `${overview?.unique_cities || '—'} ${t('overview.cities')}`,                color: ALARM.minor, Icon: Globe },
-    { labelKey: 'overview.analysisPeriod',  value: overview?.date_min ? `${overview.date_min} → ${overview.date_max}` : '—',  color: C.purple,   Icon: Calendar },
+  // 5. Complaint types — O-2: rank-graded blue, no rainbow
+  const typeChart = typeValues.length > 0 ? {
+    series: [{ name: t('overview.complaints') || 'Complaints', data: typeValues }],
+    options: {
+      ...base,
+      chart:  { ...base.chart, type: 'bar' },
+      colors: typeValues.map((_, i) => blueRamp(i)),
+      plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '60%',
+        distributed: true, dataLabels: { position: 'top' } } },
+      xaxis: { categories: typeLabels,
+        labels: { style: { fontSize: '10px', colors: T.textMuted } },
+        axisBorder: { show: false }, axisTicks: { show: false },
+        title: { text: t('overview.complaints') || 'Complaints',
+          style: { fontSize: '10px', color: T.textDim } } },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted }, maxWidth: 150 } },
+      dataLabels: { enabled: true, textAnchor: 'start', offsetX: 8,
+        style: { fontSize: '10px', fontWeight: 700, colors: [T.text] },
+        formatter: v => `${v.toLocaleString()} (${((v / typeTotal) * 100).toFixed(0)}%)` },
+      legend: { show: false },
+      grid: { xaxis: { lines: { show: false } }, borderColor: gridLine(T), strokeDashArray: 3 },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v?.toLocaleString()} (${((v / typeTotal) * 100).toFixed(1)}%)` } },
+    },
+  } : null
+
+  // 6. Segment bar — O-2: rank-graded blue (data pre-sorted desc)
+  const segmentChart = segValues.length > 0 ? {
+    series: [{ name: 'Complaints', data: segValues }],
+    options: {
+      ...base,
+      chart:  { ...base.chart, type: 'bar' },
+      colors: segValues.map((_, i) => blueRamp(i)),
+      plotOptions: { bar: { columnWidth: '65%', borderRadius: 0, distributed: true } },
+      xaxis: { categories: segLabels,
+        labels: { rotate: -25, style: { fontSize: '10px', fontFamily: FONT.display,
+          colors: T.textMuted, fontWeight: 600 } },
+        axisBorder: { show: false }, axisTicks: { show: false } },
+      yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted },
+        formatter: v => v?.toLocaleString() } },
+      dataLabels: { enabled: false },
+      legend: { show: false },
+      grid: { borderColor: gridLine(T), strokeDashArray: 3 },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v?.toLocaleString()} (${((v / segTotal) * 100).toFixed(1)}%)` } },
+    },
+  } : null
+
+  // 7. Region bar — O-2: shared blueRamp (was an inline copy of it)
+  const regChart = regionsSorted.length > 0 ? {
+    series: [{ name: t('overview.complaints'),
+      data: regionsSorted.map(r => r.total_complaints) }],
+    options: {
+      ...base,
+      chart:  { ...base.chart, type: 'bar' },
+      plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '55%',
+        distributed: true, dataLabels: { position: 'top' } } },
+      colors: regionsSorted.map((_, i) => blueRamp(i)),
+      dataLabels: { enabled: true, textAnchor: 'start', offsetX: 10,
+        style: { fontSize: '10px', fontWeight: 600, colors: [T.text] },
+        formatter: v => v.toLocaleString() },
+      xaxis: { categories: regionsSorted.map(r =>
+          (r.region || '').replace(' GOUVERNORAT', '').replace(' Governorate', '')),
+        labels: { style: { fontSize: '11px', colors: T.textMuted } },
+        axisBorder: { show: false }, axisTicks: { show: false },
+        title: { text: t('overview.complaints'),
+          style: { fontSize: '10px', color: T.textDim } } },
+      yaxis: { labels: { style: { fontSize: '11px', colors: T.textMuted }, maxWidth: 130 } },
+      legend: { show: false },
+      grid: { xaxis: { lines: { show: false } } },
+      tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
+        y: { formatter: v => `${v.toLocaleString()} complaints` } },
+    },
+  } : null
+
+  // ══ KPI tiles ═══════════════════════════════════════════════════
+  const kpiTiles = [
+    {
+      label: t('overview.totalComplaints') || 'Total Complaints',
+      value: totalComplaints.toLocaleString(),
+      color: HW.blue,
+      icon:  Database,
+      sub:   `${overview?.date_min || '—'} → ${overview?.date_max || '—'}`,
+    },
+    {
+      label: t('overview.openComplaints') || 'Open Complaints',
+      value: statusGroups.open.toLocaleString(),
+      color: slaBreached ? ALARM.critical : ALARM.normal,   // O-2: severity, not brand red
+      icon:  slaBreached ? ShieldAlert : CheckCircle2,
+      sub:   `${openPct.toFixed(1)}% open rate`,
+      alert: slaBreached,
+      delta: slaBreached ? +(openPct - SLA_OPEN_THRESHOLD).toFixed(1) : null,
+      good:  false,
+    },
+    {
+      label: t('overview.uniqueSubs') || 'Unique Subscribers',
+      value: (overview?.unique_msisdns || analysis?.overview?.unique_msisdns || 0).toLocaleString(),
+      color: '#8B5CF6',
+      icon:  Users,
+      sub:   `${overview?.unique_cities || analysis?.overview?.n_cities || 0} cities covered`,
+    },
+    {
+      label: t('overview.unresolvedPct') || 'Unresolved Rate',
+      value: `${unresolved.toFixed(1)}`,
+      unit:  '%',
+      color: unresolved > UNRESOLVED_THRESHOLD ? ALARM.major : ALARM.minor,
+      icon:  AlertTriangle,
+      sub:   `${statusGroups.closed.toLocaleString()} closed`,
+      delta: +(unresolved - UNRESOLVED_THRESHOLD).toFixed(1),
+      good:  false,
+    },
   ]
 
-  // ════════════════════════════════════════════════════════════════════════════
-  // RENDER
-  // ════════════════════════════════════════════════════════════════════════════
+  // ══ Render ══════════════════════════════════════════════════════
   return (
-    <div style={{ padding: '40px 48px 80px', maxWidth: 1600, margin: '0 auto' }}>
-      <style>{`
-        @keyframes ov-pulse {
-          0%,100% { opacity:1; transform:scale(1)   }
-          50%      { opacity:.4; transform:scale(.8) }
-        }
-        .ov-stat-block:hover {
-          border-color: rgba(207,10,44,.22) !important;
-          background:   rgba(207,10,44,.03) !important;
-          transform:    translateY(-2px);
-          box-shadow:   0 8px 28px rgba(207,10,44,.06);
-        }
-        .ov-chart-panel:hover { border-color: rgba(207,10,44,.2) !important; }
-        .ov-chart-panel:hover .ov-panel-accent { transform: scaleX(1) !important; }
-        .ov-info-card:hover {
-          border-color: rgba(207,10,44,.2) !important;
-          background:   rgba(207,10,44,.025) !important;
-          transform:    translateY(-1px);
-        }
-      `}</style>
+    <div style={{ padding: '36px 44px 80px', maxWidth: 1600, margin: '0 auto',
+      background: T.bg, minHeight: '100vh', transition: 'background .3s' }}>
 
-      {/* ── HERO HEADER ── */}
-      <div style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: 32, marginBottom: 28 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 7,
-            background: `${C.huawei}1A`, border: `1px solid ${C.huawei}47`, padding: '6px 14px',
-          }}>
-            <span style={{
-              width: 6, height: 6, borderRadius: '50%', background: C.huawei,
-              display: 'inline-block', animation: 'ov-pulse 2s ease-in-out infinite',
-            }}/>
-            <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: C.huawei }}>
-              {t('overview.liveNetwork')}
+      {/* ══ HERO HEADER ════════════════════════════════════════════ */}
+      <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 28, marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+          {/* O-2: live = healthy → green status pill (was brand red) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7,
+            background: `${ALARM.normal}10`, border: `1px solid ${ALARM.normal}40`,
+            padding: '5px 13px' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: ALARM.normal,
+              display: 'inline-block', animation: 'noc-pulse 2s ease-in-out infinite' }}/>
+            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
+              textTransform: 'uppercase', color: ALARM.normal }}>
+              {t('overview.liveNetwork') || 'LIVE NETWORK'}
             </span>
           </div>
-          <span style={{ fontSize: 11, color: C.textDim, letterSpacing: '1.5px' }}>
+          <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
             Huawei Technologies Tunisia
           </span>
-          {/* Language toggle */}
-          <button
-            onClick={() => i18n.changeLanguage(i18n.language === 'zh' ? 'en' : 'zh')}
-            style={{
-              marginLeft: 8, background: 'transparent', border: `1px solid ${C.border}`,
-              color: C.textMuted, padding: '4px 10px', cursor: 'pointer', fontSize: 10,
-              letterSpacing: '1px', display: 'flex', alignItems: 'center', gap: 5,
-            }}
-            title={t('layout.lang.toggle')}
-          >
-            <Globe size={10}/>
-            {i18n.language === 'zh' ? 'EN' : '中文'}
-          </button>
+          {refreshing && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 6 }}>
+              <RefreshCw size={11} color={T.textDim}
+                style={{ animation: 'noc-spin .9s linear infinite' }}/>
+              <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '1.5px',
+                textTransform: 'uppercase' }}>
+                {t('overview.refreshing') || 'Refreshing'}
+              </span>
+            </div>
+          )}
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between',
+          alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
           <div>
-            <h1 style={{
-              fontFamily: "'Barlow Condensed', sans-serif",
-              fontSize:   'clamp(28px,3.5vw,54px)',
+            {/* The ONE brand-red element on this page (hero accent) */}
+            <h1 style={{ fontFamily: FONT.display, fontSize: 'clamp(26px,3.5vw,52px)',
               fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1,
-              color: C.text, marginBottom: 8,
-            }}>
-              {t('overview.title').replace(' Dashboard', '').replace(' 仪表板', '')}{' '}
-              <span style={{ color: C.huawei, fontStyle: 'italic' }}>DASHBOARD</span>
+              color: T.text, marginBottom: 8 }}>
+              {t('overview.titleShort') || 'NOC'}{' '}
+              <span style={{ color: HW.red, fontStyle: 'italic' }}>
+                {t('overview.titleAccent') || 'OVERVIEW'}
+              </span>
             </h1>
-            <p style={{ fontSize: 13, color: C.textMuted, fontWeight: 300, letterSpacing: '.3px' }}>
-              {t('overview.subtitle')}
+            <p style={{ fontSize: 13, color: T.textMuted, fontWeight: 300, letterSpacing: '.3px' }}>
+              {t('overview.subtitle') || 'Real-time telecom complaint analytics — SpiriCom & Ooredoo Tunisia'}
             </p>
           </div>
-
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {[
-              { label: `● ${t('layout.live')}`,                                           color: ALARM.normal,  bg: `${ALARM.normal}14`,   bd: `${ALARM.normal}47` },
-              { label: `${(overview?.total_complaints || 0).toLocaleString()} ${t('layout.complaints')}`, color: C.textMuted, bg: 'rgba(255,255,255,.02)', bd: C.border },
-              { label: `${overview?.unique_regions || 0} ${t('layout.governorates')}`,    color: C.textMuted,   bg: 'rgba(255,255,255,.02)', bd: C.border },
-              { label: `${overview?.unique_cities  || 0} ${t('overview.cities')}`,        color: C.textMuted,   bg: 'rgba(255,255,255,.02)', bd: C.border },
-            ].map((b, i) => (
-              <span key={i} style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase',
-                padding: '5px 14px', border: `1px solid ${b.bd}`, background: b.bg, color: b.color,
-              }}>
-                {b.label}
+              `${totalComplaints.toLocaleString()} ${t('layout.complaints') || 'Complaints'}`,
+              `${overview?.unique_regions || analysis?.overview?.n_provinces || 0} ${t('layout.governorates') || 'Governorates'}`,
+              `${overview?.unique_cities || analysis?.overview?.n_cities || 0} ${t('overview.cities') || 'Cities'}`,
+            ].map(label => (
+              <span key={label} style={{ fontSize: 10, fontWeight: 800,
+                letterSpacing: '1.5px', textTransform: 'uppercase', padding: '5px 13px',
+                border: `1px solid ${T.border}`,
+                background: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)',
+                color: T.textMuted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {label}
               </span>
             ))}
           </div>
         </div>
       </div>
 
-      {/* ── 1. SYSTEM HEALTH BANNER (highest hierarchy — NOC sees this first) ── */}
-      <SystemHealthBanner kpis={kpis} spikeCount={spikeCount} total={trend.length}/>
-
-      {/* ── 2. KPI TILES ── */}
-      <SectionLabel
+      {/* ══ 1. SYSTEM HEALTH + SLA ALERT ══════════════════════════ */}
+      <AlertBanner
+        severity={healthSeverity}
+        title={`${t('overview.health') || 'SYSTEM'} — ${healthText}`}
+        message={`${spikeCount} ${t('overview.spikes') || 'complaint spike(s)'} in ${trend.length} days`}
         action={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Badge variant="green">▲ {t('overview.improving')}</Badge>
-            <Badge variant="red">▼ {t('overview.degrading')}</Badge>
-            <Badge variant="blue">→ {t('overview.flat')}</Badge>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <Clock size={11} color={T.textDim}/>
+            <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '2px',
+              textTransform: 'uppercase' }}>
+              {t('overview.updated') || 'UPDATED'}
+            </span>
+            <span style={{ fontFamily: FONT.display, fontSize: 13, fontWeight: 700,
+              color: T.textMuted }}>
+              {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}   {/* O-5 */}
+            </span>
           </div>
         }
-        sub={t('overview.kpiSubtitle')}
-      >
-        {t('overview.kpiSection')}
+      />
+      {slaBreached && (
+        <AlertBanner
+          severity="critical"
+          icon={ShieldAlert}
+          title={t('overview.slaAlert') || 'SLA BREACH'}
+          message={t('overview.slaAlertDesc') ||
+            `${openPct.toFixed(1)}% of complaints remain OPEN — exceeds ${SLA_OPEN_THRESHOLD}% SLA threshold`}
+          value={`${openPct.toFixed(1)}%`}
+        />
+      )}
+
+      {/* ══ 2. KPI TILES ══════════════════════════════════════════ */}
+      <SectionLabel
+        sub={`${analysis?.overview?.date_range_days || trend.length || 0} days monitored · ${spikeCount} anomaly spikes detected`}
+        action={
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Badge variant={slaBreached ? 'critical' : 'normal'}>
+              {statusGroups.open.toLocaleString()} OPEN
+            </Badge>
+            <Badge variant="normal">{statusGroups.closed.toLocaleString()} CLOSED</Badge>
+          </div>
+        }>
+        {t('overview.kpiSection') || 'COMPLAINT INTELLIGENCE'}
       </SectionLabel>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-        {kpis.map((kpi, i) => (
-          <StatBlock key={i} {...kpi} color={getKpiAlarmColor(kpi)} icon={KPI_ICONS[i % KPI_ICONS.length]}/>
+      <GapGrid columns="repeat(4,1fr)">
+        {kpiTiles.map((kpi, i) => (
+          <StatBlock key={i} {...kpi} deltaIcons={DELTA_ICONS}/>
         ))}
-      </div>
+      </GapGrid>
 
-      {/* ── 3. COMPLAINT TREND ── */}
+      {/* ══ 3. COMPLAINT TREND ════════════════════════════════════ */}
       <SectionLabel
         action={
           <div style={{ display: 'flex', gap: 8 }}>
-            <Badge variant="amber">{spikeCount} {t('overview.spikeBadge')}</Badge>
-            <Badge variant="gray">{t('overview.zScore')}</Badge>
+            <Badge variant={spikeCount > 0 ? 'minor' : 'normal'}>
+              {spikeCount} {t('overview.spikeBadge') || 'SPIKES'}
+            </Badge>
+            {/* O-3: badge derives from the actual constant */}
+            <Badge variant="gray">{`Z-SCORE ≥ ${SPIKE_SIGMA}σ`}</Badge>
           </div>
         }
-        sub={t('overview.trendSubtitle')}
-      >
-        {t('overview.trendSection')}
+        sub={t('overview.trendSubtitle') ||
+          'Daily complaint volume with 7-day rolling average and spike detection'}>
+        {t('overview.trendSection') || 'COMPLAINT VOLUME — DAILY TREND'}
       </SectionLabel>
 
-      <PulseBar spikeCount={spikeCount} total={trend.length} today={todayVal} roll7={roll7Val}/>
-
+      <StatStrip items={[
+        { label: t('overview.spikeEvents') || 'SPIKE EVENTS', value: spikeCount,
+          color: spikeCount > 0 ? ALARM.minor : ALARM.normal },
+        { label: t('overview.spikeRate') || 'SPIKE RATE',
+          value: `${(spikeRate * 100).toFixed(1)}%`,
+          color: spikeRate > 0.05 ? ALARM.critical : ALARM.normal },
+        { label: t('overview.todayVsAvg') || 'TODAY VS 7D AVG',
+          value: todayVal != null && roll7Val != null
+            ? `${todayVal - roll7Val > 0 ? '+' : ''}${(todayVal - roll7Val).toFixed(0)}` : '—',
+          color: todayVal != null && roll7Val != null
+            ? (todayVal - roll7Val > 0 ? ALARM.critical
+              : todayVal - roll7Val < 0 ? ALARM.normal : T.textMuted)
+            : T.textMuted },
+        { label: t('overview.daysRecorded') || 'DAYS RECORDED',
+          value: trend.length, color: HW.blue },
+      ]}/>
       <ChartPanel style={{ marginTop: 1 }}>
-        <ReactApexChart options={trendChart.options} series={trendChart.series} type="line" height={420}/>
+        <ReactApexChart options={trendChart.options} series={trendChart.series}
+          type="line" height={380}/>
       </ChartPanel>
 
-      {/* ── 4. QoE HEATMAP + COMPLAINTS BY SERVICE ── */}
-      <SectionLabel sub={t('overview.heatSectionSub')}>
-        {t('overview.heatSection')} &amp; {t('overview.svcSection')}
+      {/* ══ 4. RESOLUTION STATUS + WEEKLY PATTERN ════════════════ */}
+      <SectionLabel
+        sub={`Status breakdown from NB01 · Day-of-week distribution${hasDow ? ` · ${peakDay} peak` : ''}`}
+        action={slaBreached
+          ? <Badge variant="critical">SLA BREACH {openPct.toFixed(1)}%</Badge>
+          : <Badge variant="normal">SLA OK</Badge>}>
+        {t('overview.resolutionSection') || 'RESOLUTION STATUS & WEEKLY PATTERN'}
       </SectionLabel>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-        <ChartPanel title={t('overview.heatSection')} sub={t('overview.heatSubtitle')}>
-          {heatChart ? (
+      <GapGrid columns="1fr 1.6fr">
+        {/* Resolution donut */}
+        <ChartPanel
+          title={t('overview.resolutionTitle') || 'Resolution Status'}
+          sub={`${statusGroups.open.toLocaleString()} open · ${statusGroups.closed.toLocaleString()} closed · SLA threshold ${SLA_OPEN_THRESHOLD}%`}>
+          {resolutionChart ? (
             <>
-              <ReactApexChart options={heatChart.options} series={heatChart.series} type="heatmap" height={380}/>
-              {/* Inline legend for alarm colours */}
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-                {HEATMAP_RANGES.map(r => (
-                  <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <div style={{ width: 10, height: 10, background: r.color }}/>
-                    <span style={{ fontSize: 9, color: C.textDim, letterSpacing: '.5px' }}>{r.name}</span>
+              <ReactApexChart options={resolutionChart.options}
+                series={resolutionChart.series} type="donut" height={280}/>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
+                gap: 6, marginTop: 12 }}>
+                {DONUT.map(({ label, value, color }) => (
+                  <div key={label} style={{
+                    background: T.mode === 'dark' ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.03)',
+                    padding: '7px 12px', display: 'flex',
+                    alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <div style={{ width: 7, height: 7, background: color, borderRadius: 1 }}/>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: T.textDim,
+                        letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+                        {label}
+                      </span>
+                    </div>
+                    <span style={{ fontFamily: FONT.display, fontSize: 16,
+                      fontWeight: 800, color }}>
+                      {value.toLocaleString()}
+                    </span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <EmptyState
-              icon={<Activity size={36} color="rgba(255,255,255,.18)"/>}
-              title={t('overview.noHeatmap')}
-              desc={t('overview.noHeatmapDesc')}
-            />
+            <EmptyState icon={BarChart3} title="No status data"
+              desc="Waiting for /api/analytics/complaints/status"/>
+          )}
+        </ChartPanel>
+
+        {/* Weekly pattern */}
+        <ChartPanel
+          title={t('overview.weeklyTitle') || 'Weekly Complaint Pattern'}
+          sub={hasDow
+            ? `${peakDay} peak${wkdDelta != null ? ` · weekdays ${wkdDelta >= 0 ? '+' : ''}${wkdDelta.toFixed(1)}% vs weekend` : ''} · full bar = today`
+            : 'Day-of-week distribution'}>
+          {hasDow ? (
+            <ReactApexChart options={weeklyChart.options} series={weeklyChart.series}
+              type="bar" height={320}/>
+          ) : (
+            <EmptyState icon={Activity} title="DOW data unavailable"
+              desc="Run /api/analytics/complaints/dow"/>
+          )}
+          {/* O-3: weekly stats computed from the same data as the chart */}
+          {hasDow && (
+            <StatStrip style={{ marginTop: 12 }} items={[
+              { label: 'PEAK DAY',    value: peakDay,                          color: HW.blue },
+              { label: 'PEAK VOLUME', value: dowValues[peakIdx].toLocaleString(), color: HW.blue },
+              { label: 'WEEKEND AVG', value: Math.round(weekendAvg).toLocaleString(), color: T.textMuted },
+              { label: 'WKD vs WKND',
+                value: wkdDelta != null ? `${wkdDelta >= 0 ? '+' : ''}${wkdDelta.toFixed(1)}%` : '—',
+                color: ALARM.minor },
+            ]}/>
+          )}
+        </ChartPanel>
+      </GapGrid>
+
+      {/* ══ 5. COMPLAINT TYPES + MONTHLY TREND ═══════════════════ */}
+      <SectionLabel
+        sub={topType
+          ? `sub_sub_category breakdown from NB01 · ${typeValues.length} issue types · ${topType} #1 at ${topTypePct.toFixed(1)}%`
+          : 'sub_sub_category breakdown from NB01'}>
+        {t('overview.typeSection') || 'COMPLAINT TYPES & MONTHLY TREND'}
+      </SectionLabel>
+
+      <GapGrid columns="1.4fr 1fr">
+        <ChartPanel
+          title={t('overview.typeTitle') || 'Top Complaint Types'}
+          sub={topType
+            ? `${topType} leads at ${topTypePct.toFixed(1)}% of categorized complaints`
+            : 'Categorized complaint volume'}>
+          {typeChart ? (
+            <ReactApexChart options={typeChart.options} series={typeChart.series}
+              type="bar" height={340}/>
+          ) : (
+            <EmptyState icon={BarChart3} title="No type data"
+              desc="Requires analysis_results.json from NB01"/>
           )}
         </ChartPanel>
 
         <ChartPanel
-          title={t('overview.svcSection')}
-          sub={`${Object.keys(svcVals).length} ${t('overview.categories')} · ${svcTotal.toLocaleString()}`}
-        >
-          {svcChart
-            ? <ReactApexChart options={svcChart.options} series={svcChart.series} type="donut" height={380}/>
-            : <EmptyState icon={<LayoutGrid size={36} color="rgba(255,255,255,.18)"/>} title={t('overview.noService')}/>
-          }
+          title={t('overview.monthlyTitle') || 'Monthly Volume Trend'}
+          sub={peakMonth
+            ? `Peak ${peakMonth.month} — ${peakMonth.count.toLocaleString()} complaints · partial months excluded`
+            : 'Complaints per month'}>
+          {monthlyChart ? (
+            <ReactApexChart options={monthlyChart.options} series={monthlyChart.series}
+              type="area" height={340}/>
+          ) : (
+            <EmptyState icon={TrendingUp} title="No monthly data"
+              desc="Requires analysis_results.json from NB01"/>
+          )}
         </ChartPanel>
-      </div>
+      </GapGrid>
 
-      {/* ── 5. COMPLAINTS BY REGION ── */}
+      {/* ══ 6. SUBSCRIBER SEGMENTS ════════════════════════════════ */}
       <SectionLabel
-        action={<Badge variant="blue">{regionsSorted.length} {t('overview.regions')}</Badge>}
-        sub={t('overview.regionSubtitle')}
-      >
-        {t('overview.regionSection')}
+        sub={top2Names.length === 2
+          ? `${top2Names[0]} + ${top2Names[1]} = ${top2Pct.toFixed(1)}% of segmented complaints`
+          : 'Complaint volume by customer segment'}
+        action={<Badge variant="blue">{segLabels.length} Segments</Badge>}>
+        {t('overview.segmentSection') || 'COMPLAINTS BY SUBSCRIBER SEGMENT'}
       </SectionLabel>
 
-      {regChart
-        ? <ChartPanel>
-            <ReactApexChart
-              options={regChart.options} series={regChart.series} type="bar"
-              height={Math.max(320, regionsSorted.length * 34)}
-            />
-          </ChartPanel>
-        : <EmptyState icon={<Map size={36} color="rgba(255,255,255,.18)"/>} title={t('overview.noRegion')}/>
-      }
+      <ChartPanel
+        title={t('overview.segmentTitle') || 'Complaint Volume by Customer Segment'}
+        sub={top2Names.length === 2
+          ? `Top two segments drive ${top2Pct.toFixed(1)}% of segmented complaint volume`
+          : undefined}>
+        {segmentChart ? (
+          <>
+            <ReactApexChart options={segmentChart.options} series={segmentChart.series}
+              type="bar" height={240}/>
+            {top2Names.length === 2 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12,
+                padding: '10px 14px',
+                background: T.mode === 'dark' ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.03)',
+                border: `1px solid ${T.border}` }}>
+                <Zap size={13} color={ALARM.minor}/>
+                <span style={{ fontSize: 11, color: T.textMuted }}>
+                  Premium segments ({top2Names.join(' + ')}) account for{' '}
+                  <strong style={{ color: ALARM.minor }}>{top2Pct.toFixed(1)}%</strong>{' '}
+                  of segmented complaints — NOC priority for SLA enforcement
+                </span>
+              </div>
+            )}
+          </>
+        ) : (
+          <EmptyState icon={Users} title="No segment data"
+            desc="Requires analysis_results.json from NB01"/>
+        )}
+      </ChartPanel>
 
-      {/* ── 6. DATASET SUMMARY ── */}
-      <SectionLabel sub={t('overview.datasetSubtitle')}>
-        {t('overview.datasetSection')}
+      {/* ══ 7. REGION DISTRIBUTION ════════════════════════════════ */}
+      <SectionLabel
+        action={<Badge variant="blue">{regionsSorted.length} {t('overview.regions') || 'Regions'}</Badge>}
+        sub={t('overview.regionSubtitle') || 'Total complaint volume per governorate'}>
+        {t('overview.regionSection') || 'GEOGRAPHIC DISTRIBUTION'}
       </SectionLabel>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-        {infoCards.map((item, i) => (
-          <div key={i} className="ov-info-card" style={{
-            background:    C.bg3,
-            border:        `1px solid ${C.border}`,
-            borderLeft:    `2px solid ${item.color}`,
-            padding:       '20px 22px',
-            display:       'flex',
-            alignItems:    'center',
-            gap:           16,
-            transition:    'all .25s',
-            position:      'relative',
-            overflow:      'hidden',
-          }}>
-            <div style={{
-              width: 38, height: 38,
-              background: `${item.color}12`, border: `1px solid ${item.color}25`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              {/* Lucide icon — size and color as props */}
-              <item.Icon size={15} color={item.color}/>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{
-                fontSize: 9, color: C.textDim, letterSpacing: '1.8px',
-                textTransform: 'uppercase', fontWeight: 700, marginBottom: 5,
-              }}>
-                {t(item.labelKey)}
-              </div>
-              <div style={{
-                fontFamily: "'Barlow Condensed', sans-serif",
-                fontSize: 16, fontWeight: 800, color: item.color,
-                wordBreak: 'break-all', lineHeight: 1.2, letterSpacing: '-.3px',
-              }}>
-                {item.value}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      {regChart ? (
+        <ChartPanel>
+          <ReactApexChart options={regChart.options} series={regChart.series}
+            type="bar" height={Math.max(320, regionsSorted.length * 34)}/>
+        </ChartPanel>
+      ) : (
+        <EmptyState icon={Globe} title={t('overview.noRegion') || 'No region data'}
+          desc="Waiting for /api/analytics/complaints/by-region"/>
+      )}
+
+      {/* ══ 8. DATASET SUMMARY ════════════════════════════════════ */}
+      <SectionLabel sub="NB01 analysis_results.json · complaints_clean.parquet">
+        {t('overview.datasetSection') || 'DATASET SUMMARY'}
+      </SectionLabel>
+
+      {/* Metadata, not alarms → neutral accent colors (O-2) */}
+      <GapGrid columns="repeat(4,1fr)">
+        <InfoCard label={t('overview.totalComplaints') || 'Total Complaints'}
+          value={totalComplaints.toLocaleString()} color={HW.blue} icon={Database}/>
+        <InfoCard label={t('overview.uniqueSubs') || 'Unique Subscribers'}
+          value={(analysis?.overview?.unique_msisdns || 0).toLocaleString()}
+          color="#8B5CF6" icon={Users}/>
+        <InfoCard label={t('overview.geoCoverage') || 'Geographic Coverage'}
+          value={`${analysis?.overview?.n_cities || 0} Cities`}
+          color="#14B8A6" icon={Globe}/>
+        <InfoCard label={t('overview.analysisPeriod') || 'Analysis Period'}
+          value={`${analysis?.overview?.date_min || '—'} → ${analysis?.overview?.date_max || '—'}`}
+          color="#6366F1" icon={Calendar}/>
+      </GapGrid>
     </div>
   )
 }

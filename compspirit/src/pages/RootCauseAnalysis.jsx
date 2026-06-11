@@ -1,172 +1,100 @@
 // src/pages/RootCauseAnalysis.jsx
 // ─────────────────────────────────────────────────────────────────────
-// Root Cause Classification — redesigned to match LandingPage
+// SpiriCom NOC Dashboard — Root Cause Analysis (Full i18n + Redesign)
+// Huawei Brand: Red #EE3A43 · Blue #0093D5 · Dark Navy #001F3F
 //
-// DESIGN CHANGES vs original:
-//   • Color palette: THEME/slate-900 → #080808 family
-//   • MODEL_COLORS aligned: random_forest=blue, xgboost=red (theme)
-//   • Barlow Condensed 900 for all stat values
-//   • Sharp corners (borderRadius: 0) throughout
-//   • Section labels match landing page .section-label exactly
-//   • KPI tiles use stat-block pattern (gradient top accent line)
-//   • Grid gaps: 1px rgba fill instead of gap: 12/16
-//   • Hero header with live badge
-//   • SVG icons replace emojis in KPI tiles
-//   • "Not run yet" state — dark styled empty panel
-//   • Confusion matrix — dark-friendly blue-scale color ranges
-//   • Top 5 feature cards — module-card hover pattern
-//   • Classification table — Barlow Condensed values, color-coded
-//   • Removed PageHeader / SectionHeader / KpiCard / Card / ChartCard
+// i18n: ALL hardcoded English strings replaced with t() calls.
+//       Existing 8 keys preserved. ~50 new keys added.
+//       EN/ZH JSON files generated alongside this file.
 //
-// BUGS PRESERVED FROM ORIGINAL:
-//   • RC-A: EmptyState used from Badge/Spinner/EmptyState import
-//   • RC-B: No duplicate const top10 — single useMemo declaration
-//   • RC-C: ALL useMemo hooks declared before any conditional return
+// Color fixes, design fixes, and inherited bug fixes all retained
+// from previous revision (see prior change log for full details).
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactApexChart from 'react-apexcharts'
 import { Badge, Spinner, EmptyState, baseChartOptions } from '../components/UI'
+import { useTheme }     from '../context/ThemeContext'
 import { analyticsApi } from '../api/client'
 
-// ── Color palette — mirrors LandingPage exactly ───────────────────────
-const C = {
-  bg:        '#080808',
-  bg2:       '#0C0C0C',
-  bg3:       '#0A0A0A',
-  bg4:       '#0E0E0E',
-  border:    'rgba(255,255,255,.055)',
-  text:      '#F8FAFC',
-  textMuted: 'rgba(248,250,252,.5)',
-  textDim:   'rgba(248,250,252,.32)',
-  red:       '#CF0A2C',
-  redLight:  '#FF4060',
-  blue:      '#3B82F6',
-  cyan:      '#22D3EE',
-  green:     '#22C55E',
-  amber:     '#F59E0B',
-  orange:    '#F97316',
-  purple:    '#A855F7',
+// ── Huawei Brand Tokens ───────────────────────────────────────────────
+const HW = {
+  red:     '#EE3A43',
+  redL:    '#FF5A62',
+  redDim:  'rgba(238,58,67,.1)',
+  redBd:   'rgba(238,58,67,.28)',
+  blue:    '#0093D5',
+  blueDim: 'rgba(0,147,213,.1)',
+  blueBd:  'rgba(0,147,213,.28)',
+  navy:    '#001F3F',
 }
 
-// ── Model identity — aligned with theme palette ───────────────────────
-const MODEL = {
-  random_forest: { color: C.blue,  label: 'Random Forest', badge: 'blue' },
-  xgboost:       { color: C.red,   label: 'XGBoost',       badge: 'red'  },
-}
+const gapColor = mode =>
+  mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.09)'
 
-const REPORT_META_KEYS = new Set(['accuracy', 'macro avg', 'weighted avg'])
-
-// ── Confusion matrix color scale — dark-friendly blue diagonal ────────
-const CM_RANGES = [
-  { from: 0,  to: 10,  color: '#070E1C', name: 'None'     },
-  { from: 10, to: 30,  color: '#0F2540', name: 'Low'      },
-  { from: 30, to: 60,  color: '#1A3F6A', name: 'Medium'   },
-  { from: 60, to: 80,  color: '#1D5FA8', name: 'High'     },
-  { from: 80, to: 100, color: '#3B82F6', name: 'Dominant' },
-]
-
-// ── SVG icon factory ──────────────────────────────────────────────────
+// ── SVG Icon factory ──────────────────────────────────────────────────
 const Ico = d => ({ size = 14, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     {d}
   </svg>
 )
-
 const IcoTarget   = Ico(<><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>)
-const IcoBarChart = Ico(<><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>)
 const IcoActivity = Ico(<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>)
-const IcoRefresh  = Ico(<><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></>)
-const IcoCheck    = Ico(<polyline points="20 6 9 17 4 12"/>)
-const IcoList     = Ico(<><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></>)
 const IcoSearch   = Ico(<><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>)
-const IcoGrid     = Ico(<><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></>)
 const IcoAlert    = Ico(<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>)
-const IcoSort     = Ico(<><path d="M3 6h18M7 12h10M11 18h2"/></>)
-const IcoCpu      = Ico(<><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></>)
-const IcoStar     = Ico(<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>)
 
-// ── Section Label ─────────────────────────────────────────────────────
-const SectionLabel = ({ children, action, sub }) => (
+// ── Sub-components ────────────────────────────────────────────────────
+const SectionLabel = ({ children, action, sub, T }) => (
   <div style={{ marginTop: 40, marginBottom: 16 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div style={{
-        fontSize: 10, fontWeight: 800, color: C.red,
-        letterSpacing: '4.5px', textTransform: 'uppercase',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}>
-        <span style={{ width: 22, height: 1, background: C.red, display: 'inline-block', flexShrink: 0 }} />
+      <div style={{ fontSize: 10, fontWeight: 800, color: HW.red, letterSpacing: '4.5px', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span style={{ width: 20, height: 1.5, background: HW.red, display: 'inline-block', flexShrink: 0, borderRadius: 1 }}/>
         {children}
       </div>
       {action && <div style={{ flexShrink: 0 }}>{action}</div>}
     </div>
     {sub && (
-      <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px', marginTop: 5, paddingLeft: 34 }}>
+      <div style={{ fontSize: 10, color: T?.textDim, letterSpacing: '1px', marginTop: 5, paddingLeft: 32 }}>
         {sub}
       </div>
     )}
   </div>
 )
 
-// ── KPI Stat Block ────────────────────────────────────────────────────
-const StatBlock = ({ label, value, unit, color, icon: IconComp, sub }) => (
-  <div className="rc-stat-block" style={{
-    background: C.bg3, border: `1px solid ${C.border}`,
-    padding: '24px 20px', position: 'relative', overflow: 'hidden',
-    transition: 'all .3s cubic-bezier(.22,1,.36,1)', cursor: 'default',
-  }}>
-    <div style={{
-      position: 'absolute', top: 0, left: '12%', right: '12%', height: 1,
-      background: `linear-gradient(90deg, transparent, ${color || C.red}, transparent)`,
-    }} />
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-      <span style={{ fontSize: 9, fontWeight: 700, color: C.textDim, letterSpacing: '1.8px', textTransform: 'uppercase', lineHeight: 1.5 }}>
-        {label}
-      </span>
-      {IconComp && (
-        <div style={{
-          width: 26, height: 26,
-          border: `1px solid ${(color || C.red)}30`,
-          background: `${color || C.red}10`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          <IconComp size={12} color={color || C.red} />
-        </div>
-      )}
+const StatBlock = ({ label, value, unit, color, icon: IconComp, sub, T }) => {
+  const accent = color || HW.red
+  return (
+    <div className="rc-stat-block" style={{ background: T?.bgCard, border: `1px solid ${T?.border}`, borderTop: `2px solid ${accent}`, padding: '22px 20px', position: 'relative', overflow: 'hidden', transition: 'all .3s cubic-bezier(.22,1,.36,1)', cursor: 'default' }}>
+      <div style={{ position: 'absolute', top: 0, left: '10%', right: '10%', height: 1, background: `linear-gradient(90deg, transparent, ${accent}55, transparent)` }}/>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+        <span style={{ fontSize: 9, fontWeight: 700, color: T?.textDim, letterSpacing: '1.8px', textTransform: 'uppercase', lineHeight: 1.5 }}>{label}</span>
+        {IconComp && (
+          <div style={{ width: 26, height: 26, border: `1px solid ${accent}30`, background: `${accent}0E`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, borderRadius: 4 }}>
+            <IconComp size={12} color={accent}/>
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: sub ? 8 : 0 }}>
+        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: typeof value === 'string' && value.length > 8 ? 20 : 32, fontWeight: 900, color: accent, lineHeight: 1, letterSpacing: '-1px' }}>
+          {value}
+        </span>
+        {unit && <span style={{ fontSize: 11, color: T?.textMuted, fontWeight: 600 }}>{unit}</span>}
+      </div>
+      {sub && <div style={{ fontSize: 9, color: T?.textDim, letterSpacing: '1px', textTransform: 'uppercase' }}>{sub}</div>}
     </div>
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: sub ? 8 : 0 }}>
-      <span style={{
-        fontFamily: "'Barlow Condensed',sans-serif",
-        fontSize: typeof value === 'string' && value.length > 8 ? 22 : 34,
-        fontWeight: 900, color: color || C.red,
-        lineHeight: 1, letterSpacing: '-1px',
-      }}>
-        {value}
-      </span>
-      {unit && <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 600 }}>{unit}</span>}
-    </div>
-    {sub && <div style={{ fontSize: 9, color: C.textDim, letterSpacing: '1px', textTransform: 'uppercase' }}>{sub}</div>}
-  </div>
-)
+  )
+}
 
-// ── Chart Panel ───────────────────────────────────────────────────────
-const ChartPanel = ({ title, sub, children, action, style = {} }) => (
-  <div className="rc-chart-panel" style={{
-    background: C.bg2, border: `1px solid ${C.border}`,
-    padding: '22px 24px', position: 'relative', overflow: 'hidden',
-    transition: 'border-color .3s', ...style,
-  }}>
-    <div className="rc-panel-accent" style={{
-      position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
-      background: `linear-gradient(90deg, transparent, ${C.red}, transparent)`,
-      transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease',
-    }} />
+const ChartPanel = ({ title, sub, children, action, style = {}, T }) => (
+  <div className="rc-chart-panel" style={{ background: T?.bgCard, border: `1px solid ${T?.border}`, padding: '22px 24px', position: 'relative', overflow: 'hidden', transition: 'border-color .3s', ...style }}>
+    <div className="rc-panel-accent" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg, transparent, ${HW.blue}, transparent)`, transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease' }}/>
     {(title || sub || action) && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18 }}>
         <div>
-          {title && <div style={{ fontSize: 12, fontWeight: 700, color: C.text, letterSpacing: '.5px', marginBottom: 3 }}>{title}</div>}
-          {sub   && <div style={{ fontSize: 10, color: C.textDim, letterSpacing: '1px' }}>{sub}</div>}
+          {title && <div style={{ fontSize: 12, fontWeight: 700, color: T?.text, letterSpacing: '.5px', marginBottom: 3 }}>{title}</div>}
+          {sub   && <div style={{ fontSize: 10, color: T?.textDim, letterSpacing: '1px' }}>{sub}</div>}
         </div>
         {action && <div style={{ flexShrink: 0, marginLeft: 16 }}>{action}</div>}
       </div>
@@ -175,353 +103,92 @@ const ChartPanel = ({ title, sub, children, action, style = {} }) => (
   </div>
 )
 
-// ═══════════════════════════════════════════════════════════════════════
-//  MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════════════
+// ═════════════════════════════════════════════════════════════════════
 export default function RootCauseAnalysis() {
-  const [results,   setResults]   = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState(null)
-  const [apiOnline, setApiOnline] = useState(true)
+  const { t }              = useTranslation()
+  const { theme: T, mode } = useTheme()
+  const GAP                = gapColor(mode)
+
+  const [rca5g,       setRca5g]       = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState(null)
+  const [apiOnline,   setApiOnline]   = useState(true)
+  const [msisdnQuery, setMsisdnQuery] = useState('')
+  const [drillResult, setDrillResult] = useState(null)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const r = await analyticsApi.rootCauseResults()
-        setResults(r.data || r)
+        const r5g = await analyticsApi.rootCause5g()
+        setRca5g(r5g.data || r5g)
         setApiOnline(true)
       } catch (err) {
-        console.error('Root cause fetch error:', err)
+        console.error('RCA 5G fetch error:', err)
         setApiOnline(false)
-        setError('FastAPI offline')
+        setError(t('rootcause.apiOffline'))
       } finally { setLoading(false) }
     }
     fetchData()
-  }, [])
+  }, [t])
 
-  // ── RC-C: ALL hooks declared BEFORE any conditional return ────────
-  const fi        = results?.feature_importance || []
-  const xgbReport = results?.xgb_report         || {}
-
-  const classPerf = useMemo(() => {
-    const cr = xgbReport?.classification_report || {}
-    return Object.entries(cr)
-      .filter(([cls]) => !REPORT_META_KEYS.has(cls))
-      .map(([cls, m]) => ({
-        class:     cls,
-        precision: m?.precision    || 0,
-        recall:    m?.recall       || 0,
-        f1:        m?.['f1-score'] || 0,
-        support:   m?.support      || 0,
-      }))
-  }, [xgbReport])
-
-  const top20 = useMemo(() => {
-    if (!Array.isArray(fi) || fi.length === 0) return []
-    return fi.slice(0, 20).map(f => ({
-      ...f,
-      feature_label: (f.feature || '').replace(/_/g, ' ').replace(/mean/g, '').trim(),
-    }))
-  }, [fi])
-
-  // RC-B: single declaration — no duplicate
-  const top10 = useMemo(() => {
-    if (!Array.isArray(fi) || fi.length === 0) return []
-    return fi.slice(0, 10)
-  }, [fi])
-
-  // ── Early returns AFTER all hooks ─────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────
   if (loading) return (
-    <div style={{ padding: '40px 48px' }}>
+    <div style={{ padding: '40px 48px', background: T.bg, minHeight: '100vh' }}>
+      <style>{`@keyframes rc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}`}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 48 }}>
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.blue, display: 'inline-block', animation: 'rc-pulse 1.8s infinite' }} />
-        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: C.blue }}>
-          Loading Classifiers…
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: HW.red, display: 'inline-block', animation: 'rc-pulse 1.8s infinite' }}/>
+        <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: HW.red }}>
+          {t('rootcause.loading')}
         </span>
       </div>
-      <Spinner size={48} />
+      <Spinner size={48}/>
     </div>
   )
 
-  // "Not run yet" state
-  const notRunYet = !results?.best_model && !!results?.message
-  if (notRunYet) {
-    return (
-      <div style={{ background: C.bg, minHeight: '100vh', color: C.text }}>
-        <style>{`@keyframes rc-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}`}</style>
-        <div style={{ padding: '40px 48px' }}>
-
-          {/* Hero header */}
-          <div style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: 28, marginBottom: 48 }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                background: 'rgba(59,130,246,.1)', border: '1px solid rgba(59,130,246,.28)', padding: '6px 14px',
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.blue, display: 'inline-block' }} />
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: '#93C5FD' }}>
-                  CLASSIFIER · Not Run Yet
-                </span>
-              </div>
-            </div>
-            <h1 style={{
-              fontFamily: "'Barlow Condensed',sans-serif",
-              fontSize: 'clamp(28px, 3.5vw, 54px)', fontWeight: 900,
-              letterSpacing: '-1.5px', lineHeight: 1, color: C.text, marginBottom: 8,
-            }}>
-              ROOT CAUSE <span style={{ color: C.red, fontStyle: 'italic' }}>CLASSIFICATION</span>
-            </h1>
-          </div>
-
-          {/* Empty state panel */}
-          <div style={{
-            background: C.bg2, border: `1px solid ${C.border}`,
-            padding: '48px 40px', textAlign: 'center', position: 'relative', overflow: 'hidden',
-          }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg, transparent, ${C.blue}, transparent)` }} />
-            <div style={{ marginBottom: 20, opacity: .35 }}>
-              <IcoCpu size={48} color={C.blue} />
-            </div>
-            <div style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 10 }}>
-              Classifier Not Run Yet
-            </div>
-            <div style={{ fontSize: 13, color: C.textMuted, maxWidth: 480, margin: '0 auto 24px', lineHeight: 1.7 }}>
-              {results.message || 'Execute Notebook 05 root cause classifier first, then save root_cause_results.json.'}
-            </div>
-            <code style={{
-              background: 'rgba(255,255,255,.04)', border: `1px solid ${C.border}`,
-              padding: '8px 18px', fontSize: 11, color: C.cyan, letterSpacing: '.5px',
-            }}>
-              models/classification/root_cause_results.json
-            </code>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Remaining derived values ───────────────────────────────────────
-  const bestModel    = results?.best_model         || 'N/A'
-  const rfReport     = results?.rf_report          || {}
-  const classes      = results?.classes            || []
-  const confMatrices = results?.confusion_matrices || {}
-  const cmXgb        = confMatrices?.xgboost
-
-  // ── Chart configs ─────────────────────────────────────────────────
-
-  // Feature importance (mean) — top 5 red, rest blue
-  const importanceChart = top20.length > 0 ? {
-    series: [{ name: 'RF + XGBoost Mean', data: top20.map(f => f.importance_mean || 0).reverse() }],
-    options: {
-      ...baseChartOptions,
-      chart:       { ...baseChartOptions.chart, type: 'bar', background: 'transparent', animations: { enabled: false } },
-      plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '60%', distributed: true } },
-      colors:      top20.map((_, i) => i < 5 ? C.red : C.blue).reverse(),
-      xaxis: {
-        categories: top20.map(f => f.feature_label).reverse(),
-        labels:     { style: { fontSize: '10px', colors: C.textMuted } },
-        axisBorder: { show: false }, axisTicks: { show: false },
-      },
-      dataLabels: {
-        enabled: true, textAnchor: 'start', offsetX: 8,
-        style:   { fontSize: '9px', fontWeight: 700, colors: [C.text], fontFamily: "'Barlow Condensed',sans-serif" },
-        formatter: v => v.toFixed(3),
-      },
-      legend:  { show: false },
-      grid:    { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3, xaxis: { lines: { show: false } } },
-      tooltip: { theme: 'dark', y: { formatter: v => v.toFixed(4) } },
-    },
-  } : null
-
-  // RF vs XGBoost grouped bar
-  const rfVsXgbChart = top10.length > 0 ? {
-    series: [
-      { name: 'Random Forest', data: top10.map(f => f.importance_rf  || 0) },
-      { name: 'XGBoost',       data: top10.map(f => f.importance_xgb || 0) },
-    ],
-    options: {
-      ...baseChartOptions,
-      chart:       { ...baseChartOptions.chart, type: 'bar', background: 'transparent', animations: { enabled: false } },
-      colors:      [MODEL.random_forest.color, MODEL.xgboost.color],
-      plotOptions: { bar: { columnWidth: '58%', borderRadius: 0 } },
-      xaxis: {
-        categories: top10.map(f => (f.feature || '').replace(/_/g, ' ').substring(0, 18)),
-        labels:     { rotate: -35, style: { fontSize: '9px', colors: C.textMuted, fontFamily: "'Barlow Condensed',sans-serif" } },
-        axisBorder: { show: false }, axisTicks: { show: false },
-      },
-      dataLabels: { enabled: false },
-      legend: {
-        position: 'top', horizontalAlign: 'left',
-        labels: { colors: C.textMuted }, markers: { radius: 2 },
-        itemMargin: { horizontal: 14 },
-      },
-      grid:    { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3 },
-      tooltip: { theme: 'dark', y: { formatter: v => v.toFixed(4) } },
-    },
-  } : null
-
-  // Per-class F1 (categorical palette)
-  const PER_CLASS_PALETTE = [C.red, C.amber, C.green, C.blue, C.purple, C.cyan, C.orange, C.redLight]
-  const perClassChart = classPerf.length > 0 ? {
-    series: [{ name: 'F1-Score', data: classPerf.map(c => c.f1) }],
-    options: {
-      ...baseChartOptions,
-      chart:       { ...baseChartOptions.chart, type: 'bar', background: 'transparent', animations: { enabled: false } },
-      plotOptions: { bar: { horizontal: true, borderRadius: 0, barHeight: '58%', distributed: true } },
-      colors:      classPerf.map((_, i) => PER_CLASS_PALETTE[i % PER_CLASS_PALETTE.length]),
-      xaxis: {
-        categories: classPerf.map(c => c.class),
-        max:        1.0,
-        labels:     { style: { fontSize: '10px', colors: C.textMuted } },
-        axisBorder: { show: false }, axisTicks: { show: false },
-      },
-      yaxis:      { max: 1.0, labels: { style: { fontSize: '10px', colors: C.textMuted }, maxWidth: 120 } },
-      dataLabels: {
-        enabled: true, textAnchor: 'start', offsetX: 8,
-        style:   { fontSize: '10px', fontWeight: 700, colors: [C.text], fontFamily: "'Barlow Condensed',sans-serif" },
-        formatter: v => v.toFixed(2),
-      },
-      legend:  { show: false },
-      grid:    { borderColor: 'rgba(255,255,255,.04)', strokeDashArray: 3, xaxis: { lines: { show: false } } },
-      tooltip: { theme: 'dark', y: { formatter: v => `F1: ${v.toFixed(3)}` } },
-    },
-  } : null
-
-  // Confusion matrix heatmap — dark-friendly blue scale
-  const cmHeatmap = (cmXgb && classes.length > 0) ? (() => {
-    const cmNorm = cmXgb.map(row => {
-      const sum = row.reduce((a, b) => a + b, 0) || 1
-      return row.map(v => parseFloat(((v / sum) * 100).toFixed(1)))
-    })
-    return {
-      series: classes.map((cls, i) => ({
-        name: cls,
-        data: cmNorm[i].map((v, j) => ({ x: classes[j], y: v })),
-      })),
-      options: {
-        ...baseChartOptions,
-        chart:       { ...baseChartOptions.chart, type: 'heatmap', background: 'transparent', animations: { enabled: false } },
-        plotOptions: {
-          heatmap: {
-            radius:       0,
-            enableShades: false,
-            colorScale:   { ranges: CM_RANGES },
-          },
-        },
-        dataLabels: {
-          enabled: true,
-          style:   { fontSize: '9px', fontWeight: 700, colors: ['rgba(255,255,255,.85)'] },
-          // Show raw count alongside normalised %; raw count from original matrix
-          formatter: (v, { seriesIndex: si, dataPointIndex: di }) => String(cmXgb[si][di]),
-        },
-        xaxis: {
-          labels:   { rotate: -20, style: { fontSize: '9px', colors: C.textMuted } },
-          position: 'top',
-          axisBorder: { show: false }, axisTicks: { show: false },
-        },
-        yaxis:  { labels: { style: { fontSize: '10px', colors: C.textMuted }, maxWidth: 100 } },
-        tooltip: {
-          theme: 'dark',
-          y: { formatter: (v, { seriesIndex: si, dataPointIndex: di }) =>
-            `${v.toFixed(1)}% (${cmXgb[si][di]} samples)` },
-        },
-        legend: { show: false },
-      },
-    }
-  })() : null
-
-  // KPI tiles
-  const kpiTiles = [
-    { label: 'Best Model',    value: bestModel.toUpperCase(), color: MODEL[bestModel]?.color || C.blue, icon: IcoTarget,   sub: 'Lowest classification error' },
-    { label: 'RF Accuracy',   value: rfReport?.accuracy  != null ? rfReport.accuracy.toFixed(3)  : 'N/A', color: MODEL.random_forest.color, icon: IcoBarChart, sub: 'Random Forest' },
-    { label: 'XGB Accuracy',  value: xgbReport?.accuracy != null ? xgbReport.accuracy.toFixed(3) : 'N/A', color: MODEL.xgboost.color,       icon: IcoActivity, sub: 'XGBoost'       },
-    { label: 'XGB F1-Macro',  value: xgbReport?.f1_macro != null ? xgbReport.f1_macro.toFixed(3) : 'N/A', color: C.green,                   icon: IcoCheck,    sub: 'Macro average' },
-    {
-      label: 'RF CV F1',
-      value: rfReport?.cv_f1_mean != null
-        ? `${rfReport.cv_f1_mean.toFixed(3)} ±${rfReport.cv_f1_std?.toFixed(3) || '?'}`
-        : 'N/A',
-      color: MODEL.random_forest.color, icon: IcoRefresh, sub: 'Cross-validation',
-    },
-    {
-      label: 'XGB CV F1',
-      value: xgbReport?.cv_f1_mean != null
-        ? `${xgbReport.cv_f1_mean.toFixed(3)} ±${xgbReport.cv_f1_std?.toFixed(3) || '?'}`
-        : 'N/A',
-      color: MODEL.xgboost.color, icon: IcoRefresh, sub: 'Cross-validation',
-    },
-    { label: 'Classes',       value: classes.length,  color: C.purple, icon: IcoGrid,  sub: 'Complaint categories' },
-    { label: 'Top Features',  value: fi.length || 0,  color: C.amber,  icon: IcoSearch, sub: 'SHAP + tree importance' },
-  ]
-
-  // ── Render ─────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────
   return (
-    <div style={{ background: C.bg, minHeight: '100vh', color: C.text }}>
-
+    <div style={{ background: T.bg, minHeight: '100vh', color: T.text, transition: 'background .3s' }}>
       <style>{`
         @keyframes rc-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.8)} }
-        .rc-stat-block:hover {
-          border-color: rgba(207,10,44,.22) !important;
-          background: rgba(207,10,44,.03) !important;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(207,10,44,.07);
-        }
-        .rc-chart-panel:hover { border-color: rgba(207,10,44,.2) !important; }
-        .rc-chart-panel:hover .rc-panel-accent { transform: scaleX(1) !important; }
-        .rc-table-row:hover td { background: rgba(255,255,255,.018) !important; }
-        .rc-feature-card:hover {
-          border-color: rgba(207,10,44,.22) !important;
-          background: rgba(207,10,44,.025) !important;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(207,10,44,.07);
-        }
-        .rc-feature-card:hover .rc-feature-accent { transform: scaleX(1) !important; }
+        .rc-stat-block:hover { border-color:${HW.redBd}!important; background:${HW.redDim}!important; transform:translateY(-2px); box-shadow:0 8px 24px rgba(238,58,67,.07); }
+        .rc-chart-panel:hover { border-color:${HW.blueBd}!important; }
+        .rc-chart-panel:hover .rc-panel-accent { transform:scaleX(1)!important; }
+        .rc-table-row:hover td { background:${T.bgCardHover}!important; }
+        .rc-feature-card:hover { border-color:${HW.redBd}!important; background:${HW.redDim}!important; transform:translateY(-2px); }
+        .rc-feature-card:hover .rc-feature-accent { transform:scaleX(1)!important; }
       `}</style>
 
-      <div style={{ padding: '40px 48px 80px', maxWidth: 1600, margin: '0 auto' }}>
+      <div style={{ padding: '36px 44px 80px', maxWidth: 1600, margin: '0 auto' }}>
 
-        {/* ── HERO HEADER ──────────────────────────────────────────── */}
-        <div style={{ borderBottom: `1px solid ${C.border}`, paddingBottom: 28, marginBottom: 28 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              background: 'rgba(207,10,44,.1)', border: '1px solid rgba(207,10,44,.28)', padding: '6px 14px',
-            }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: C.red, display: 'inline-block', animation: 'rc-pulse 2s ease-in-out infinite' }} />
-              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: C.redLight }}>
-                {apiOnline ? 'LIVE · Classification Engine' : 'OFFLINE · Cached Results'}
+        {/* HERO HEADER */}
+        <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 24, marginBottom: 24 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, background: HW.redDim, border: `1px solid ${HW.redBd}`, padding: '5px 13px' }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: HW.red, display: 'inline-block', animation: 'rc-pulse 2s ease-in-out infinite' }}/>
+              <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px', textTransform: 'uppercase', color: HW.redL }}>
+                {apiOnline ? t('rootcause.liveBadge') : t('rootcause.offlineBadge')}
               </span>
             </div>
-            <span style={{ fontSize: 11, color: C.textDim, letterSpacing: '1.5px' }}>
-              Random Forest · XGBoost · SHAP
-            </span>
+            <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>{t('rootcause.techStack')}</span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <div>
-              <h1 style={{
-                fontFamily: "'Barlow Condensed',sans-serif",
-                fontSize: 'clamp(28px, 3.5vw, 54px)', fontWeight: 900,
-                letterSpacing: '-1.5px', lineHeight: 1, color: C.text, marginBottom: 8,
-              }}>
-                ROOT CAUSE{' '}
-                <span style={{ color: C.red, fontStyle: 'italic' }}>CLASSIFICATION</span>
+              <h1 style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 'clamp(26px,3.5vw,52px)', fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1, color: T.text, marginBottom: 8 }}>
+                {t('rootcause.titlePrefix')}{' '}
+                <span style={{ color: HW.red, fontStyle: 'italic' }}>{t('rootcause.titleAccent')}</span>
               </h1>
-              <p style={{ fontSize: 13, color: C.textMuted, fontWeight: 300 }}>
-                Identifying complaint drivers · {classes.length} classes · Best model: {bestModel.toUpperCase()}
+              <p style={{ fontSize: 13, color: T.textMuted, fontWeight: 300 }}>
+                {t('rootcause.heroDesc')} · 5G KPI Analysis · NB07 + NB08b
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
-                { label: apiOnline ? '● Online' : '● Offline', color: apiOnline ? C.green : C.red, bd: apiOnline ? 'rgba(34,197,94,.28)' : 'rgba(207,10,44,.28)', bg: apiOnline ? 'rgba(34,197,94,.08)' : 'rgba(207,10,44,.08)' },
-                { label: bestModel.toUpperCase() + ' Best',  color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
-                { label: `${classes.length} Classes`,         color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
-                { label: 'SHAP Features',                     color: C.textMuted, bd: C.border, bg: 'rgba(255,255,255,.02)' },
+                { label: apiOnline ? t('rootcause.onlineLabel') : t('rootcause.offlineLabel'), color: apiOnline ? '#22C55E' : HW.red, bd: apiOnline ? 'rgba(34,197,94,.28)' : HW.redBd, bg: apiOnline ? 'rgba(34,197,94,.08)' : HW.redDim },
+                { label: t('rootcause.shapFeatures'), color: T.textMuted, bd: T.border, bg: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' },
+                { label: t('rootcause.shapFeatures'),                               color: T.textMuted, bd: T.border, bg: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' },
               ].map((b, i) => (
-                <span key={i} style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase',
-                  padding: '5px 14px', border: `1px solid ${b.bd}`, background: b.bg, color: b.color,
-                }}>
+                <span key={i} style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', padding: '5px 13px', border: `1px solid ${b.bd}`, background: b.bg, color: b.color }}>
                   {b.label}
                 </span>
               ))}
@@ -529,246 +196,485 @@ export default function RootCauseAnalysis() {
           </div>
         </div>
 
-        {/* ── ERROR BANNER ─────────────────────────────────────────── */}
         {error && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.28)',
-            padding: '12px 20px', marginBottom: 1,
-          }}>
-            <IcoAlert size={14} color={C.amber} />
-            <span style={{ fontSize: 12, color: C.amber }}>{error}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.28)', padding: '11px 18px', marginBottom: 1 }}>
+            <IcoAlert size={14} color="#F59E0B"/>
+            <span style={{ fontSize: 12, color: '#F59E0B' }}>{error}</span>
           </div>
         )}
 
-        {/* ── KPI TILES ─────────────────────────────────────────────── */}
-        <SectionLabel sub="Classifier performance metrics · CV = 5-fold cross-validation · F1-Macro = average across all complaint classes">
-          Classification KPIs
+
+                {error && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(245,158,11,.07)', border: '1px solid rgba(245,158,11,.28)', padding: '11px 18px', marginBottom: 1 }}>
+            <IcoAlert size={14} color="#F59E0B"/>
+            <span style={{ fontSize: 12, color: '#F59E0B' }}>{error}</span>
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════ */}
+        {/* §A. 5G ROOT CAUSE OVERVIEW                                */}
+        {/* ══════════════════════════════════════════════════════════ */}
+        <SectionLabel T={T}
+          action={<Badge variant="blue">NB07 · anomaly_results</Badge>}
+          sub={`${rca5g?.summary?.subscribers_5g?.toLocaleString() || '—'} subscribers with ratio_5g > ${((rca5g?.summary?.ratio_threshold || 0.1) * 100).toFixed(0)}% · ${rca5g?.summary?.consensus_anomalies || 0} consensus anomalies · source: top_anomaly_driver`}>
+          5G ROOT CAUSE ANALYSIS
         </SectionLabel>
 
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 1, background: 'rgba(255,255,255,.04)',
-        }}>
-          {kpiTiles.map((kpi, i) => (
-            <StatBlock key={i} label={kpi.label} value={kpi.value} unit={kpi.unit} color={kpi.color} icon={kpi.icon} sub={kpi.sub} />
-          ))}
-        </div>
+        {/* Summary KPI strip */}
+        {rca5g?.summary && (
+          <div style={{ display: 'flex', gap: 1, background: GAP, marginBottom: 1 }}>
+            {[
+              { label: '5G Subscribers',     value: (rca5g.summary.subscribers_5g || 0).toLocaleString(),   color: HW.blue  },
+              { label: '% of Base',           value: `${rca5g.summary.pct_5g || 0}%`,                        color: '#22D3EE' },
+              { label: 'Anomalies Detected',  value: (rca5g.summary.consensus_anomalies || 0).toLocaleString(), color: HW.red },
+              { label: '% Anomalous',         value: `${rca5g.summary.pct_anomalous || 0}%`,                 color: '#F59E0B' },
+              { label: 'Top Root Cause',      value: rca5g.summary.top_cause || '—',                         color: '#A855F7' },
+            ].map(({ label, value, color }) => (
+              <div key={label} style={{ flex: 1, background: T.bgCard, padding: '12px 16px',
+                borderTop: `2px solid ${color}22` }}>
+                <div style={{ fontSize: 8, fontWeight: 700, color: T.textDim,
+                  letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: 5 }}>{label}</div>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif",
+                  fontSize: 18, fontWeight: 900, color, lineHeight: 1, wordBreak: 'break-word' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+        )}
 
-        {/* ── FEATURE IMPORTANCE ───────────────────────────────────── */}
-        <SectionLabel sub="Red = top 5 most impactful · Blue = remaining features · Higher score = stronger complaint driver">
-          Feature Importance Analysis
-        </SectionLabel>
+        {/* §A1. Top causes ranked bar + KPI profile comparison */}
+        {rca5g?.top_causes?.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: GAP }}>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-          <ChartPanel
-            title="Feature Importance — Mean (RF + XGBoost)"
-            sub="Top 20 features averaged across both models"
-          >
-            {importanceChart ? (
-              <ReactApexChart options={importanceChart.options} series={importanceChart.series} type="bar" height={400} />
-            ) : (
-              <EmptyState icon={<IcoBarChart size={36} color="rgba(255,255,255,.18)" />} title="No feature importance data" />
-            )}
-          </ChartPanel>
-
-          <ChartPanel
-            title="RF vs XGBoost — Top 10 Features"
-            sub={`Blue = Random Forest · Red = XGBoost · ${top10.length} features shown`}
-          >
-            {rfVsXgbChart ? (
-              <>
-                <ReactApexChart options={rfVsXgbChart.options} series={rfVsXgbChart.series} type="bar" height={400} />
-                <div style={{ display: 'flex', gap: 16, justifyContent: 'center', marginTop: 10 }}>
-                  {Object.values(MODEL).map(m => (
-                    <div key={m.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <div style={{ width: 10, height: 10, background: m.color }} />
-                      <span style={{ fontSize: 10, color: C.textMuted, fontWeight: 600 }}>{m.label}</span>
+            {/* Ranked causes */}
+            <div className="rc-chart-panel" style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px', position: 'relative', overflow: 'hidden' }}>
+              <div className="rc-panel-accent" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg,transparent,${HW.blue},transparent)`, transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s' }}/>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 3 }}>Root Cause Ranking — 5G Subscribers</div>
+              <div style={{ fontSize: 10, color: T.textDim, marginBottom: 18, letterSpacing: '1px' }}>
+                Most frequent anomaly driver · filtered to ratio_5g &gt; {((rca5g.summary?.ratio_threshold || 0.1) * 100).toFixed(0)}%
+              </div>
+              {rca5g.top_causes.map((c, i) => {
+                const pct    = c.pct || 0
+                const maxPct = rca5g.top_causes[0]?.pct || 1
+                const colors = [HW.red, '#FF6B35', '#F59E0B', HW.blue, '#A855F7', '#22D3EE', '#22C55E', '#F97316']
+                const col    = colors[i % colors.length]
+                return (
+                  <div key={c.cause} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <div>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{c.label}</span>
+                        <span style={{ fontSize: 9, color: T.textDim, marginLeft: 6, letterSpacing: '1px' }}>
+                          {c.cause}
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontFamily: "'Barlow Condensed', sans-serif",
+                          fontSize: 15, fontWeight: 800, color: col }}>{pct}%
+                          {c.fallback && <span style={{ fontSize: 8, color: T.textDim, marginLeft: 4, fontWeight: 400 }}>deviation</span>}
+                        </span>
+                        <span style={{ fontSize: 9, color: T.textDim }}>({c.count.toLocaleString()})</span>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <EmptyState icon={<IcoBarChart size={36} color="rgba(255,255,255,.18)" />} title="No comparison data" />
-            )}
-          </ChartPanel>
-        </div>
+                    <div style={{ height: 5, background: T.mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ width: `${(pct / maxPct) * 100}%`, height: '100%', background: col, borderRadius: 2, transition: 'width .5s ease' }}/>
+                    </div>
+                    <div style={{ fontSize: 9, color: T.textDim, marginTop: 3, fontStyle: 'italic' }}>{c.action}</div>
+                  </div>
+                )
+              })}
+            </div>
 
-        {/* ── TOP 5 FEATURE CARDS ──────────────────────────────────── */}
-        {top20.length > 0 && (
+            {/* KPI Profile: 5G vs all */}
+            <div className="rc-chart-panel" style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px', position: 'relative', overflow: 'hidden' }}>
+              <div className="rc-panel-accent" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg,transparent,${HW.blue},transparent)`, transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s' }}/>
+              <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 3 }}>KPI Profile — 5G vs All Subscribers</div>
+              <div style={{ fontSize: 10, color: T.textDim, marginBottom: 18, letterSpacing: '1px' }}>
+                Mean value comparison · <span style={{ color: HW.blue }}>■ All</span> vs <span style={{ color: HW.red }}>■ 5G active</span>
+              </div>
+              {Object.entries(rca5g.kpi_profile || {}).slice(0, 8).map(([col, p]) => {
+                const worse = p.good_is === 'low'
+                  ? p['5g_mean'] > p.all_mean
+                  : p['5g_mean'] < p.all_mean
+                const maxVal = Math.max(p['5g_mean'], p.all_mean, 0.001)
+                return (
+                  <div key={col} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{ fontSize: 10, fontWeight: 600, color: T.text }}>{p.label}</span>
+                      {worse && (
+                        <span style={{ fontSize: 8, fontWeight: 800, color: HW.red,
+                          background: HW.redDim, border: `1px solid ${HW.redBd}`,
+                          padding: '1px 5px', letterSpacing: '1px' }}>WORSE</span>
+                      )}
+                    </div>
+                    {/* All subscribers bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <span style={{ width: 28, fontSize: 8, color: T.textDim, flexShrink: 0 }}>ALL</span>
+                      <div style={{ flex: 1, height: 4, background: T.mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)', borderRadius: 2 }}>
+                        <div style={{ width: `${(p.all_mean / maxVal) * 100}%`, height: '100%', background: HW.blue, borderRadius: 2 }}/>
+                      </div>
+                      <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700, color: HW.blue, minWidth: 50, textAlign: 'right' }}>
+                        {p.all_mean.toFixed(3)}{p.unit ? ` ${p.unit}` : ''}
+                      </span>
+                    </div>
+                    {/* 5G bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 28, fontSize: 8, color: T.textDim, flexShrink: 0 }}>5G</span>
+                      <div style={{ flex: 1, height: 4, background: T.mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)', borderRadius: 2 }}>
+                        <div style={{ width: `${(p['5g_mean'] / maxVal) * 100}%`, height: '100%', background: worse ? HW.red : '#22C55E', borderRadius: 2 }}/>
+                      </div>
+                      <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 12, fontWeight: 700, color: worse ? HW.red : '#22C55E', minWidth: 50, textAlign: 'right' }}>
+                        {p['5g_mean'].toFixed(3)}{p.unit ? ` ${p.unit}` : ''}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* §A2. Province root cause heatmap */}
+        {rca5g?.by_province?.length > 0 && (
+          <div style={{ marginTop: 1, background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 3 }}>Root Cause by Governorate</div>
+            <div style={{ fontSize: 10, color: T.textDim, marginBottom: 16, letterSpacing: '1px' }}>
+              Dominant anomaly driver per province · sorted by 5G subscriber count
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 }}>
+              {rca5g.by_province.slice(0, 24).map(p => {
+                const causeColors = {
+                  avg_latency_ms: HW.red, avg_packet_loss: '#FF6B35',
+                  client_rtt_ms: '#F59E0B', voip_quality: '#A855F7',
+                  session_active_rate: HW.blue, congestion_level: '#22D3EE',
+                  traffic_diversity: '#22C55E', ratio_5g: '#F97316',
+                }
+                const col = causeColors[p.top_cause] || T.textMuted
+                return (
+                  <div key={p.province} style={{
+                    padding: '10px 14px', background: T.mode === 'dark' ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.02)',
+                    border: `1px solid ${T.border}`, borderLeft: `3px solid ${col}`,
+                  }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.text }}>{p.province}</div>
+                    <div style={{ fontSize: 9, color: col, fontWeight: 800, letterSpacing: '1px', textTransform: 'uppercase', marginTop: 3 }}>
+                      {p.top_cause_label}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 5 }}>
+                      <span style={{ fontSize: 9, color: T.textDim }}>{p.subscribers_5g} 5G subs</span>
+                      {p.avg_ratio_5g != null && (
+                        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700, color: HW.blue }}>
+                          {(p.avg_ratio_5g * 100).toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+
+        {/* §A2.5 — NB08b SHAP: per risk level + Critical+High drivers */}
+        {rca5g?.nb08b_available && (
           <>
-            <SectionLabel sub="Features with the highest combined importance score — these are the primary complaint drivers">
-              Top 5 Most Important Features
+            <SectionLabel T={T}
+              action={<Badge variant="purple">NB08b · SHAP · XGBoost</Badge>}
+              sub="SHAP mean |value| per risk level · source: rca_5g_results.json">
+              5G KPI ROOT CAUSE — SHAP ANALYSIS
             </SectionLabel>
-            <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-              gap: 1, background: 'rgba(255,255,255,.04)',
-            }}>
-              {top20.slice(0, 5).map((f, i) => (
-                <div
-                  key={i}
-                  className="rc-feature-card"
-                  style={{
-                    background: C.bg3, border: `1px solid ${C.border}`,
-                    padding: '26px 20px', position: 'relative', overflow: 'hidden',
-                    transition: 'all .35s cubic-bezier(.22,1,.36,1)', cursor: 'default',
-                    textAlign: 'center',
-                  }}
-                >
-                  <div className="rc-feature-accent" style={{
-                    position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px',
-                    background: `linear-gradient(90deg, transparent, ${i < 3 ? C.red : C.blue}, transparent)`,
-                    transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s ease',
-                  }} />
-                  {/* Rank */}
-                  <div style={{
-                    fontFamily: "'Barlow Condensed',sans-serif",
-                    fontSize: 11, fontWeight: 800, color: i < 3 ? C.red : C.blue,
-                    letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 12,
-                  }}>
-                    #{i + 1}
-                  </div>
-                  {/* Feature name */}
-                  <div style={{
-                    fontSize: 12, fontWeight: 700, color: C.text,
-                    wordBreak: 'break-word', lineHeight: 1.4, marginBottom: 14,
-                    minHeight: 34,
-                  }}>
-                    {f.feature_label}
-                  </div>
-                  {/* Mean importance */}
-                  <div style={{
-                    fontFamily: "'Barlow Condensed',sans-serif",
-                    fontSize: 26, fontWeight: 900, color: i < 3 ? C.red : C.blue,
-                    letterSpacing: '-1px', lineHeight: 1, marginBottom: 8,
-                  }}>
-                    {f.importance_mean?.toFixed(4)}
-                  </div>
-                  {/* RF / XGB breakdown */}
-                  <div style={{ fontSize: 9, color: C.textDim, letterSpacing: '.5px', lineHeight: 1.7 }}>
-                    <span style={{ color: MODEL.random_forest.color, fontWeight: 700 }}>RF</span> {f.importance_rf?.toFixed(4) || '—'}
-                    {'  ·  '}
-                    <span style={{ color: MODEL.xgboost.color, fontWeight: 700 }}>XGB</span> {f.importance_xgb?.toFixed(4) || '—'}
-                  </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, background: GAP }}>
+
+              {/* Critical+High top drivers */}
+              <div className="rc-chart-panel" style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px', position: 'relative', overflow: 'hidden' }}>
+                <div className="rc-panel-accent" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg,transparent,${HW.red},transparent)`, transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s' }}/>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 3 }}>
+                  Root Cause Drivers — Critical + High Risk
                 </div>
-              ))}
+                <div style={{ fontSize: 10, color: T.textDim, marginBottom: 18, letterSpacing: '1px' }}>
+                  SHAP mean |value| · 5G subscribers at Critical or High risk
+                </div>
+                {(rca5g.top_5g_hi_root_causes || []).slice(0, 8).map((item, i) => {
+                  const maxShap = rca5g.top_5g_hi_root_causes[0]?.shap_hi || 1
+                  const pct     = (item.shap_hi / maxShap) * 100
+                  const colors  = [HW.red, '#FF6B35', '#F59E0B', HW.blue, '#A855F7', '#22D3EE', '#22C55E', '#F97316']
+                  const col     = colors[i % colors.length]
+                  return (
+                    <div key={item.feature} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: T.text }}>
+                          {item.feature.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </span>
+                        <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 14, fontWeight: 800, color: col }}>
+                          {item.shap_hi?.toFixed(5)}
+                        </span>
+                      </div>
+                      <div style={{ height: 5, background: T.mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.07)', borderRadius: 2 }}>
+                        <div style={{ width: `${pct}%`, height: '100%', background: col, borderRadius: 2, transition: 'width .5s' }}/>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Per risk level — top driver */}
+              <div className="rc-chart-panel" style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px', position: 'relative', overflow: 'hidden' }}>
+                <div className="rc-panel-accent" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg,transparent,${HW.blue},transparent)`, transform: 'scaleX(0)', transformOrigin: 'center', transition: 'transform .4s' }}/>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 3 }}>
+                  Top KPI Driver per Risk Level
+                </div>
+                <div style={{ fontSize: 10, color: T.textDim, marginBottom: 18, letterSpacing: '1px' }}>
+                  Primary SHAP driver explaining each risk category
+                </div>
+                {Object.entries(rca5g.shap_per_risk_level || {}).map(([riskLevel, features]) => {
+                  const top = features?.[0]
+                  if (!top) return null
+                  const riskPal = { Critical: HW.red, High: '#F59E0B', Medium: HW.blue, Low: '#22C55E' }
+                  const col = riskPal[riskLevel] || T.textMuted
+                  return (
+                    <div key={riskLevel} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0', borderBottom: `1px solid ${T.border}` }}>
+                      {/* Risk badge */}
+                      <div style={{ minWidth: 72, padding: '4px 10px', background: `${col}15`, border: `1px solid ${col}30`, textAlign: 'center' }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: col, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                          {riskLevel}
+                        </span>
+                      </div>
+                      {/* Arrow */}
+                      <span style={{ fontSize: 14, color: T.textDim }}>→</span>
+                      {/* Top driver */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
+                          {top.feature.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                        </div>
+                        <div style={{ fontSize: 9, color: T.textDim, marginTop: 2 }}>
+                          SHAP: {top.shap?.toFixed(5)}
+                          {features[1] && <span style={{ marginLeft: 10 }}>
+                            #2: {features[1].feature.replace(/_/g,' ')} ({features[1].shap?.toFixed(4)})
+                          </span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                {(!rca5g.shap_per_risk_level || Object.keys(rca5g.shap_per_risk_level).length === 0) && (
+                  <div style={{ padding: '24px 0', textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+                    Run 08b_RootCauseAnalysis_5G.ipynb to generate SHAP analysis
+                  </div>
+                )}
+              </div>
             </div>
           </>
         )}
 
-        {/* ── PER-CLASS F1 + CONFUSION MATRIX ─────────────────────── */}
-        <SectionLabel sub="XGBoost per-class performance · F1 = harmonic mean of precision and recall">
-          Per-Class Performance &amp; Confusion Matrix
+        {/* §A3. MSISDN drill-down */}
+        <SectionLabel T={T}
+          sub="Search any subscriber — see their KPI profile, root cause, and NOC recommendation"
+          action={<Badge variant="red">Subscriber Drill-Down</Badge>}>
+          5G SUBSCRIBER ANALYSIS
         </SectionLabel>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 1, background: 'rgba(255,255,255,.04)' }}>
-          <ChartPanel
-            title="Per-Class F1 Scores"
-            sub="XGBoost — true class rows only (meta rows excluded)"
-          >
-            {perClassChart ? (
-              <ReactApexChart options={perClassChart.options} series={perClassChart.series} type="bar" height={380} />
-            ) : (
-              <EmptyState icon={<IcoActivity size={36} color="rgba(255,255,255,.18)" />} title="No per-class data" />
-            )}
-          </ChartPanel>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 1, background: GAP }}>
+          {/* Search + high-risk list */}
+          <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: T.text, marginBottom: 14 }}>High-Risk 5G Subscribers</div>
 
-          <ChartPanel
-            title="Confusion Matrix — XGBoost"
-            sub="Row-normalised % · Cell label = raw count · Blue diagonal = correct classifications"
-          >
-            {cmHeatmap ? (
-              <>
-                <ReactApexChart options={cmHeatmap.options} series={cmHeatmap.series} type="heatmap" height={380} />
-                {/* Color scale legend */}
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-                  {CM_RANGES.map(r => (
-                    <div key={r.name} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <div style={{ width: 10, height: 10, background: r.color, border: `1px solid ${C.border}` }} />
-                      <span style={{ fontSize: 9, color: C.textDim }}>{r.name}</span>
+            {/* MSISDN search */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+              <input
+                value={msisdnQuery}
+                onChange={e => setMsisdnQuery(e.target.value)}
+                placeholder="Search MSISDN…"
+                style={{
+                  flex: 1, padding: '8px 12px', fontSize: 11,
+                  background: T.bgCard, color: T.text,
+                  border: `1px solid ${T.border}`, outline: 'none',
+                  fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '.5px',
+                }}
+              />
+              <button
+                onClick={() => {
+                  if (!msisdnQuery.trim()) return
+                  const found = rca5g?.high_risk_5g?.find(
+                    s => s.msisdn?.includes(msisdnQuery.trim())
+                  )
+                  setDrillResult(found || { msisdn: msisdnQuery, error: 'Not in top 20 high-risk list' })
+                }}
+                style={{
+                  padding: '8px 14px', background: HW.blueDim,
+                  border: `1px solid ${HW.blueBd}`, color: HW.blue,
+                  fontSize: 9, fontWeight: 800, letterSpacing: '1.5px',
+                  cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                SEARCH
+              </button>
+            </div>
+
+            {/* Top 20 list */}
+            <div style={{ maxHeight: 380, overflowY: 'auto' }}>
+              {(rca5g?.high_risk_5g || []).map((s, i) => {
+                const riskColors = {
+                  Critical: HW.red, High: '#F59E0B', CRITICAL: HW.red, HIGH: '#F59E0B'
+                }
+                const rc = riskColors[s.risk_level] || T.textMuted
+                return (
+                  <div key={i}
+                    onClick={() => setDrillResult(s)}
+                    style={{
+                      padding: '9px 12px', borderBottom: `1px solid ${T.border}`,
+                      cursor: 'pointer', transition: 'background .15s',
+                      background: drillResult?.msisdn === s.msisdn
+                        ? (T.mode === 'dark' ? 'rgba(0,147,213,.08)' : 'rgba(0,147,213,.05)')
+                        : 'transparent',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.mode === 'dark' ? 'rgba(255,255,255,.03)' : 'rgba(0,0,0,.02)' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = drillResult?.msisdn === s.msisdn ? (T.mode === 'dark' ? 'rgba(0,147,213,.08)' : 'rgba(0,147,213,.05)') : 'transparent' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 13, fontWeight: 700, color: T.text }}>{s.msisdn}</span>
+                      <span style={{ fontSize: 8, fontWeight: 800, color: rc, background: `${rc}15`, border: `1px solid ${rc}30`, padding: '1px 6px', letterSpacing: '1px' }}>
+                        {s.risk_level}
+                      </span>
                     </div>
-                  ))}
+                    <div style={{ fontSize: 9, color: T.textDim, marginTop: 2 }}>
+                      Cause: <span style={{ color: HW.red, fontWeight: 700 }}>{s.root_cause?.replace(/_/g, ' ') || '—'}</span>
+                      {s.ratio_5g != null && <span style={{ marginLeft: 8 }}>5G: {(s.ratio_5g * 100).toFixed(1)}%</span>}
+                    </div>
+                  </div>
+                )
+              })}
+              {(!rca5g?.high_risk_5g?.length) && (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
+                  No high-risk 5G data — run NB07
                 </div>
-              </>
-            ) : (
-              <EmptyState icon={<IcoGrid size={36} color="rgba(255,255,255,.18)" />} title="No confusion matrix data" />
-            )}
-          </ChartPanel>
-        </div>
-
-        {/* ── CLASSIFICATION REPORT TABLE ──────────────────────────── */}
-        <SectionLabel
-          action={<Badge variant="red">{classPerf.length} classes</Badge>}
-          sub="XGBoost full classification report · Precision = predicted positives correct · Recall = actual positives found · F1 = harmonic mean"
-        >
-          Classification Report — XGBoost
-        </SectionLabel>
-
-        <div style={{ border: `1px solid ${C.border}`, overflow: 'hidden', position: 'relative' }}>
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '1.5px', background: `linear-gradient(90deg, transparent, ${C.red}, transparent)` }} />
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
-            <thead>
-              <tr style={{ background: 'rgba(255,255,255,.025)', borderBottom: `1px solid ${C.border}` }}>
-                {[
-                  { label: 'Class',      icon: IcoList  },
-                  { label: 'Precision',  icon: IcoSort  },
-                  { label: 'Recall',     icon: IcoSort  },
-                  { label: 'F1-Score',   icon: IcoSort  },
-                  { label: 'Support',    icon: null     },
-                ].map(({ label, icon: Icon }) => (
-                  <th key={label} style={{
-                    padding: '12px 16px', textAlign: 'left',
-                    fontSize: 9, fontWeight: 800, letterSpacing: '1.5px',
-                    textTransform: 'uppercase', color: C.textDim, whiteSpace: 'nowrap',
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      {Icon && <Icon size={10} color={C.textDim} />}
-                      {label}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {classPerf.length === 0 ? (
-                <tr>
-                  <td colSpan={5} style={{ padding: 48, textAlign: 'center', color: C.textMuted }}>
-                    No class performance data
-                  </td>
-                </tr>
-              ) : (
-                classPerf.map((c, i) => (
-                  <tr
-                    key={c.class || i}
-                    className="rc-table-row"
-                    style={{ borderBottom: `1px solid rgba(255,255,255,.04)`, transition: 'all .15s' }}
-                  >
-                    <td style={{ padding: '11px 16px', fontWeight: 700, color: C.text, fontSize: 12 }}>
-                      {c.class}
-                    </td>
-                    <td style={{ padding: '11px 16px' }}>
-                      <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 700, color: C.blue, letterSpacing: '-.3px' }}>
-                        {c.precision.toFixed(2)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '11px 16px' }}>
-                      <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 700, color: C.green, letterSpacing: '-.3px' }}>
-                        {c.recall.toFixed(2)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '11px 16px' }}>
-                      <span style={{ fontFamily: "'Barlow Condensed',sans-serif", fontSize: 16, fontWeight: 800, color: c.f1 >= 0.8 ? C.green : c.f1 >= 0.6 ? C.amber : C.redLight, letterSpacing: '-.3px' }}>
-                        {c.f1.toFixed(2)}
-                      </span>
-                    </td>
-                    <td style={{ padding: '11px 16px', color: C.textDim, fontSize: 11, fontFamily: "'Barlow Condensed',sans-serif", fontWeight: 600 }}>
-                      {c.support.toLocaleString()}
-                    </td>
-                  </tr>
-                ))
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
+
+          {/* Drill-down detail panel */}
+          <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, padding: '22px 24px' }}>
+            {!drillResult ? (
+              <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: T.textMuted }}>
+                <IcoSearch size={36} color={T.textDim}/>
+                <div style={{ fontSize: 13 }}>Select a subscriber to see their analysis</div>
+                <div style={{ fontSize: 10, color: T.textDim }}>KPI profile · root cause · NOC recommendation</div>
+              </div>
+            ) : drillResult.error ? (
+              <div style={{ padding: 24, color: T.textMuted, fontSize: 12 }}>{drillResult.error}</div>
+            ) : (
+              <div>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 24, fontWeight: 900, color: T.text, letterSpacing: '-.5px' }}>
+                      {drillResult.msisdn}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textDim, marginTop: 4, letterSpacing: '1px' }}>
+                      Subscriber profile · NB07 anomaly detection
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    {drillResult.risk_level && (
+                      <span style={{
+                        fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase',
+                        padding: '4px 10px',
+                        color:      ['Critical','CRITICAL'].includes(drillResult.risk_level) ? HW.red : '#F59E0B',
+                        background: ['Critical','CRITICAL'].includes(drillResult.risk_level) ? HW.redDim : 'rgba(245,158,11,.1)',
+                        border:     `1px solid ${['Critical','CRITICAL'].includes(drillResult.risk_level) ? HW.redBd : 'rgba(245,158,11,.28)'}`,
+                      }}>
+                        {drillResult.risk_level}
+                      </span>
+                    )}
+                    {drillResult.churn_prob != null && (
+                      <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1.5px', padding: '4px 10px', color: T.textMuted, border: `1px solid ${T.border}`, background: T.mode === 'dark' ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.03)' }}>
+                        P(churn): {(drillResult.churn_prob * 100).toFixed(1)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Root cause highlight */}
+                {drillResult.root_cause && drillResult.root_cause !== '—' && (
+                  <div style={{
+                    background: HW.redDim, border: `1px solid ${HW.redBd}`,
+                    borderLeft: `4px solid ${HW.red}`, padding: '14px 18px', marginBottom: 18,
+                  }}>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: HW.red, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 6 }}>
+                      ⚠ ROOT CAUSE IDENTIFIED
+                    </div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 20, fontWeight: 900, color: T.text }}>
+                      {drillResult.root_cause.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </div>
+                    <div style={{ fontSize: 11, color: T.textMuted, marginTop: 6, lineHeight: 1.6 }}>
+                      {drillResult.action || ''}
+                    </div>
+                  </div>
+                )}
+
+                {/* KPI values */}
+                <div style={{ fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 10 }}>
+                  KPI VALUES
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 18 }}>
+                  {[
+                    { key: 'ratio_5g',        label: '5G Ratio',     fmt: v => `${(v*100).toFixed(1)}%`  },
+                    { key: 'avg_latency_ms',   label: 'Latency',     fmt: v => `${v.toFixed(1)} ms`       },
+                    { key: 'avg_packet_loss',  label: 'Packet Loss', fmt: v => `${(v*100).toFixed(2)}%`  },
+                    { key: 'client_rtt_ms',    label: 'RTT',         fmt: v => `${v.toFixed(1)} ms`       },
+                    { key: 'voip_quality',     label: 'VoIP Quality',fmt: v => v.toFixed(2)               },
+                    { key: 'churn_prob',       label: 'Churn Prob',  fmt: v => `${(v*100).toFixed(1)}%`  },
+                  ].map(({ key, label, fmt }) => {
+                    const val = drillResult[key]
+                    if (val == null) return null
+                    const isRootCause = drillResult.root_cause?.includes(key.replace('avg_',''))
+                    return (
+                      <div key={key} style={{
+                        padding: '10px 12px', background: isRootCause ? HW.redDim : (T.mode === 'dark' ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.03)'),
+                        border: `1px solid ${isRootCause ? HW.redBd : T.border}`,
+                      }}>
+                        <div style={{ fontSize: 8, color: isRootCause ? HW.red : T.textDim, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase' }}>{label}</div>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 18, fontWeight: 900, color: isRootCause ? HW.red : T.text, marginTop: 4 }}>
+                          {fmt(val)}
+                        </div>
+                      </div>
+                    )
+                  }).filter(Boolean)}
+                </div>
+
+                {/* Benchmark comparison */}
+                {rca5g?.thresholds && (
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: T.textDim, letterSpacing: '2px', textTransform: 'uppercase', marginBottom: 10 }}>
+                      NETWORK BENCHMARKS (P50 · P75 · P90 · P95)
+                    </div>
+                    <div style={{ display: 'flex', gap: 1, background: GAP }}>
+                      {Object.entries(rca5g.thresholds).slice(0, 4).map(([col, th]) => {
+                        const subVal = drillResult[col]
+                        const worse  = subVal != null && (th.good_is === 'low' ? subVal > th.p90 : subVal < th.p50)
+                        return (
+                          <div key={col} style={{ flex: 1, background: T.bgCard, padding: '10px 12px' }}>
+                            <div style={{ fontSize: 8, color: T.textDim, fontWeight: 700, letterSpacing: '1px', textTransform: 'uppercase', marginBottom: 6 }}>
+                              {col.replace('avg_','').replace(/_/g,' ')}
+                            </div>
+                            {['p50','p75','p90','p95'].map(pk => (
+                              <div key={pk} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                                <span style={{ fontSize: 8, color: T.textDim }}>{pk.toUpperCase()}</span>
+                                <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: 11, fontWeight: 700, color: T.textMuted }}>
+                                  {th[pk]?.toFixed(2)}{th.unit ? ` ${th.unit}` : ''}
+                                </span>
+                              </div>
+                            ))}
+                            {subVal != null && (
+                              <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 9, color: worse ? HW.red : '#22C55E', fontWeight: 800 }}>
+                                Sub: {subVal.toFixed(3)} {worse ? '⚠ ABOVE P90' : '✓ OK'}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
       </div>

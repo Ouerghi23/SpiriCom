@@ -1,0 +1,18 @@
+{
+  "logistic_regression": {
+    "threshold": 0.37,
+    "optimized_f1": 0.7761194029850746
+  },
+  "random_forest": {
+    "threshold": 0.59,
+    "optimized_f1": 0.7018255578093306
+  },
+  "xgboost": {
+    "threshold": 0.6799999999999999,
+    "optimized_f1": 0.7058823529411765
+  },
+  "default": {
+    "threshold": 0.5,
+    "note": "Use XGBoost threshold for production"
+  }
+}
