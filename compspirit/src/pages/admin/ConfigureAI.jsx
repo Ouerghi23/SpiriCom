@@ -27,7 +27,7 @@
 //        ([citation:N] markers and checkmark emojis in comments).
 //  CA-5  Inline onFocus/onBlur border mutation on every input →
 //        one .ca-input:focus CSS rule. Local spin keyframe deleted —
-//  noc-spin is global via AdminLayout's <NocBaseStyles/>.
+//        noc-spin is global via AdminLayout's <NocBaseStyles/>.
 //  CA-6  Toggles get role="switch" + aria-checked; usage grid gap
 //        uses gapColor(T) instead of T.border; reset-usage hover via
 //        CSS class. Typography floor for tag/usage labels.

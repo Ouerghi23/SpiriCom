@@ -26,17 +26,28 @@
 //  AL-5  Dead code removed: NavLink style fn set a '--accent' CSS var
 //        nothing consumed. LiveClock uses useTheme() (no T prop).
 //        Bell button gets an aria-label (it had no accessible name).
+//  AL-6  OVERLAP BUG: <FloatingControls/> (theme + EN/ZH FABs) floated
+//        bottom-left ABOVE the fixed sidebar, covering the Sign Out
+//        button. Floating FABs and a fixed sidebar will always fight
+//        for that corner, so the admin shell no longer mounts
+//        FloatingControls at all — the theme toggle and language
+//        toggle now live in the top bar next to the Bell, using the
+//        same hw-topbar-btn chrome. The NOC pages keep their floating
+//        controls (no sidebar there). The theme-toggle call is
+//        resolved defensively (toggleTheme / toggle / setMode) so it
+//        works whatever the ThemeContext exposes.
 // ─────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom'
 import MessagingWidget  from '../../components/MessagingWidget'
-import FloatingControls from '../../components/FloatingControls'
+import { useTranslation } from 'react-i18next'
 import { useAuth }  from '../../hooks/useAuth.jsx'
 import { useTheme } from '../../context/ThemeContext'
 import { HW, ALARM, FONT, NocBaseStyles } from '../../components/UI'
 import {
   Users, Settings, Activity, FileText,
   LogOut, Shield, Bell, ChevronRight,
+  Sun, Moon, Languages,
 } from 'lucide-react'
 import logoImg from '../../assets/images/logo_1.png'
 
@@ -72,9 +83,21 @@ function LiveClock() {
 
 export default function AdminLayout() {
   const { user, logout } = useAuth()
-  const { theme: T }     = useTheme()
+  const themeCtx         = useTheme()
+  const { theme: T }     = themeCtx
+  const { i18n }         = useTranslation()
   const navigate         = useNavigate()
   const location         = useLocation()
+
+  // AL-6: defensive toggle — works with toggleTheme(), toggle(), or setMode()
+  const toggleTheme = () => {
+    if (typeof themeCtx.toggleTheme === 'function') themeCtx.toggleTheme()
+    else if (typeof themeCtx.toggle === 'function') themeCtx.toggle()
+    else if (typeof themeCtx.setMode === 'function')
+      themeCtx.setMode(T.mode === 'dark' ? 'light' : 'dark')
+  }
+  const isZh = (i18n.language || 'en').startsWith('zh')
+  const toggleLang = () => i18n.changeLanguage(isZh ? 'en' : 'zh')
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -371,6 +394,22 @@ export default function AdminLayout() {
               letterSpacing: '1px', textTransform: 'uppercase' }}>System Live</span>
           </div>
 
+          {/* AL-6: theme + language moved here from FloatingControls */}
+          <button className="hw-topbar-btn" onClick={toggleTheme}
+            aria-label={T.mode === 'dark'
+              ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={T.mode === 'dark' ? 'Light mode' : 'Dark mode'}>
+            {T.mode === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
+          </button>
+          <button className="hw-topbar-btn" onClick={toggleLang}
+            aria-label={isZh ? 'Switch to English' : 'Switch to Chinese'}
+            title={isZh ? 'English' : '中文'}
+            style={{ width: 'auto', padding: '0 10px', gap: 5 }}>
+            <Languages size={14}/>
+            <span style={{ fontSize: 10, fontWeight: 800,
+              letterSpacing: '.5px' }}>{isZh ? 'ZH' : 'EN'}</span>
+          </button>
+
           {/* AL-5: accessible name */}
           <button className="hw-topbar-btn" aria-label="Notifications">
             <Bell size={15}/>
@@ -400,7 +439,6 @@ export default function AdminLayout() {
       </div>
 
       <MessagingWidget />
-      <FloatingControls/>
     </div>
   )
 }

@@ -125,7 +125,7 @@ export default function Coverage5GSection() {
   if (error) return (
     <AlertBanner severity="major" icon={AlertTriangle}
       title="5G COVERAGE UNAVAILABLE"
-      message={`${error} — run NB04 to generate churn_features.parquet`}/>
+      message={`${error} — run 04b_5G_Coverage.ipynb to generate coverage_5g.json`}/>
   )
 
   if (!data) return null
@@ -180,7 +180,7 @@ export default function Coverage5GSection() {
             5G NETWORK <span style={{ color: HW.blue }}>COVERAGE</span>
           </div>
           <div style={{ fontSize: 10, color: T.textDim, letterSpacing: '1.5px' }}>
-            NB04 outputs · churn_features.parquet
+            NB04b outputs · coverage_5g.json
             {kpi.total_subscribers != null
               ? ` · ${kpi.total_subscribers.toLocaleString()} subscribers` : ''}
           </div>
@@ -204,7 +204,7 @@ export default function Coverage5GSection() {
           value={kpi.adoption_rate_pct ?? '—'} unit="%"
           color={HW.blueLight} icon={Wifi}
           sub={kpi.total_subscribers != null
-            ? `avg ratio_5g · ${kpi.total_subscribers.toLocaleString()} subs` : ''}/>
+            ? `real 5G usage · ${kpi.total_subscribers.toLocaleString()} subs` : ''}/>
         <StatBlock
           label="5G-Capable Devices"
           value={kpi.capable_devices_pct ?? '—'} unit="%"
@@ -237,7 +237,7 @@ export default function Coverage5GSection() {
       {/* ── 2. Province adoption bar ──────────────────────────────── */}
       <ChartPanel>
         <SectionHead icon={BarChart2} label="5G Adoption by Province"
-          sub="Average ratio_5g per governorate — sorted descending · severity-colored below 20%"/>
+          sub="5G-capable (NR) device share per governorate — sorted descending · severity-colored below 20%"/>
         {by_province.length === 0 ? (
           <div style={{ color: T.textDim, fontSize: 11, padding: '20px 0' }}>
             Province data unavailable — province_encoded column needed
@@ -333,7 +333,7 @@ export default function Coverage5GSection() {
         {/* 5G vs 4G performance */}
         <ChartPanel>
           <SectionHead icon={Zap} label="5G vs 4G/non-5G Performance"
-            sub="Grouped by ratio_5g > 0.1 (mostly 5G) vs ≤ 0.1 (mostly 4G)"/>
+            sub="5G-capable (NR) devices vs LTE-only devices · de-imputed QoS, NaN-aware means"/>
           {perfData.length === 0 ? (
             <div style={{ color: T.textDim, fontSize: 11, padding: '20px 0' }}>
               Performance data unavailable — avg_latency_ms column needed
@@ -390,7 +390,7 @@ export default function Coverage5GSection() {
       {coverage_gaps.length > 0 && (
         <ChartPanel>
           <SectionHead icon={AlertTriangle} label="Coverage Gap Alerts"
-            sub="Provinces with 5G adoption < 15% AND elevated churn rate — underserved regions"/>
+            sub="Provinces with NR-capable share < 15% AND disengagement above average — underserved regions"/>
           <div style={{ display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
             {coverage_gaps.map((g, i) => {

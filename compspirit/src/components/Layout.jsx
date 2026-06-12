@@ -64,10 +64,10 @@ export default function Layout() {
     { label: t('nav.map'),       path: '/dashboard/map'        },
     { label: t('nav.anomalies'), path: '/dashboard/anomalies'  },
     { label: t('nav.forecast'),  path: '/dashboard/forecast'   },
-    { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
     { label: t('nav.segments'),  path: '/dashboard/segments'   },
     { label: t('nav.nlp'),       path: '/dashboard/nlp'        },
-    { label: t('nav.about'),     path: '/dashboard/about'      },
+    { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
+   // { label: t('nav.about'),     path: '/dashboard/about'      },
   ]
 
   // FIX-B1: unified initials using "SpiriCom" fallback

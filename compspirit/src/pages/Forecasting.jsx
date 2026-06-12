@@ -1,40 +1,6 @@
 // src/pages/Forecasting.jsx
 // ─────────────────────────────────────────────────────────────────────
 // SpiriCom NOC Dashboard — Forecasting & Churn Intelligence (v2)
-//
-// DATA SOURCES (KPI dataset — Dataset 2):
-//   /api/churn/model-summary · /api/churn/high-risk · /api/churn/shap
-//   /api/forecast/5g · /api/forecast/brand · /api/coverage/5g
-//
-// MIGRATION (vs previous version):
-//  FC-1  Duplicated HW / RISK / gapColor / SectionLabel / StatBlock /
-//        ChartPanel removed — imported from components/UI. No T prop
-//        drilling. fc-* keyframes/hover classes replaced by
-//        <NocBaseStyles/> classes (noc-stat / noc-panel).
-//  FC-2  RISK ladder mapped onto ALARM tokens — churn risk IS a
-//        severity scale: CRITICAL→critical, HIGH→major, MEDIUM→minor,
-//        LOW→normal. The same ladder drives the donut, the probability
-//        histogram deciles, RiskBar, and the table chips, so every
-//        surface agrees on what each color means.
-//  FC-3  Red discipline elsewhere: SHAP importance is magnitude →
-//        blueRamp (was red/amber by size); brand bars → blueRamp
-//        (was 12-color rainbow); group contribution → blue (a share
-//        is not an alarm); table hover → neutral; forecast line →
-//        blueLight dashed (a forecast is not an alarm); hero pill →
-//        blue identity chrome; "Churned" hero badge → ALARM.critical.
-//  FC-4  Live data vs training facts separated. Counts, churn rate,
-//        threshold, SHAP feature count, and subtitles now derive from
-//        modelSummary / shapResults. Numbers that are properties of a
-//        TRAINING RUN (MAPE/R² of NB02 models, churn-def quantiles)
-//        live in one TRAINING constant, clearly labeled "update on
-//        retrain" — not scattered through JSX pretending to be live.
-//  FC-5  ✓/✗ glyphs → Lucide Check/X. Typography floor ≥10px for
-//        data-bearing labels. Forecast markers stroke → T.bgCard.
-//  FC-6  Error banner → AlertBanner. isPrimary derives from
-//        best_model (was hardcoded to LR).
-
-// ─────────────────────────────────────────────────────────────────────
-
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }  from 'react-i18next'
 import ReactApexChart      from 'react-apexcharts'
@@ -65,19 +31,37 @@ const RISK = {
 // ── FC-4: facts of the NB02/NB03 TRAINING RUNS — not live data. ──────
 // Update when models are retrained; everything else derives from the
 // API at runtime.
+// FC-7 (2026-06-12): synced with the validated pipeline.
+// Sources: disengagement_final.json (NB06 v2) + churn_eda_v6.json (NB03b).
+// The old 5G forecast MAPEs (XGB 1.49% / ARIMA 16.56% / Prophet 26.28%) were
+// computed on a series that is 91.8% median-imputation noise (traffic_5g) —
+// they are withdrawn until NB00 semantic imputation + NB02 v2.1 re-run.
 const TRAINING = {
   forecastModels: [
-    { label: 'XGBoost MAPE', value: '1.49%',  color: HW.blue,      sub: 'Primary'    },
-    { label: 'XGBoost R²',   value: '0.9873', color: ALARM.normal, sub: 'Excellent'  },
-    { label: 'ARIMA MAPE',   value: '16.56%', color: ALARM.normal, sub: 'Target met' },
-    { label: 'Prophet MAPE', value: '26.28%', color: ALARM.minor,  sub: 'Above 20%'  },
+    { label: '5G Forecast',  value: 'PENDING',  color: ALARM.minor,
+      sub: 'Re-run after NB00 fix' },
+    { label: 'Data Quality', value: '91.8%',    color: ALARM.major,
+      sub: 'traffic_5g imputed' },
+    { label: 'RF PR-AUC',    value: '0.825',    color: ALARM.normal,
+      sub: 'Lift ×2.44 vs base' },
+    { label: 'RF ROC-AUC',   value: '0.848',    color: ALARM.normal,
+      sub: 'Leak-free, calibrated' },
   ],
   churnDef: [
-    { label: 'C1 — Low Data Usage', metric: 'dou_total ≤ 1.26 MB (Q20)', count: '980 subs (20.0%)' },
-    { label: 'C2 — Short Duration', metric: 'duration ≤ 127 s (Q20)',    count: '984 subs (20.1%)' },
+    { label: 'C1 — Low Data Usage', metric: 'dou_total ≤ 1.86 MB (Q20, observed)',
+      count: 'v6 · 2,566 labelled' },
+    { label: 'C2 — Short Duration', metric: 'duration ≤ 82 s (Q20, observed)',
+      count: '868 disengaged (33.8%)' },
   ],
-  bothCriteria: 194,
+  bothCriteria: '2,330 imputed customers excluded from labelling',
   targets: { accuracy: 0.80, f1: 0.72, auc: 0.85 },
+  model: {
+    name: 'Random Forest + isotonic calibration',
+    test: { prAuc: 0.8251, rocAuc: 0.8476, f1: 0.7348,
+            brier: 0.1165, threshold: 0.575 },
+    topDrivers: ['e2e_delay_ms', 'client_rtt_ms', 'server_packet_loss_rate'],
+    guardrails: 'Disengagement segmentation (design label), not measured churn',
+  },
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -107,6 +91,9 @@ const RiskBar = ({ probability, level }) => {
 // ══════════════════════════════════════════════════════════════════════
 export default function Forecasting() {
   const { t }        = useTranslation()
+  // FC-9: i18next returns the KEY for missing entries, so `t(k) || fb`
+  // never falls back. tf() detects the key-echo and uses the fallback.
+  const tf = (k, fb) => { const v = t(k); return (!v || v === k) ? fb : v }
   const { theme: T } = useTheme()
   const GAP          = gapColor(T)
   const base         = useMemo(() => baseChartOptions(T), [T])
@@ -133,8 +120,18 @@ export default function Forecasting() {
         analyticsApi.forecastBrand(),
       ])
 
+      // FC-8: adapt the v6 disengagement payloads to the component contract
       if (modelRes.status  === 'fulfilled') setModelSummary(modelRes.value.data)
-      if (scoresRes.status === 'fulfilled') setChurnScores(scoresRes.value.data?.customers || [])
+      if (scoresRes.status === 'fulfilled') {
+        const cs = (scoresRes.value.data?.customers || []).map(c => ({
+          ...c,
+          churn_probability: c.risk ?? c.churn_probability ?? 0,
+          risk_level: (c.risk ?? 0) >= 0.75 ? 'CRITICAL'
+            : (c.risk_band || '').toUpperCase() === 'HIGH'   ? 'HIGH'
+            : (c.risk_band || '').toUpperCase() === 'MEDIUM' ? 'MEDIUM' : 'LOW',
+        }))
+        setChurnScores(cs)
+      }
       if (shapRes.status   === 'fulfilled') setShapResults(shapRes.value.data)
       if (fg5gRes.status   === 'fulfilled') setForecast5g(fg5gRes.value.data?.series || [])
       if (brandRes.status  === 'fulfilled') setBrandForecast(brandRes.value.data?.brands || [])
@@ -154,14 +151,18 @@ export default function Forecasting() {
   }, [fetchData])
 
   // ── Derived (FC-4: live values from the API) ──────────────────────
-  const totalCustomers = modelSummary?.n_customers    || 0
-  const totalChurned   = modelSummary?.n_churned      || 0
-  const churnRatePct   = modelSummary?.churn_rate_pct || 0
-  const nHighRisk      = modelSummary?.n_high_risk    || 0
-  const bestModel      = modelSummary?.best_model     || 'logistic_regression'
+  // FC-8: v6 payload — label block + served model block
+  const labelBlock     = modelSummary?.label || {}
+  const totalCustomers = labelBlock.labelled_customers || modelSummary?.n_customers || 0
+  const totalChurned   = labelBlock.disengaged         || modelSummary?.n_churned   || 0
+  const churnRatePct   = labelBlock.disengaged_share_pct || modelSummary?.churn_rate_pct || 0
+  const bestModel      = modelSummary?.selected_model || modelSummary?.best_model || 'random_forest'
   const bestModelLabel = bestModel.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-  const bestThreshold  = modelSummary?.models?.[bestModel]?.threshold
-  const nTest          = modelSummary?.n_test
+    + (modelSummary?.model?.calibration ? ' · Calibrated' : '')
+  const bestThreshold  = modelSummary?.model?.calibration?.threshold
+                      ?? modelSummary?.all_models?.[bestModel]?.threshold
+                      ?? modelSummary?.models?.[bestModel]?.threshold
+  const nTest          = null
 
   const highRiskRows = useMemo(() =>
     [...churnScores]
@@ -177,8 +178,10 @@ export default function Forecasting() {
     return counts
   }, [churnScores])
 
+  const nHighRisk = riskDist.CRITICAL + riskDist.HIGH
+
   const shapDrivers = useMemo(() => {
-    const raw = shapResults?.shap_importance_lr || shapResults?.churn_profile || []
+    const raw = shapResults?.drivers || shapResults?.shap_importance_lr || shapResults?.churn_profile || []
     return raw
       .filter(d => (d.mean_abs_shap != null || d.difference != null))
       .sort((a, b) => (b.mean_abs_shap || Math.abs(b.difference) || 0)
@@ -186,7 +189,8 @@ export default function Forecasting() {
       .slice(0, 10)
   }, [shapResults])
 
-  const shapFeatureCount = shapResults?.shap_importance_lr?.length
+  const shapFeatureCount = shapResults?.drivers?.length
+                        || shapResults?.shap_importance_lr?.length
                         || shapResults?.churn_profile?.length || 0
 
   const churnTrend = useMemo(() => {
@@ -370,25 +374,28 @@ export default function Forecasting() {
   const kpiTiles = useMemo(() => [
     { label: t('forecast.totalCustomers') || 'Total Customers',
       value: totalCustomers.toLocaleString(), color: HW.blue, icon: Users,
-      sub: t('forecast.kpiNetworkSub') || 'KPI network base' },
+      sub: `${(labelBlock.unlabelled_imputed || 0).toLocaleString()} unlabelled (imputed) excluded` },
     { label: t('forecast.highRiskCount') || 'High-Risk Customers',
       value: nHighRisk.toLocaleString(), color: ALARM.critical, icon: AlertTriangle,
       alert: nHighRisk > 0,
       sub: `${((nHighRisk / Math.max(totalCustomers, 1)) * 100).toFixed(1)}% of base` },
-    { label: t('forecast.churnRate') || 'Churn Rate',
+    { label: tf('forecast.disengagedShare', 'Disengaged Share'),
       value: churnRatePct.toFixed(1), unit: '%', color: ALARM.major, icon: TrendingUp,
-      sub: t('forecast.kpiChurnSub') || 'DOU OR Duration ≤ Q20' },
+      sub: tf('forecast.kpiChurnSubV6', 'Design label v6 · not measured churn') },
     { label: t('forecast.avgRiskScore') || 'Avg Risk Score',
       value: avgRiskScore, unit: '%', color: HW.blue, icon: Shield,
       sub: `Primary: ${bestModelLabel}` },
-  ], [totalCustomers, nHighRisk, churnRatePct, avgRiskScore, bestModelLabel, t])
+  ], [totalCustomers, nHighRisk, churnRatePct, avgRiskScore, bestModelLabel, labelBlock.unlabelled_imputed, t])
 
   const modelCards = useMemo(() => [
-    { label: 'Logistic Regression', metrics: modelSummary?.models?.logistic_regression,
+    { label: 'Logistic Regression',
+      metrics: modelSummary?.all_models?.logistic_regression || modelSummary?.models?.logistic_regression,
       color: HW.blue, isPrimary: bestModel === 'logistic_regression' },
-    { label: 'Random Forest', metrics: modelSummary?.models?.random_forest,
+    { label: 'Random Forest',
+      metrics: modelSummary?.all_models?.random_forest || modelSummary?.models?.random_forest,
       color: '#8B5CF6', isPrimary: bestModel === 'random_forest' },
-    { label: 'XGBoost', metrics: modelSummary?.models?.xgboost,
+    { label: 'XGBoost',
+      metrics: modelSummary?.all_models?.xgboost || modelSummary?.models?.xgboost,
       color: '#14B8A6', isPrimary: bestModel === 'xgboost' },
   ], [modelSummary, bestModel])
 
@@ -432,7 +439,7 @@ export default function Forecasting() {
               </span>
             </div>
             <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
-              Huawei Technologies Tunisia — KPI Dataset · Churn v5
+              Huawei Technologies Tunisia — KPI Dataset · Disengagement v6
             </span>
             {refreshing && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 6 }}>
@@ -498,8 +505,8 @@ export default function Forecasting() {
 
         {/* ══ §1. KPI TILES ══════════════════════════════════════════ */}
         <SectionLabel
-          action={<Badge variant="blue">{t('forecast.churnDefV5') || 'Churn v5'}</Badge>}
-          sub={`dou_total OR duration ≤ Q20 · ${totalCustomers.toLocaleString()} KPI subscribers · ${bestModelLabel} primary model`}>
+          action={<Badge variant="blue">{tf('forecast.defBadgeV6', 'Disengagement Definition v6')}</Badge>}
+          sub={`dou ≤ 1.86 MB OR duration ≤ 82 s (Q20, observed) · ${totalCustomers.toLocaleString()} labelled subscribers · ${bestModelLabel}`}>
           {t('forecast.kpiSection') || 'CHURN RISK OVERVIEW'}
         </SectionLabel>
 
@@ -509,7 +516,7 @@ export default function Forecasting() {
 
         {/* ══ §2. MODEL PERFORMANCE ══════════════════════════════════ */}
         <SectionLabel
-          sub={`Chronological 80/20 split${nTest ? ` · ${nTest.toLocaleString()} test customers` : ''} · Targets: Acc>${TRAINING.targets.accuracy * 100}% F1>${TRAINING.targets.f1 * 100}% AUC>${TRAINING.targets.auc * 100}%`}>
+          sub={`Stratified 75/25 split · leak-free feature set v2 · test touched once · Targets: Acc>${TRAINING.targets.accuracy * 100}% F1>${TRAINING.targets.f1 * 100}% AUC>${TRAINING.targets.auc * 100}%`}>
           {t('forecast.modelSection') || 'MODEL PERFORMANCE'}
         </SectionLabel>
 
@@ -536,9 +543,10 @@ export default function Forecasting() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 {[
-                  { label: 'Accuracy', value: metrics?.accuracy, target: TRAINING.targets.accuracy },
+                  // FC-8: PR-AUC replaces accuracy (target = 2x the 33.8% baseline)
+                  { label: 'PR-AUC',   value: metrics?.pr_auc,   target: 0.68 },
                   { label: 'F1-Score', value: metrics?.f1,       target: TRAINING.targets.f1 },
-                  { label: 'AUC-ROC',  value: metrics?.auc_roc,  target: TRAINING.targets.auc },
+                  { label: 'ROC-AUC',  value: metrics?.roc_auc ?? metrics?.auc_roc, target: TRAINING.targets.auc },
                 ].map(({ label: ml, value, target }) => {
                   const good = value != null && value > target
                   return (
@@ -586,7 +594,7 @@ export default function Forecasting() {
 
         {/* ══ §3. RISK DISTRIBUTION ══════════════════════════════════ */}
         <SectionLabel
-          sub={t('forecast.riskSub') || 'CRITICAL ≥75% · HIGH ≥50% · MEDIUM ≥25% · LOW <25%'}>
+          sub={tf('forecast.riskSubV6', 'Calibrated bands · CRITICAL ≥75% · HIGH ≥66% · MEDIUM ≥33%')}>
           {t('forecast.riskSection') || 'RISK DISTRIBUTION'}
         </SectionLabel>
 
@@ -615,7 +623,7 @@ export default function Forecasting() {
         {/* ══ §4. CHURN DRIVERS (SHAP) ═══════════════════════════════ */}
         <SectionLabel
           action={<Badge variant="blue">
-            {`LR SHAP${shapFeatureCount ? ` · ${shapFeatureCount} features` : ''}`}
+            {`${bestModelLabel.split(' ·')[0]} SHAP${shapFeatureCount ? ` · ${shapFeatureCount} features` : ''}`}
           </Badge>}
           sub={`Mean |SHAP| — ${bestModelLabel} primary model${totalCustomers ? ` · ${totalCustomers.toLocaleString()} customers explained` : ''} · NB06`}>
           {t('forecast.shapSection') || 'CHURN DRIVERS'}
@@ -663,7 +671,7 @@ export default function Forecasting() {
           action={<Badge variant="critical">
             {highRiskRows.length} {t('forecast.customers') || 'customers'}
           </Badge>}
-          sub={`P(churn) ≥ 50% · sorted by risk score · ${bestModelLabel} primary${bestThreshold != null ? ` · threshold ${bestThreshold.toFixed(2)}` : ''}`}>
+          sub={`Calibrated risk · isotonic · sorted descending · ${bestModelLabel}${bestThreshold != null ? ` · threshold ${bestThreshold.toFixed(2)}` : ''}`}>
           {t('forecast.tableSection') || 'HIGH-RISK CUSTOMERS'}
         </SectionLabel>
 
@@ -681,11 +689,9 @@ export default function Forecasting() {
                   borderBottom: `1px solid ${T.border}` }}>
                   {[
                     t('forecast.thMsisdn')  || 'MSISDN',
-                    t('forecast.thRisk')    || 'RISK',
-                    t('forecast.thProb')    || 'CHURN PROBABILITY',
-                    t('forecast.thRatio5g') || 'RATIO 5G',
-                    t('forecast.thTraffic') || '5G TRAFFIC',
-                    t('forecast.thActual')  || 'ACTUAL',
+                    tf('forecast.thRiskV6', 'RISK BAND'),
+                    tf('forecast.thProbV6', 'CALIBRATED RISK'),
+                    tf('forecast.thReasons', 'TOP DISENGAGEMENT REASONS (SHAP)'),
                   ].map(label => (
                     <th key={label} style={{ padding: '11px 14px', textAlign: 'left',
                       fontSize: 10, fontWeight: 800, letterSpacing: '1.5px',
@@ -699,13 +705,13 @@ export default function Forecasting() {
               <tbody>
                 {highRiskRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} style={{ padding: 48, textAlign: 'center',
+                    <td colSpan={4} style={{ padding: 48, textAlign: 'center',
                       color: T.textMuted }}>
                       <div style={{ marginBottom: 10 }}>
                         <Shield size={26} color={T.textDim}/>
                       </div>
-                      {t('forecast.noHighRisk') ||
-                        'No high-risk data — ensure /api/churn/high-risk returns churn_scores.parquet'}
+                      {tf('forecast.noHighRiskV6',
+                        'No risk scores — run NB06 and register src/api/disengagement_api.py')}
                     </td>
                   </tr>
                 ) : highRiskRows.map((customer, i) => {
@@ -734,26 +740,23 @@ export default function Forecasting() {
                       <td style={{ padding: '10px 14px', minWidth: 200 }}>
                         <RiskBar probability={prob} level={level}/>
                       </td>
-                      <td style={{ padding: '10px 14px', fontFamily: FONT.display,
-                        fontSize: 13, fontWeight: 600, color: T.textMuted }}>
-                        {customer.ratio_5g != null
-                          ? `${(customer.ratio_5g * 100).toFixed(1)}%` : '—'}
-                      </td>
-                      <td style={{ padding: '10px 14px', fontSize: 10, color: T.textDim }}>
-                        {customer.traffic_5g != null
-                          ? customer.traffic_5g > 1e6
-                            ? `${(customer.traffic_5g / 1e6).toFixed(1)} MB`
-                            : `${(customer.traffic_5g / 1e3).toFixed(0)} KB`
-                          : '—'}
-                      </td>
                       <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontSize: 10, fontWeight: 700,
-                          color: customer.churn_actual === 1
-                            ? ALARM.critical : ALARM.normal }}>
-                          {customer.churn_actual === 1
-                            ? t('forecast.churned') || 'CHURNED'
-                            : t('forecast.active') || 'ACTIVE'}
-                        </span>
+                        {/* FC-8: per-customer SHAP reasons from NB06 */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                          {(customer.top_reasons || []).slice(0, 3).map((r, j) => (
+                            <span key={j} style={{ fontSize: 9, fontWeight: 700,
+                              letterSpacing: '.5px', padding: '2px 7px',
+                              background: T.mode === 'dark'
+                                ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)',
+                              border: `1px solid ${T.border}`, color: T.textMuted,
+                              whiteSpace: 'nowrap' }}>
+                              {r}
+                            </span>
+                          ))}
+                          {(!customer.top_reasons || customer.top_reasons.length === 0) && (
+                            <span style={{ fontSize: 10, color: T.textDim }}>—</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )
@@ -765,8 +768,8 @@ export default function Forecasting() {
 
         {/* ══ §6. 5G ADOPTION FORECAST ═══════════════════════════════ */}
         <SectionLabel
-          action={<Badge variant="blue">XGBoost · MAPE {TRAINING.forecastModels[0].value}</Badge>}
-          sub="30-day horizon · log1p transformed · lag features — metrics from NB02 training run">
+          action={<Badge variant="blue">{TRAINING.forecastModels[0].label} · {TRAINING.forecastModels[0].value}</Badge>}
+          sub="Series is 91.8% imputation noise — re-run NB02 v2.1 after the NB00 semantic fix">
           {t('forecast.fgSection') || '5G ADOPTION FORECAST'}
         </SectionLabel>
 
@@ -799,7 +802,7 @@ export default function Forecasting() {
 
         {/* ══ §7. 5G NETWORK COVERAGE ════════════════════════════════ */}
         <SectionLabel
-          action={<Badge variant="blue">NB04 · churn_features.parquet</Badge>}
+          action={<Badge variant="blue">NB04b · coverage_5g.json</Badge>}
           sub="5G adoption by province · generation mix · 5G vs 4G performance · coverage gap alerts">
           5G NETWORK COVERAGE
         </SectionLabel>
@@ -811,9 +814,9 @@ export default function Forecasting() {
 
         {/* ══ §9. CHURN DEFINITION REFERENCE ═════════════════════════ */}
         <SectionLabel
-          sub={t('forecast.defSub') ||
-            'Methodology from NB03–NB05 training run · v5 final definition · update on retrain'}>
-          {t('forecast.defSection') || 'CHURN DEFINITION v5'}
+          sub={tf('forecast.defSubV6',
+            'Label audit 03b · leak-free features NB04 · calibrated model NB06 — v6 pipeline')}>
+          {tf('forecast.defSectionV6', 'DISENGAGEMENT DEFINITION v6')}
         </SectionLabel>
 
         <div style={{ display: 'flex', gap: 1, background: GAP }}>
@@ -821,7 +824,7 @@ export default function Forecasting() {
             { ...TRAINING.churnDef[0], color: ALARM.minor },
             { ...TRAINING.churnDef[1], color: HW.blue },
             { label: 'OR Logic · Final def.',
-              metric: `C1 OR C2 · ${TRAINING.bothCriteria} satisfy both`,
+              metric: `C1 OR C2 · ${TRAINING.bothCriteria}`,
               count: `${totalChurned.toLocaleString()} churned · ${churnRatePct.toFixed(1)}%`,
               color: ALARM.major },
           ].map(({ label, metric, count, color }) => (

@@ -2,19 +2,8 @@
 src/api/analytics_api.py
 =========================
 SpiriComp — FastAPI analytics backend (main entry point).
-
 Run from project root:
     uvicorn src.api.analytics_api:app --reload --port 8000
-
-FIXES IN THIS VERSION:
-  API-1  Duplicate complaints/by-city route removed — fixed version only
-  API-2  Overview uses 'province' column (not 'region') → Governorates badge
-  API-3  TN_COORDS lookup normalizes city to Title Case → map shows cities
-  API-4  TN_COORDS expanded with missing top-20 cities from actual data
-  MAP-1  province col (not region) throughout
-  MAP-2  Service derived from sub_category (no service_type col)
-  MAP-3  QoE = resolution rate (is_unresolved col)
-  MAP-4  GOUVERNORAT stripped (uppercase + mixed case)
 """
 from __future__ import annotations
 
@@ -1297,125 +1286,6 @@ async def status():
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# ROUTER 2 — Churn Intelligence (/api/churn/* and /api/forecast/*)
-# Dataset 2: KPI outputs from NB02/NB05/NB06
-# ═══════════════════════════════════════════════════════════════════════
-churn_router = APIRouter(tags=["Churn Intelligence"])
-
-
-@churn_router.get("/api/churn/model-summary")
-def churn_model_summary():
-    p = Path("data/outputs/model_results.json")
-    if not p.exists():
-        raise HTTPException(404, "model_results.json not found — run NB05")
-    with open(p) as f:
-        return json.load(f)
-
-
-@churn_router.get("/api/churn/high-risk")
-def churn_high_risk(limit: int = 500):
-    p = Path("data/outputs/churn_scores.parquet")
-    if not p.exists():
-        raise HTTPException(404, "churn_scores.parquet not found — run NB05")
-    df = pd.read_parquet(p)
-    df = df.sort_values("churn_probability", ascending=False).head(limit)
-    return {"customers": safe_dict(df)}
-
-
-@churn_router.get("/api/churn/predict/{msisdn}")
-def churn_predict(msisdn: str):
-    p = Path("data/outputs/churn_scores.parquet")
-    if not p.exists():
-        raise HTTPException(404, "churn_scores.parquet not found — run NB05")
-    df  = pd.read_parquet(p)
-    row = df[df["msisdn"].astype(str) == msisdn]
-    if row.empty:
-        raise HTTPException(404, f"MSISDN {msisdn} not found")
-    rec = row.iloc[0].to_dict()
-    return {k: (None if isinstance(v, float) and np.isnan(v) else
-                int(v)   if isinstance(v, np.integer)  else
-                float(v) if isinstance(v, np.floating) else v)
-            for k, v in rec.items()}
-
-
-@churn_router.get("/api/churn/shap")
-def churn_shap():
-    p = Path("data/outputs/shap_results.json")
-    if not p.exists():
-        raise HTTPException(404, "shap_results.json not found — run NB06")
-    with open(p) as f:
-        return json.load(f)
-
-
-@churn_router.get("/api/forecast/5g")
-def forecast_5g():
-    p = Path("models/prediction/forecasts.parquet")
-    if not p.exists():
-        raise HTTPException(404, "forecasts.parquet not found — run NB02")
-    df = pd.read_parquet(p)
-    if "target" in df.columns:
-        df = df[df["target"].str.lower().str.contains("5g", na=False)].copy()
-    df["is_forecast"] = True
-    if "forecast" in df.columns and "value" not in df.columns:
-        df = df.rename(columns={"forecast": "value"})
-    keep = [c for c in ["date", "value", "is_forecast", "region", "model"] if c in df.columns]
-    return {"series": safe_dict(df[keep])}
-
-
-@churn_router.get("/api/forecast/brand")
-def forecast_brand():
-    scores_path = Path("data/outputs/churn_scores.parquet")
-    if not scores_path.exists():
-        raise HTTPException(404, "churn_scores.parquet not found — run NB05")
-    df = pd.read_parquet(scores_path)
-    if "traffic_5g" not in df.columns:
-        raise HTTPException(404, "traffic_5g column not in churn_scores")
-    top = (df.groupby("risk_level")["traffic_5g"]
-             .agg(forecast="mean", count="count")
-             .reset_index()
-             .rename(columns={"risk_level": "brand"}))
-    return {"brands": safe_dict(top)}
-
-
-@churn_router.get("/api/brand/performance")
-def brand_performance():
-    feat_path = Path("data/processed/churn_features.parquet")
-    le_path   = Path("models/le_brand.pkl")
-    if not feat_path.exists():
-        raise HTTPException(404, "churn_features.parquet not found — run NB04")
-    if not le_path.exists():
-        raise HTTPException(404, "le_brand.pkl not found — run NB04")
-    import joblib
-    feat = pd.read_parquet(feat_path)
-    feat.columns = feat.columns.str.lower()
-    le   = joblib.load(str(le_path))
-    feat["brand_name"] = le.inverse_transform(feat["brand_encoded"].astype(int))
-    GEN_MAP = {1: "2G", 2: "3G", 3: "3G", 4: "4G", 5: "5G"}
-    rows = []
-    for brand_name, grp in feat.groupby("brand_name"):
-        total         = len(grp)
-        gen_breakdown = {}
-        if "generation_numeric" in grp.columns:
-            for code, label in GEN_MAP.items():
-                frac = (grp["generation_numeric"] == code).sum() / max(total, 1)
-                if frac > 0:
-                    gen_breakdown[label] = round(float(frac), 3)
-        rows.append({
-            "brand_name":       brand_name,
-            "customer_count":   int(total),
-            "churn_rate":       round(float(grp["churn"].mean()), 4)          if "churn"          in grp.columns else None,
-            "ratio_5g_mean":    round(float(grp["ratio_5g"].mean()), 4)       if "ratio_5g"       in grp.columns else None,
-            "traffic_5g_mean":  round(float(grp["traffic_5g"].mean()), 2)     if "traffic_5g"     in grp.columns else None,
-            "duration_mean":    round(float(grp["duration"].mean()), 1)       if "duration"       in grp.columns else None,
-            "brand_churn_rate": round(float(grp["brand_churn_rate"].mean()), 4) if "brand_churn_rate" in grp.columns else None,
-            "is_5g_capable":    bool((grp["is_5g_capable"] > 0).any())        if "is_5g_capable"  in grp.columns else False,
-            "gen_breakdown":    gen_breakdown,
-        })
-    rows.sort(key=lambda x: x["customer_count"], reverse=True)
-    return {"brands": rows, "total_brands": len(rows)}
-
-
-# ═══════════════════════════════════════════════════════════════════════
 # APP ASSEMBLY
 # ═══════════════════════════════════════════════════════════════════════
 @asynccontextmanager
@@ -1520,268 +1390,6 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 
-# ════════════════════════════════════════════════════════════════════
-# 5G COVERAGE & ADOPTION  GET /api/coverage/5g
-# Source: churn_features.parquet (ratio_5g, traffic_5g, is_5g_capable,
-#         generation_numeric, brand_encoded, province_encoded,
-#         province_churn_rate, avg_latency_ms, avg_packet_loss)
-# ════════════════════════════════════════════════════════════════════
-
-@churn_router.get("/api/coverage/5g")
-def coverage_5g():
-    """
-    Full 5G adoption & coverage intelligence module.
-    Returns all data needed by the Forecasting page 5G Coverage section:
-      - KPI summary  (adoption rate, capable devices, traffic split)
-      - By-province  (avg ratio_5g per governorate → bar chart + coverage gap table)
-      - By-brand     (avg ratio_5g + is_5g_capable per brand)
-      - Generation mix (2G/3G/4G/5G device breakdown)
-      - 5G vs 4G performance (latency, packet_loss grouped by 5G usage)
-      - Coverage gap alerts  (provinces: low ratio_5g + high churn_rate)
-      - Engaged 5G churners  (high ratio_5g + CRITICAL/HIGH risk)
-    """
-    try:
-        # ── Load churn_features.parquet ──────────────────────────────
-        for p in [Path("data/outputs/churn_features.parquet"),
-                  Path("data/processed/churn_features.parquet"),
-                  Path("models/churn_features.parquet")]:
-            if p.exists():
-                df = pd.read_parquet(str(p))
-                df.columns = df.columns.str.lower()
-                break
-        else:
-            raise HTTPException(404, "churn_features.parquet not found — run NB04")
-
-        # ── Load brand encoder if available ───────────────────────────
-        brand_map: dict = {}
-        for lep in [Path("models/le_brand.pkl"), Path("models/churn_le_brand.pkl")]:
-            if lep.exists():
-                import joblib as _jl
-                le = _jl.load(str(lep))
-                brand_map = {i: n for i, n in enumerate(le.classes_)}
-                break
-
-        # ── Load province encoder → real governorate names ────────────
-        # models/le_province.pkl  (LabelEncoder saved in NB04/NB05)
-        # Maps province_encoded integer → actual Tunisian governorate name
-        province_map: dict = {}
-        for lep in [Path("models/le_province.pkl"), Path("models/churn_le_province.pkl")]:
-            if lep.exists():
-                import joblib as _jl
-                le_prov = _jl.load(str(lep))
-                province_map = {i: n for i, n in enumerate(le_prov.classes_)}
-                logger.info("Province encoder loaded: %d governorates", len(province_map))
-                break
-
-        if not province_map:
-            # Fallback: standard 24 Tunisian governorates in alphabetical order
-            # (matches sklearn LabelEncoder default alphabetical encoding)
-            _TN_GOVS = [
-                "Ariana", "Béja", "Ben Arous", "Bizerte", "Gabès",
-                "Gafsa", "Jendouba", "Kairouan", "Kasserine", "Kébili",
-                "Kef", "Mahdia", "Manouba", "Médenine", "Monastir",
-                "Nabeul", "Sfax", "Sidi Bouzid", "Siliana", "Sousse",
-                "Tataouine", "Tozeur", "Tunis", "Zaghouan",
-            ]
-            province_map = {i: name for i, name in enumerate(_TN_GOVS)}
-            logger.warning(
-                "le_province.pkl not found — using alphabetical fallback mapping. "
-                "Run NB04 and ensure models/le_province.pkl is saved."
-            )
-
-        # ── Load churn scores for risk_level ─────────────────────────
-        scores_df: pd.DataFrame | None = None
-        for sp in [Path("data/outputs/churn_scores.parquet"),
-                   Path("models/churn_scores.parquet")]:
-            if sp.exists():
-                scores_df = pd.read_parquet(str(sp))
-                scores_df.columns = scores_df.columns.str.lower()
-                break
-
-        n_total = len(df)
-
-        # ── 1. KPI summary ────────────────────────────────────────────
-        ratio_col    = "ratio_5g"       if "ratio_5g"       in df.columns else None
-        traffic_col  = "traffic_5g"     if "traffic_5g"     in df.columns else None
-        capable_col  = "is_5g_capable"  if "is_5g_capable"  in df.columns else None
-        gen_col      = "generation_numeric" if "generation_numeric" in df.columns else None
-
-        adoption_rate  = round(float(df[ratio_col].mean()) * 100, 2) if ratio_col else None
-        capable_pct    = round(float((df[capable_col] > 0).mean()) * 100, 1) if capable_col else None
-        avg_5g_traffic = round(float(df[traffic_col].mean()), 2) if traffic_col else None
-        total_traffic  = round(float(df[traffic_col].sum()), 0) if traffic_col else None
-
-        # 5G vs non-5G split
-        if ratio_col:
-            has_5g  = (df[ratio_col] > 0).sum()
-            no_5g   = (df[ratio_col] == 0).sum()
-        else:
-            has_5g = no_5g = 0
-
-        kpi_summary = {
-            "total_subscribers":   n_total,
-            "adoption_rate_pct":   adoption_rate,
-            "capable_devices_pct": capable_pct,
-            "avg_5g_traffic":      avg_5g_traffic,
-            "total_5g_traffic":    total_traffic,
-            "subscribers_using_5g":int(has_5g),
-            "subscribers_no_5g":   int(no_5g),
-        }
-
-        # ── 2. Adoption by province ───────────────────────────────────
-        prov_col   = "province_encoded"   if "province_encoded"   in df.columns else None
-        pchurn_col = "province_churn_rate" if "province_churn_rate" in df.columns else None
-
-        province_data: list[dict] = []
-        if prov_col and ratio_col:
-            grp = df.groupby(prov_col).agg(
-                subscribers      = (prov_col,   "count"),
-                avg_ratio_5g     = (ratio_col,  "mean"),
-                avg_traffic_5g   = (traffic_col,"mean") if traffic_col else (prov_col,"count"),
-                avg_churn_rate   = (pchurn_col, "mean") if pchurn_col else (prov_col,"count"),
-            ).reset_index()
-            grp = grp.sort_values("avg_ratio_5g", ascending=False)
-            for _, row in grp.iterrows():
-                enc = int(row[prov_col])
-                province_data.append({
-                    "province":     province_map.get(enc, f"Province {enc}"),  # real name
-                    "province_id":  enc,                                        # keep int for reference
-                    "subscribers":  int(row["subscribers"]),
-                    "ratio_5g_pct": round(float(row["avg_ratio_5g"]) * 100, 2),
-                    "traffic_5g":   round(float(row.get("avg_traffic_5g", 0)), 2),
-                    "churn_rate":   round(float(row.get("avg_churn_rate",  0)), 4),
-                })
-
-        # ── 3. Adoption by brand ──────────────────────────────────────
-        brand_col = "brand_encoded" if "brand_encoded" in df.columns else None
-        brand_data: list[dict] = []
-        if brand_col and ratio_col:
-            bgrp = df.groupby(brand_col).agg(
-                subscribers  = (brand_col,  "count"),
-                avg_ratio_5g = (ratio_col,  "mean"),
-                capable_pct  = (capable_col,"mean") if capable_col else (brand_col,"count"),
-                churn_rate   = ("brand_churn_rate","mean") if "brand_churn_rate" in df.columns
-                               else (brand_col,"count"),
-            ).reset_index()
-            bgrp = bgrp.sort_values("avg_ratio_5g", ascending=False)
-            for _, row in bgrp.iterrows():
-                bid = int(row[brand_col])
-                brand_data.append({
-                    "brand_id":     bid,
-                    "brand_name":   brand_map.get(bid, f"Brand {bid}"),
-                    "subscribers":  int(row["subscribers"]),
-                    "ratio_5g_pct": round(float(row["avg_ratio_5g"]) * 100, 2),
-                    "capable_pct":  round(float(row.get("capable_pct", 0)) * 100, 1),
-                    "churn_rate":   round(float(row.get("churn_rate", 0)), 4),
-                })
-
-        # ── 4. Generation mix ─────────────────────────────────────────
-        GEN_LABEL = {1:"2G", 2:"3G", 3:"3G", 4:"4G", 5:"5G"}
-        gen_mix: list[dict] = []
-        if gen_col:
-            gc = df[gen_col].value_counts().sort_index()
-            for g, cnt in gc.items():
-                gen_mix.append({
-                    "generation": GEN_LABEL.get(int(g), f"{g}G"),
-                    "count":      int(cnt),
-                    "pct":        round(cnt / n_total * 100, 1),
-                })
-
-        # ── 5. 5G vs 4G/non-5G performance ───────────────────────────
-        perf_comparison: dict = {}
-        if ratio_col and "avg_latency_ms" in df.columns:
-            mask_5g   = df[ratio_col] > 0.1   # mostly 5G
-            mask_4g   = df[ratio_col] <= 0.1  # little/no 5G
-            def perf_stats(mask: pd.Series) -> dict:
-                sub = df[mask]
-                return {
-                    "count":         int(mask.sum()),
-                    "avg_latency":   round(float(sub["avg_latency_ms"].mean()), 2)  if "avg_latency_ms"  in sub else None,
-                    "avg_pkt_loss":  round(float(sub["avg_packet_loss"].mean()), 4) if "avg_packet_loss" in sub else None,
-                    "avg_rtt":       round(float(sub["client_rtt_ms"].mean()), 2)   if "client_rtt_ms"   in sub else None,
-                    "churn_rate":    round(float(sub[pchurn_col].mean()), 4)         if pchurn_col and pchurn_col in sub else None,
-                }
-            perf_comparison = {
-                "mostly_5g":     perf_stats(mask_5g),
-                "mostly_4g":     perf_stats(mask_4g),
-                "threshold_used":"ratio_5g > 0.1",
-            }
-
-        # ── 6. Coverage gap alerts ────────────────────────────────────
-        # Province with: low 5G adoption AND high churn rate = underserved
-        coverage_gaps: list[dict] = []
-        if province_data:
-            for p in province_data:
-                gap_score = (1 - p["ratio_5g_pct"] / 100) * p.get("churn_rate", 0)
-                p["gap_score"] = round(gap_score, 4)
-            coverage_gaps = sorted(
-                [p for p in province_data if p["ratio_5g_pct"] < 15],
-                key=lambda x: x.get("gap_score", 0), reverse=True
-            )[:8]
-
-        # ── 7. Engaged 5G churners ────────────────────────────────────
-        # High ratio_5g + CRITICAL/HIGH risk → special retention cohort
-        engaged_churners: list[dict] = []
-        if scores_df is not None and ratio_col and "risk_level" in scores_df.columns:
-            merge_key = "msisdn" if "msisdn" in df.columns and "msisdn" in scores_df.columns else None
-            if merge_key:
-                # FIX: rename right-side columns before merge to avoid pandas
-                # collision suffixes (_x/_y) when scores_df already has ratio_5g.
-                # We extract only what we need from df and give it unambiguous names.
-                right_cols = [merge_key, ratio_col]
-                if traffic_col and traffic_col != ratio_col:
-                    right_cols.append(traffic_col)
-                right = df[right_cols].rename(columns={
-                    ratio_col:   "cf_ratio_5g",
-                    traffic_col: "cf_traffic_5g",
-                } if traffic_col and traffic_col != ratio_col else {
-                    ratio_col: "cf_ratio_5g",
-                })
-                merged = scores_df.merge(right, on=merge_key, how="left")
-
-                # Use the renamed column — no collision possible
-                cf_ratio = "cf_ratio_5g"
-                mask = (
-                    merged["risk_level"].isin(["CRITICAL", "HIGH"]) &
-                    (merged[cf_ratio].fillna(0) > 0.3)
-                )
-                # Detect actual probability column name (churn_probability or churn_prob)
-                prob_col = (
-                    "churn_probability" if "churn_probability" in merged.columns
-                    else "churn_prob"   if "churn_prob"        in merged.columns
-                    else None
-                )
-                if prob_col:
-                    top = merged[mask].nlargest(20, prob_col)[
-                        [merge_key, prob_col, "risk_level", cf_ratio]
-                    ]
-                    for _, row in top.iterrows():
-                        engaged_churners.append({
-                            "msisdn":     str(row[merge_key]),
-                            "churn_prob": round(float(row[prob_col]), 3),
-                            "risk_level": row["risk_level"],
-                            "ratio_5g":   round(float(row[cf_ratio]) if pd.notna(row[cf_ratio]) else 0.0, 3),
-                        })
-                else:
-                    logger.warning("coverage_5g: no churn probability column found in scores_df")
-
-        return {
-            "kpi":              kpi_summary,
-            "by_province":      province_data,
-            "by_brand":         brand_data,
-            "generation_mix":   gen_mix,
-            "performance":      perf_comparison,
-            "coverage_gaps":    coverage_gaps,
-            "engaged_churners": engaged_churners,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("coverage_5g failed")
-        raise HTTPException(500, f"5G coverage error: {exc}") from exc
-
-
 # ── Router registration ──────────────────────────────────────────────
 try:
     from src.api.notifications import router as notif_router
@@ -1791,7 +1399,6 @@ except Exception as exc:
     logger.warning("Notifications not available: %s", exc)
 
 app.include_router(router)        # /api/analytics/*
-app.include_router(churn_router)  # /api/churn/* + /api/forecast/* + /api/brand/*
 logger.info("Analytics + Churn routers registered")
 
 _auth_registered = _admin_registered = False
@@ -1816,16 +1423,16 @@ if not _auth_registered:  logger.error("AUTH ROUTES NOT REGISTERED")
 if not _admin_registered: logger.error("ADMIN ROUTES NOT REGISTERED")
 
 for _mod, _attr, _label in [
-    ("src.api.ai_api",        "ai_router",  "AI routes → /api/ai/*"),
-    ("src.api.messaging_api", "msg_router", "Messaging routes → /api/messages/*"),
+    ("src.api.disengagement_api",     "router", "Disengagement → /api/churn/*"),
+    ("src.api.coverage_api",          "router", "5G Coverage → /api/coverage/5g"),
+    ("src.api.churn_intelligence_api","router", "Forecast/Brand → /api/forecast/* /api/brand/*"),
 ]:
     try:
-        import importlib as _il2
-        app.include_router(getattr(_il2.import_module(_mod), _attr))
+        import importlib as _il3
+        app.include_router(getattr(_il3.import_module(_mod), _attr))
         logger.info(_label)
     except Exception as exc:
-        logger.warning("%s not available: %s", _mod, exc)
-
+        logger.error("%s NOT registered: %s", _mod, exc)
 try:
     from src.nlp.nlp_api import router as nlp_router
     app.include_router(nlp_router)
