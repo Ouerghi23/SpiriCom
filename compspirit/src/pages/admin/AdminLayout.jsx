@@ -25,7 +25,6 @@
 //        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet">
 //  AL-5  Dead code removed: NavLink style fn set a '--accent' CSS var
 //        nothing consumed. LiveClock uses useTheme() (no T prop).
-//        Bell button gets an aria-label (it had no accessible name).
 //  AL-6  OVERLAP BUG: <FloatingControls/> (theme + EN/ZH FABs) floated
 //        bottom-left ABOVE the fixed sidebar, covering the Sign Out
 //        button. Floating FABs and a fixed sidebar will always fight
@@ -36,6 +35,12 @@
 //        controls (no sidebar there). The theme-toggle call is
 //        resolved defensively (toggleTheme / toggle / setMode) so it
 //        works whatever the ThemeContext exposes.
+//  AL-7  REAL BUG: <NotificationBell role={currentUser?.role ...}/> —
+//        `currentUser` was never declared (useAuth() returns `user`).
+//        An undeclared identifier throws ReferenceError even behind
+//        `?.`, which crashed the whole sidebar render. Fixed to `user`.
+//  AL-8  Unused `Bell` import removed — NotificationBell owns its own
+//        icon and aria-label now.
 // ─────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom'
@@ -46,10 +51,11 @@ import { useTheme } from '../../context/ThemeContext'
 import { HW, ALARM, FONT, NocBaseStyles } from '../../components/UI'
 import {
   Users, Settings, Activity, FileText,
-  LogOut, Shield, Bell, ChevronRight,
+  LogOut, Shield, ChevronRight,
   Sun, Moon, Languages,
 } from 'lucide-react'
 import logoImg from '../../assets/images/logo_1.png'
+import NotificationBell from '../../components/NotificationBell'
 
 const ADMIN_NAV = [
   { label: 'Manage Users',   path: '/admin/users',  Icon: Users,    accent: HW.blue       },
@@ -410,10 +416,8 @@ export default function AdminLayout() {
               letterSpacing: '.5px' }}>{isZh ? 'ZH' : 'EN'}</span>
           </button>
 
-          {/* AL-5: accessible name */}
-          <button className="hw-topbar-btn" aria-label="Notifications">
-            <Bell size={15}/>
-          </button>
+          {/* AL-7: fixed — was `currentUser` (undeclared, ReferenceError) */}
+          <NotificationBell role={user?.role === 'admin' ? 'admin' : 'engineer'}/>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8,
             padding: '5px 12px 5px 6px',

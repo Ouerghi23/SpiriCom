@@ -6,6 +6,22 @@ Fixes appliqués :
 - BUG-2: Validation stricte des prefixes bcrypt
 - BUG-3: hash_password simplifié et robuste
 - BUG-4: Vérification du montage du router dans main.py (à faire manuellement)
+
+v2 — notification + health fixes:
+- AUTH-1: emit_notification imported from notifications_api (in-app
+  SQLite/SSE bell), consistent with nlp_api's NLP-1 fix.
+- AUTH-2: self_checkin() notifies admins ('shift_start').
+- AUTH-3: self_checkout() notifies admins ('shift_end', with hours).
+- AUTH-4: register() (self-signup, always role='engineer') notifies
+  admins ('new_engineer').
+- AUTH-5: admin_create_user() notifies admins when role=='engineer'
+  ('new_engineer').
+- AUTH-6: admin_system_health() services dict was hardcoded
+  {"auth_api": True, "nlp_api": True} — always green, and missing the
+  "analytics_api" key that MonitorSystem.jsx reads (the MS-2 flag from
+  the dashboard audit). Now derived from real artifact checks across
+  the v6 pipeline routers, and a DB-down condition emits a deduplicated
+  'system_error' notification to admins.
 """
 from __future__ import annotations
 
@@ -27,6 +43,19 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from pydantic import BaseModel
+
+# AUTH-1: in-app notification bell (SQLite + SSE) — same module as NLP-1.
+# AUTH-1b: import is DEFENSIVE. If notifications_api (or its
+# artifact_cache dependency) isn't deployed yet, auth_api must still
+# load and /api/auth/login must still work — a missing notification
+# system must never take down login.
+try:
+    from src.api.notification_service import emit_notification
+except Exception as _exc:                            # pragma: no cover
+    logging.getLogger("auth_api").warning(
+        "notifications_api unavailable — notifications disabled: %s", _exc)
+    def emit_notification(*args, **kwargs):
+        return None
 
 logger = logging.getLogger("auth_api")
 
@@ -90,15 +119,15 @@ def verify_password(plain: str, hashed: str) -> bool:
     try:
         plain_b = plain.encode("utf-8")
         hashed_b = hashed.encode("utf-8") if isinstance(hashed, str) else hashed
-        
+
         # FIX BUG-2: Validation stricte des prefixes bcrypt valides
         valid_prefixes = (b'$2a$', b'$2b$', b'$2x$', b'$2y$')
         if not any(hashed_b.startswith(p) for p in valid_prefixes):
             logger.error(f"Hash bcrypt invalide (format incorrect): {hashed_b[:30]}...")
             return False
-        
+
         return bcrypt.checkpw(plain_b, hashed_b)
-        
+
     except ValueError as e:
         logger.error(f"Erreur bcrypt ValueError: {e}")
         return False
@@ -382,6 +411,13 @@ def register(body: RegisterRequest):
         )
     token = create_token({"sub": username, "role": "engineer"}, expires_hours=TOKEN_HOURS)
     logger.info("Register: new user '%s'", username)
+    # AUTH-4: self-registration always creates role='engineer' — notify
+    # admins (spec: "A new NOC engineer is added to the system").
+    emit_notification(
+        "admin", "new_engineer", f"New engineer account: {username}",
+        "Self-registered", "normal",
+        {"user": username, "url": "/admin/users"},
+    )
     return {
         "access_token": token,
         "token_type":   "bearer",
@@ -475,6 +511,12 @@ def self_checkin(caller: dict = Depends(current_user)):
             (now_iso, me),
         )
     log_action(actor=me, action="self_checkin", target_user=me, ip=None)
+    # AUTH-2: notify admins that an engineer started their shift
+    emit_notification(
+        "admin", "shift_start", f"{me} started shift",
+        "NOC engineer on duty", "normal",
+        {"user": me, "url": "/admin/users"},
+    )
     return {"message": "Checked in", "last_checkin": now_iso}
 
 
@@ -511,6 +553,12 @@ def self_checkout(caller: dict = Depends(current_user)):
         )
     log_action(actor=me, action="self_checkout", target_user=me, ip=None,
                detail=f"+{extra_hours}h today:{new_today}h")
+    # AUTH-3: notify admins that an engineer ended their shift
+    emit_notification(
+        "admin", "shift_end", f"{me} ended shift",
+        f"+{extra_hours}h logged · today {new_today}h · week {new_week}h",
+        "info", {"user": me, "url": "/admin/users"},
+    )
     return {
         "message":     "Checked out",
         "hours_added": extra_hours,
@@ -615,6 +663,13 @@ def admin_create_user(body: CreateUserRequest, request: Request,
     log_action(admin["username"], "create_user", username,
                client_ip(request), "success", f"role={role}")
     logger.info("Admin '%s' created user '%s' (role=%s)", admin["username"], username, role)
+    # AUTH-5: notify admins when a new NOC engineer account is created
+    if role == "engineer":
+        emit_notification(
+            "admin", "new_engineer", f"New engineer account: {username}",
+            f"Created by {admin['username']}", "normal",
+            {"user": username, "url": "/admin/users"},
+        )
     return {"id": new_id, "username": username, "full_name": full_name,
             "email": email or "", "role": role, "active": True}
 
@@ -758,8 +813,34 @@ async def admin_system_health():
         ram_mb  = round(proc.memory_info().rss / 1_048_576, 1)
     except Exception:
         pass
+
+    # AUTH-6: services reflects REAL artifact-based checks across the v6
+    # pipeline routers — was hardcoded {"auth_api": True, "nlp_api": True}
+    # (always green) and was MISSING "analytics_api", the key
+    # MonitorSystem.jsx reads (the long-flagged MS-2 issue).
+    services = {
+        "auth_api":          db_ok,
+        "analytics_api":     Path("data/processed/complaints_clean.parquet").exists(),
+        "nlp_api":           Path("data/nlp/complaints.db").exists(),
+        "notifications_api": Path("data/nlp/notifications.db").exists(),
+        "disengagement_api": Path("models/disengagement_model_v6_calibrated.joblib").exists(),
+        "coverage_api":      Path("data/outputs/coverage_5g.json").exists(),
+        "ai_api":            Path("data/ai_config.json").exists(),
+    }
+
+    status_label = "healthy" if db_ok else "degraded"
+    if not db_ok:
+        # Real downtime — notify admins (spec: "system error or downtime"),
+        # deduplicated so it doesn't spam on every MonitorSystem refresh.
+        emit_notification(
+            "admin", "system_error", "Auth database unreachable",
+            "admin_system_health failed the database check",
+            "critical", {"url": "/admin/system"},
+            dedup_key="system_health_db_down",
+        )
+
     return {
-        "status":   "healthy" if db_ok else "degraded",
+        "status":   status_label,
         "uptime":   uptime_str,
         "uptime_s": uptime_s,
         "database": {"ok": db_ok, "path": str(DB_PATH),
@@ -768,7 +849,7 @@ async def admin_system_health():
         "host":     {"hostname": socket.gethostname(),
                      "platform": platform.system(),
                      "python":   platform.python_version()},
-        "services": {"auth_api": True, "nlp_api": True},
+        "services": services,
     }
 
 

@@ -29,6 +29,9 @@ import { useTheme }                           from '../context/ThemeContext'
 import FloatingControls                       from './FloatingControls'
 import AIChatBubble                           from '../pages/AIChatBubble'
 import MessagingWidget                        from './MessagingWidget'
+import NotificationBell from './NotificationBell'
+
+
 import ShiftWidget                            from './ShiftWidget'
 import logoImg                                from '../assets/images/logo_1.png'
 
@@ -66,7 +69,7 @@ export default function Layout() {
     { label: t('nav.forecast'),  path: '/dashboard/forecast'   },
     { label: t('nav.segments'),  path: '/dashboard/segments'   },
     { label: t('nav.nlp'),       path: '/dashboard/nlp'        },
-    { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
+   // { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
    // { label: t('nav.about'),     path: '/dashboard/about'      },
   ]
 
@@ -281,6 +284,9 @@ export default function Layout() {
           {!isAdmin && T && (
             <ShiftWidget user={user} T={T}/>
           )}
+<NotificationBell role={user?.role === 'admin' ? 'admin' : 'engineer'} />
+
+
 
           {/* Divider */}
           <div style={{ width: 1, height: 22, background: T.border, flexShrink: 0 }}/>

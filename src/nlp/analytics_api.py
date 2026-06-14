@@ -21,7 +21,7 @@ import pandas as pd
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-
+from src.api import ai_api 
 logger = logging.getLogger("analytics_api")
 
 # ── Data paths ────────────────────────────────────────────────────────
@@ -1392,11 +1392,25 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # ── Router registration ──────────────────────────────────────────────
 try:
-    from src.api.notifications import router as notif_router
+    from src.api.notification_service import router as notif_router
     app.include_router(notif_router)
     logger.info("Notification routes registered")
 except Exception as exc:
     logger.warning("Notifications not available: %s", exc)
+try:
+    from src.api.ai_api import ai_router
+    app.include_router(ai_router)
+    logger.info("AI routes registered → /api/ai/*")
+except Exception as exc:
+    logger.error("AI routes NOT registered: %s", exc)
+
+# Add near other router registrations
+try:
+    from src.api.messaging_api import msg_router as messages_router
+    app.include_router(messages_router)
+    logger.info("Messages routes registered")
+except Exception as exc:
+    logger.warning("Messages module not available: %s", exc)
 
 app.include_router(router)        # /api/analytics/*
 logger.info("Analytics + Churn routers registered")
