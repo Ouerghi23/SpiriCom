@@ -1,38 +1,4 @@
 // src/pages/AnomalyFeed.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Anomaly Detection Page (v2, UI.jsx aligned)
-//
-// MIGRATION (vs previous version):
-//  AF-1  Duplicated HW / gapColor / SectionLabel / StatBlock /
-//        ChartPanel removed — imported from components/UI. Component-
-//        scoped PURPLE/AMBER/GREEN/ORANGE/CYAN constants deleted.
-//        af-pulse → noc-pulse; hover via noc-stat / noc-panel.
-//  AF-2  SEVERITY USES THE FULL ALARM LADDER. The old donut/badges
-//        rendered Critical AND High as the same red — on an anomaly
-//        page that distinction is the point. Now: Critical→critical,
-//        High→major, Medium→minor, Low→normal across the donut, the
-//        table badges, and the score coloring (>0.85 critical,
-//        >0.7 major, matching the 0.7 alert-threshold annotation,
-//        which is also major now).
-//  AF-3  Anomaly scatter points = detected alarms → ALARM.critical
-//        (legitimate alarm red — this page is the reason the ladder
-//        exists). Consensus & high-severity KPIs → ALARM.critical
-//        with alert pulse. Everything that is a COUNT, not an alarm —
-//        top-regions bars, driver-frequency bars — → blueRamp (the
-//        old red-shade ramp made every region look on fire).
-//  AF-4  Hero pill → live/offline status pattern (green online /
-//        critical offline) like NLP & Segments, replacing the purple
-//        identity pill. h1 italic accent stays the one brand red.
-//        Method-card accents: IF→purple #8B5CF6, Statistical→teal
-//        #14B8A6 (was amber, which read as a warning), Consensus→
-//        ALARM.critical (it IS the high-confidence alarm set).
-//  AF-5  regions strip BOTH ' Governorate' and ' Gouvernorat';
-//        events-table accent + count badge → blue chrome; scatter
-//        marker stroke → T.bgCard; error banner → AlertBanner.
-//  AF-6  Typography floor ≥10px; EmptyState icon component API;
-//        region select gets aria-label.
-// ─────────────────────────────────────────────────────────────────────
-
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }   from 'react-i18next'
 import ReactApexChart        from 'react-apexcharts'
@@ -65,7 +31,43 @@ const SCORE_ALERT = 0.7   // shared by score coloring + chart annotation
 // ── Method identity (categorical, AF-4) ──────────────────────────────
 const METHOD = { if: '#8B5CF6', stat: '#14B8A6', consensus: ALARM.critical }
 
-// ── Drivers chart builder (outside component) — AF-3: blueRamp ───────
+// ── AF-8: format ISO timestamp → readable date string ─────────────────
+// NB07 assigns synthetic dates via datetime.today(); FastAPI serialises them
+// as full ISO strings (e.g. "2026-05-13T09:06:43.660491"). Rendering {e.date}
+// directly shows the full timestamp including microseconds — unreadable in the
+// table. This utility gives "13 May" for dates in the current year, or
+// "13 May 2025" for older dates, e.g. "13 May 09:06" when within last 7 days.
+function formatDate(raw) {
+  if (!raw) return '—'
+  const d = new Date(raw)
+  if (isNaN(d.getTime())) return String(raw).slice(0, 10)
+  const now  = new Date()
+  const sameY = d.getFullYear() === now.getFullYear()
+  const diffMs = now - d
+  const diffD  = diffMs / 86_400_000
+  if (diffD < 7) {
+    // Within last week: show day + time
+    return d.toLocaleString('en-GB', {
+      day: '2-digit', month: 'short',
+      hour: '2-digit', minute: '2-digit', hour12: false,
+    })
+  }
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit', month: 'short',
+    year: sameY ? undefined : 'numeric',
+  })
+}
+
+// ── AF-9: normalise regions from API → string[] ────────────────────────
+// The API can return either a plain string[] or an object[] like
+// [{region:'TUNIS', count:82}, ...] depending on the analytics_api version.
+// Normalise early so the rest of the component always works with strings.
+function normaliseRegion(r) {
+  if (typeof r === 'string') return r
+  return r?.region || r?.name || String(r)
+}
+
+// ── Drivers chart builder (outside component) — AF-3: blueRamp ────────
 function buildDriversChart(events, base, t, T) {
   const drivers = {}
   events.forEach(e => {
@@ -134,7 +136,8 @@ export default function AnomalyFeed() {
         analyticsApi.anomalyRegions(),
       ])
       const s    = sumRes.data?.summary || {}
-      const regs = regRes.data?.regions || []
+      // AF-9: normalise to string[] regardless of API object shape
+      const regs = (regRes.data?.regions || []).map(normaliseRegion)
       setSummary(s)
       setEvents(s.consensus_events || [])
       setRegions(regs)
@@ -313,11 +316,11 @@ export default function AnomalyFeed() {
     },
   } : null, [timeline, anomalyPoints, base, t, T])
 
-  // AF-3: anomaly-day COUNTS are magnitude → blueRamp (was red shades)
-  // AF-5: strip both EN and FR region suffixes
+  // AF-3: anomaly-day COUNTS are magnitude → blueRamp
+  // AF-10: strip underscores (SIDI_BOUZID → SIDI BOUZID) + Governorate suffixes
   const regionsChart = useMemo(() => topRegions.length > 0 ? {
     series: [{ name: t('anomaly.anomalyDays'),
-      data: topRegions.map(r => r.count) }],
+      data: topRegions.map(r => r?.count ?? 0) }],
     options: {
       ...base,
       chart:       { ...base.chart, type: 'bar' },
@@ -330,7 +333,8 @@ export default function AnomalyFeed() {
           fontFamily: FONT.display },
       },
       xaxis: {
-        categories: topRegions.map(r => (r.region || '')
+        categories: topRegions.map(r => (r?.region || r || '')
+          .replace(/_/g, ' ')                          // AF-10
           .replace(' Governorate', '').replace(' Gouvernorat', '')),
         labels:     { style: { fontSize: '10px', colors: T.textMuted } },
         axisBorder: { show: false }, axisTicks: { show: false },
@@ -526,13 +530,19 @@ export default function AnomalyFeed() {
                     fontSize: 11, fontWeight: 600, fontFamily: FONT.body,
                     letterSpacing: '.5px', cursor: 'pointer', outline: 'none',
                   }}>
-                  {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                  {/* AF-9: regions is now always string[] after normalisation;
+                      replace underscores in display text (SIDI_BOUZID → SIDI BOUZID) */}
+                  {regions.map(r => (
+                    <option key={r} value={r}>
+                      {r.replace(/_/g, ' ')}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown size={12} color={T.textDim} style={{
                   position: 'absolute', right: 10, top: '50%',
                   transform: 'translateY(-50%)', pointerEvents: 'none' }}/>
               </div>
-              <Badge variant="purple">{selRegion}</Badge>
+              <Badge variant="purple">{selRegion?.replace(/_/g, ' ')}</Badge>
               <Badge variant="critical">
                 {anomalyPoints.length} {t('anomaly.anomalyCount')}
               </Badge>
@@ -547,8 +557,9 @@ export default function AnomalyFeed() {
             )}
           </ChartPanel>
 
+          {/* AF-11: sub was wrongly set to topDriversSub (copied from chart above) */}
           <ChartPanel title={t('anomaly.topRegions')}
-            sub={t('anomaly.topDriversSub')}>
+            sub={t('anomaly.subGov')}>
             {regionsChart ? (
               <ReactApexChart options={regionsChart.options}
                 series={regionsChart.series} type="bar" height={300}/>
@@ -640,20 +651,25 @@ export default function AnomalyFeed() {
                     ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'}`,
                   transition: 'all .15s' }}>
                   <td style={{ padding: '10px 14px', fontWeight: 700,
-                    color: T.text, fontSize: 12 }}>{e.region}</td>
+                    color: T.text, fontSize: 12 }}>
+                    {(e.region || '').replace(/_/g, ' ')}
+                  </td>
+                  {/* AF-8: format ISO timestamp → readable date */}
                   <td style={{ padding: '10px 14px', color: T.textMuted,
                     fontFamily: FONT.display, fontSize: 13,
                     letterSpacing: '.3px' }}>
-                    {e.date}
+                    {formatDate(e.date)}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
-                    {/* AF-2: score ladder shares SCORE_ALERT threshold */}
+                    {/* AF-7: score color now reads if_severity directly so
+                        the number and badge next to it always agree.
+                        Previously used combined_score > 0.85/0.70 thresholds,
+                        which meant a "High" event at combined_score 0.68
+                        rendered in T.textMuted despite its Major severity badge. */}
                     <span style={{
                       fontFamily: FONT.display, fontSize: 16, fontWeight: 900,
                       letterSpacing: '-.3px',
-                      color: (e.combined_score || 0) > 0.85 ? ALARM.critical :
-                             (e.combined_score || 0) > SCORE_ALERT ? ALARM.major :
-                             T.textMuted,
+                      color: SEV[e.if_severity] || T.textMuted,
                     }}>
                       {(e.combined_score || 0).toFixed(3)}
                     </span>

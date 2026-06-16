@@ -21,10 +21,13 @@
 //  MS-4  15s auto-refresh skips ticks while the tab is hidden; local
 //        spin/pulse keyframes deleted (global noc-* via AdminLayout's
 //        <NocBaseStyles/>); tokens imported from UI.
+//  MS-5  i18n integration — all hardcoded strings replaced with
+//        translation keys from system namespace.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { useTranslation } from 'react-i18next'
 import { HW, ALARM, FONT } from '../../components/UI'
 import {
   Server, Database, CheckCircle, XCircle, AlertTriangle,
@@ -64,18 +67,21 @@ const GaugeBar = ({ value, max = 100, color, T }) => {
   )
 }
 
-const StatusDot = ({ ok }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
-    background: ok ? 'rgba(22,163,74,.10)' : 'rgba(220,38,38,.10)',
-    border: `1px solid ${ok ? 'rgba(22,163,74,.25)' : 'rgba(220,38,38,.28)'}`,
-    color: ok ? ALARM.normal : ALARM.critical,
-    padding: '3px 10px', fontSize: 9, fontWeight: 800,
-    letterSpacing: '1px', textTransform: 'uppercase' }}>
-    {ok ? <CheckCircle size={9} color={ALARM.normal}/>
-        : <XCircle size={9} color={ALARM.critical}/>}
-    {ok ? 'Online' : 'Offline'}
-  </span>
-)
+const StatusDot = ({ ok }) => {
+  const { t } = useTranslation()
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
+      background: ok ? 'rgba(22,163,74,.10)' : 'rgba(220,38,38,.10)',
+      border: `1px solid ${ok ? 'rgba(22,163,74,.25)' : 'rgba(220,38,38,.28)'}`,
+      color: ok ? ALARM.normal : ALARM.critical,
+      padding: '3px 10px', fontSize: 9, fontWeight: 800,
+      letterSpacing: '1px', textTransform: 'uppercase' }}>
+      {ok ? <CheckCircle size={9} color={ALARM.normal}/>
+          : <XCircle size={9} color={ALARM.critical}/>}
+      {ok ? t('system.status.online') : t('system.status.offline')}
+    </span>
+  )
+}
 
 const MetricCard = ({ icon: Icon, label, value, valueColor, sub, color, T,
   children }) => {
@@ -117,6 +123,7 @@ const MetricCard = ({ icon: Icon, label, value, valueColor, sub, color, T,
 }
 
 export default function MonitorSystem() {
+  const { t } = useTranslation()
   const { theme: T } = useTheme()
   const [health,    setHealth]    = useState(null)
   const [loading,   setLoading]   = useState(true)
@@ -173,8 +180,8 @@ export default function MonitorSystem() {
           <span style={{ fontSize: 9, fontWeight: 800,
             letterSpacing: '2.5px', textTransform: 'uppercase',
             color: apiOnline ? ALARM.normal : ALARM.critical }}>
-            {apiOnline ? 'LIVE · System Monitor' : 'OFFLINE'}
-            {lastFetch && apiOnline && ' · refreshes every 15s'}
+            {apiOnline ? t('system.header.live') : t('system.header.offline')}
+            {lastFetch && apiOnline && ` · ${t('system.header.refreshesEvery')}`}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between',
@@ -185,13 +192,13 @@ export default function MonitorSystem() {
               fontSize: 'clamp(24px,3vw,44px)', fontWeight: 900,
               letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
               margin: '0 0 6px' }}>
-              SYSTEM <span style={{ color: HW.red,
-                fontStyle: 'italic' }}>HEALTH</span>
+              {t('system.page.title')} <span style={{ color: HW.red,
+                fontStyle: 'italic' }}>{t('system.page.titleAccent')}</span>
             </h1>
             <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
-              Real-time server, database, and API health metrics
+              {t('system.page.subtitle')}
               {lastFetch && <span style={{ color: T.textDim }}>
-                {' '}· Last: {lastFetch.toLocaleTimeString()}</span>}
+                {' '}· {t('system.page.last')}: {lastFetch.toLocaleTimeString()}</span>}
             </p>
           </div>
           {/* MS-1: refresh = blue chrome */}
@@ -204,7 +211,7 @@ export default function MonitorSystem() {
             opacity: loading ? 0.6 : 1 }}>
             <RefreshCw size={12} style={{ animation: loading
               ? 'noc-spin .8s linear infinite' : undefined }}/>
-            Refresh
+            {t('system.common.refresh')}
           </button>
         </div>
       </div>
@@ -218,8 +225,8 @@ export default function MonitorSystem() {
           style={{ flexShrink: 0, marginTop: 1 }}/>
         <div style={{ fontSize: 11, color: T.textMuted }}>
           <span style={{ color: ALARM.critical, fontWeight: 700,
-            marginRight: 6 }}>Cannot reach backend.</span>
-          Start FastAPI:{' '}
+            marginRight: 6 }}>{t('system.errors.cannotReach')}</span>
+          {t('system.errors.startFastAPI')}
           <code style={{ background: T.mode === 'dark'
               ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)',
             padding: '1px 6px', fontSize: 10, color: HW.blueLight }}>
@@ -233,7 +240,7 @@ export default function MonitorSystem() {
         <RefreshCw size={24} color={T.textDim}
           style={{ animation: 'noc-spin .8s linear infinite',
             display: 'block', margin: '0 auto 12px' }}/>
-        Fetching real system metrics…
+        {t('system.common.fetching')}
       </div>}
 
       {health && <>
@@ -251,12 +258,12 @@ export default function MonitorSystem() {
             <div style={{ fontFamily: FONT.display, fontSize: 18,
               fontWeight: 900, color: statusColor,
               letterSpacing: '-.3px' }}>
-              System {health.status.toUpperCase()}
+              {t('system.status.system')} {t(`system.status.${health.status}`)}
             </div>
             <div style={{ fontSize: 11, color: T.textDim }}>
-              Uptime: <strong style={{ color: T.text }}>{health.uptime}</strong>
+              {t('system.status.uptime')}: <strong style={{ color: T.text }}>{health.uptime}</strong>
               {latency && <span style={{ marginLeft: 12 }}>
-                API latency: <strong style={{ color: HW.blueLight }}>
+                {t('system.status.apiLatency')}: <strong style={{ color: HW.blueLight }}>
                   {latency}ms</strong>
               </span>}
             </div>
@@ -268,7 +275,7 @@ export default function MonitorSystem() {
                 alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 9, color: T.textDim,
                   textTransform: 'uppercase', letterSpacing: '1px' }}>
-                  {svc.replace('_', ' ')}
+                  {t(`system.services.${svc}`)}
                 </span>
                 <StatusDot ok={ok}/>
               </div>
@@ -282,19 +289,19 @@ export default function MonitorSystem() {
             ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.09)',
           marginBottom: 1 }}>
           {/* DB — MS-3: state-colored value with dot span */}
-          <MetricCard icon={Database} label="Database" color={HW.blue} T={T}
+          <MetricCard icon={Database} label={t('system.metrics.database')} color={HW.blue} T={T}
             valueColor={dbOk ? ALARM.normal : ALARM.critical}
             value={<>
               <span style={{ width: 8, height: 8, borderRadius: '50%',
                 background: dbOk ? ALARM.normal : ALARM.critical,
                 display: 'inline-block' }}/>
-              {dbOk ? 'OK' : 'ERROR'}
+              {dbOk ? t('system.status.ok') : t('system.status.error')}
             </>}
             sub={`${health.database.path} · ${health.database.size_kb} KB`}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
               gap: 10, marginTop: 12 }}>
-              {[{ l: 'Users',       v: health.database.users, c: HW.blue },
-                { l: 'Log Entries', v: health.database.logs,  c: HW.blueLight },
+              {[{ l: t('system.metrics.users'),       v: health.database.users, c: HW.blue },
+                { l: t('system.metrics.logs'), v: health.database.logs,  c: HW.blueLight },
               ].map(k => (
                 <div key={k.l} style={{ background: T.bgCardHover,
                   padding: '10px 12px' }}>
@@ -311,14 +318,14 @@ export default function MonitorSystem() {
           </MetricCard>
 
           {/* Process — MS-1: severity-laddered gauges */}
-          <MetricCard icon={Cpu} label="Process Resources"
+          <MetricCard icon={Cpu} label={t('system.metrics.processResources')}
             color="#8B5CF6" T={T}>
             <div style={{ display: 'flex', flexDirection: 'column',
               gap: 14 }}>
               <div>
                 <div style={{ fontSize: 10, color: T.textDim,
                   marginBottom: 8 }}>
-                  CPU Usage · {health.process.cpu_pct}%
+                  {t('system.metrics.cpuUsage')} · {health.process.cpu_pct}%
                 </div>
                 <GaugeBar value={health.process.cpu_pct} max={100}
                   color={cpuColor(health.process.cpu_pct)} T={T}/>
@@ -326,7 +333,7 @@ export default function MonitorSystem() {
               <div>
                 <div style={{ fontSize: 10, color: T.textDim,
                   marginBottom: 8 }}>
-                  RAM Usage · {health.process.ram_mb} MB
+                  {t('system.metrics.ramUsage')} · {health.process.ram_mb} MB
                 </div>
                 <GaugeBar value={Math.round(health.process.ram_mb)} max={512}
                   color={ramColor(health.process.ram_mb)} T={T}/>
@@ -335,14 +342,14 @@ export default function MonitorSystem() {
           </MetricCard>
 
           {/* Host info */}
-          <MetricCard icon={Server} label="Host Information"
+          <MetricCard icon={Server} label={t('system.metrics.hostInformation')}
             color={HW.blueLight} T={T}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { l: 'Hostname', v: health.host.hostname },
-                { l: 'Platform', v: health.host.platform },
-                { l: 'Python',   v: health.host.python   },
-                { l: 'Uptime',   v: health.uptime         },
+                { l: t('system.metrics.hostname'), v: health.host.hostname },
+                { l: t('system.metrics.platform'), v: health.host.platform },
+                { l: t('system.metrics.python'),   v: health.host.python   },
+                { l: t('system.metrics.uptime'),   v: health.uptime         },
               ].map(row => (
                 <div key={row.l} style={{ display: 'flex',
                   justifyContent: 'space-between', alignItems: 'center',
@@ -371,20 +378,20 @@ export default function MonitorSystem() {
             marginBottom: 16,
             display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ width: 18, height: 1, background: HW.blue }}/>
-            API Services
+            {t('system.services.title')}
           </div>
           <div style={{ display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill,minmax(200px,1fr))',
             gap: 10 }}>
             {[
-              { name: 'Auth API', ok: health.services.auth_api,
-                port: 8000, desc: 'JWT / User management' },
-              { name: 'NLP API', ok: health.services.nlp_api,
-                port: 8000, desc: 'Complaint classification' },
+              { name: t('system.services.authApi'), ok: health.services.auth_api,
+                port: 8000, desc: t('system.services.authDesc') },
+              { name: t('system.services.nlpApi'), ok: health.services.nlp_api,
+                port: 8000, desc: t('system.services.nlpDesc') },
               // MS-2: own key, explicit fallback (was auth_api copy-paste)
-              { name: 'Analytics API',
+              { name: t('system.services.analyticsApi'),
                 ok: health.services.analytics_api ?? health.services.auth_api,
-                port: 8000, desc: 'KPI data & anomalies' },
+                port: 8000, desc: t('system.services.analyticsDesc') },
             ].map(svc => (
               <div key={svc.name} style={{ background: T.bgCardHover,
                 border: `1px solid ${svc.ok

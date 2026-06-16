@@ -41,6 +41,8 @@
 //        `?.`, which crashed the whole sidebar render. Fixed to `user`.
 //  AL-8  Unused `Bell` import removed — NotificationBell owns its own
 //        icon and aria-label now.
+//  AL-9  i18n integration — all hardcoded strings replaced with
+//        translation keys from admin namespace.
 // ─────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom'
@@ -57,16 +59,18 @@ import {
 import logoImg from '../../assets/images/logo_1.png'
 import NotificationBell from '../../components/NotificationBell'
 
+// Navigation items with translation keys
 const ADMIN_NAV = [
-  { label: 'Manage Users',   path: '/admin/users',  Icon: Users,    accent: HW.blue       },
-  { label: 'Configure AI',   path: '/admin/ai',     Icon: Settings, accent: HW.blueLight  },
-  { label: 'Monitor System', path: '/admin/system', Icon: Activity, accent: ALARM.normal  },
-  { label: 'Access Logs',    path: '/admin/logs',   Icon: FileText, accent: '#F59E0B'     },
+  { key: 'users',   path: '/admin/users',  Icon: Users,    accent: HW.blue       },
+  { key: 'ai',      path: '/admin/ai',     Icon: Settings, accent: HW.blueLight  },
+  { key: 'system',  path: '/admin/system', Icon: Activity, accent: ALARM.normal  },
+  { key: 'logs',    path: '/admin/logs',   Icon: FileText, accent: '#F59E0B'     },
 ]
 
 // Live clock — AL-5: theme via hook
 function LiveClock() {
   const { theme: T } = useTheme()
+  const { t } = useTranslation()
   const [time, setTime] = useState(new Date())
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000)
@@ -91,7 +95,7 @@ export default function AdminLayout() {
   const { user, logout } = useAuth()
   const themeCtx         = useTheme()
   const { theme: T }     = themeCtx
-  const { i18n }         = useTranslation()
+  const { t, i18n }      = useTranslation()
   const navigate         = useNavigate()
   const location         = useLocation()
 
@@ -102,10 +106,16 @@ export default function AdminLayout() {
     else if (typeof themeCtx.setMode === 'function')
       themeCtx.setMode(T.mode === 'dark' ? 'light' : 'dark')
   }
+  
   const isZh = (i18n.language || 'en').startsWith('zh')
   const toggleLang = () => i18n.changeLanguage(isZh ? 'en' : 'zh')
 
-  const handleLogout = () => { logout(); navigate('/login') }
+  const handleLogout = () => { 
+    if (window.confirm(t('admin.user.logoutConfirm'))) {
+      logout(); 
+      navigate('/login')
+    }
+  }
 
   const initials = (user?.full_name || user?.username || 'AD')
     .split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
@@ -225,7 +235,7 @@ export default function AdminLayout() {
             <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden',
               border: '2px solid rgba(0,147,213,.5)', flexShrink: 0,
               boxShadow: '0 0 12px rgba(0,147,213,.3)' }}>
-              <img src={logoImg} alt="SpiriCom"
+              <img src={logoImg} alt={t('admin.brand.name')}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
             </div>
             <div>
@@ -238,7 +248,7 @@ export default function AdminLayout() {
                 fontWeight: 700, textTransform: 'uppercase',
                 background: `linear-gradient(90deg, ${HW.blue}, ${HW.blueLight})`,
                 WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                Admin Console
+                {t('admin.brand.console')}
               </div>
             </div>
           </Link>
@@ -260,7 +270,9 @@ export default function AdminLayout() {
           }}>
             <Shield size={12} color={HW.blue}/>
             <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '1.5px',
-              textTransform: 'uppercase', color: HW.blue }}>Administrator</span>
+              textTransform: 'uppercase', color: HW.blue }}>
+              {t('admin.nav.administrator')}
+            </span>
             <div style={{ marginLeft: 'auto', width: 6, height: 6, borderRadius: '50%',
               background: ALARM.normal, animation: 'hw-glow 2s infinite' }}/>
           </div>
@@ -274,9 +286,11 @@ export default function AdminLayout() {
         }}>
           <div style={{ padding: '6px 8px 4px' }}>
             <span style={{ fontSize: 9, fontWeight: 800, color: T.textDim,
-              letterSpacing: '2px', textTransform: 'uppercase' }}>Navigation</span>
+              letterSpacing: '2px', textTransform: 'uppercase' }}>
+              {t('admin.nav.navigation')}
+            </span>
           </div>
-          {ADMIN_NAV.map(({ label, path, Icon, accent }) => (
+          {ADMIN_NAV.map(({ key, path, Icon, accent }) => (
             <NavLink key={path} to={path}
               className={({ isActive }) =>
                 `admin-nav-link${isActive ? ' active' : ''}`}>
@@ -287,7 +301,7 @@ export default function AdminLayout() {
                 flexShrink: 0 }}>
                 <Icon size={14} color={accent}/>
               </div>
-              {label}
+              {t(`admin.nav.${key}`)}
               <ChevronRight size={12} className="nav-arrow"/>
             </NavLink>
           ))}
@@ -302,7 +316,7 @@ export default function AdminLayout() {
               background: 'linear-gradient(90deg, rgba(0,147,213,.4), transparent)' }}/>
             <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2px',
               textTransform: 'uppercase', color: HW.blue, opacity: .7 }}>
-              Huawei SpiriCom
+              {t('admin.sidebar.huawei')}
             </span>
             <div style={{ flex: 1, height: 1,
               background: 'linear-gradient(270deg, rgba(0,147,213,.4), transparent)' }}/>
@@ -340,7 +354,7 @@ export default function AdminLayout() {
                 background: `linear-gradient(90deg, ${HW.blue}, ${HW.blueLight})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent' }}>
-                Admin
+                {t('admin.user.admin')}
               </div>
             </div>
           </div>
@@ -352,7 +366,7 @@ export default function AdminLayout() {
               display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <LogOut size={13} color={ALARM.critical}/>
             </div>
-            Sign Out
+            {t('admin.user.logout')}
           </button>
         </div>
       </aside>
@@ -377,12 +391,12 @@ export default function AdminLayout() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 11, color: T.textDim, fontWeight: 500 }}>
-              Admin Console
+              {t('admin.header.console')}
             </span>
             <ChevronRight size={12} color={T.textDim}/>
             <span style={{ fontSize: 13, color: T.text, fontWeight: 600,
               animation: 'hw-slide .25s ease' }}>
-              {activeNav?.label || 'Dashboard'}
+              {activeNav ? t(`admin.nav.${activeNav.key}`) : t('admin.nav.dashboard')}
             </span>
           </div>
 
@@ -397,19 +411,24 @@ export default function AdminLayout() {
               background: ALARM.normal,
               animation: 'noc-pulse 2s infinite' }}/>
             <span style={{ fontSize: 10, fontWeight: 700, color: ALARM.normal,
-              letterSpacing: '1px', textTransform: 'uppercase' }}>System Live</span>
+              letterSpacing: '1px', textTransform: 'uppercase' }}>
+              {t('admin.header.systemLive')}
+            </span>
           </div>
 
           {/* AL-6: theme + language moved here from FloatingControls */}
           <button className="hw-topbar-btn" onClick={toggleTheme}
-            aria-label={T.mode === 'dark'
-              ? 'Switch to light mode' : 'Switch to dark mode'}
-            title={T.mode === 'dark' ? 'Light mode' : 'Dark mode'}>
+            aria-label={T.mode === 'dark' 
+              ? t('admin.header.switchTheme', { mode: t('admin.header.themeLight') })
+              : t('admin.header.switchTheme', { mode: t('admin.header.themeDark') })}
+            title={T.mode === 'dark' ? t('admin.header.themeLight') : t('admin.header.themeDark')}>
             {T.mode === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
           </button>
           <button className="hw-topbar-btn" onClick={toggleLang}
-            aria-label={isZh ? 'Switch to English' : 'Switch to Chinese'}
-            title={isZh ? 'English' : '中文'}
+            aria-label={isZh 
+              ? t('admin.header.switchLang', { lang: t('admin.header.langEn') })
+              : t('admin.header.switchLang', { lang: t('admin.header.langZh') })}
+            title={isZh ? t('admin.header.langEn') : t('admin.header.langZh')}
             style={{ width: 'auto', padding: '0 10px', gap: 5 }}>
             <Languages size={14}/>
             <span style={{ fontSize: 10, fontWeight: 800,

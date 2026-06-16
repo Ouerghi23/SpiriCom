@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-06-15T00:02:32.627517",
+  "generated_at": "2026-06-16T18:49:02.272870",
   "label_version": "v6",
   "n_rows": 2566,
-  "n_features": 59,
+  "n_features": 56,
   "feature_columns": [
     "e2e_delay_ms",
     "client_rtt_ms",
@@ -15,8 +15,6 @@
     "dns_sr",
     "tcp_connection_sr",
     "number_of_regions",
-    "dou_total_imputed",
-    "duration_imputed",
     "traffic_5g_imputed",
     "traffic_4g_imputed",
     "traffic_3g_imputed",
@@ -24,7 +22,6 @@
     "e2e_delay_ms_imputed",
     "client_rtt_ms_imputed",
     "is_2g_only",
-    "has_3g",
     "has_lte",
     "has_nr",
     "brand_APPLE",
@@ -78,8 +75,6 @@
     "number_of_regions"
   ],
   "flag_features": [
-    "dou_total_imputed",
-    "duration_imputed",
     "traffic_5g_imputed",
     "traffic_4g_imputed",
     "traffic_3g_imputed",
@@ -87,7 +82,6 @@
     "e2e_delay_ms_imputed",
     "client_rtt_ms_imputed",
     "is_2g_only",
-    "has_3g",
     "has_lte",
     "has_nr"
   ],

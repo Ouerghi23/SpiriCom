@@ -31,10 +31,13 @@
 //  CA-6  Toggles get role="switch" + aria-checked; usage grid gap
 //        uses gapColor(T) instead of T.border; reset-usage hover via
 //        CSS class. Typography floor for tag/usage labels.
+//  CA-7  i18n integration — all hardcoded strings replaced with
+//        translation keys from ai namespace.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback } from 'react'
 import { useTheme }   from '../../context/ThemeContext'
+import { useTranslation } from 'react-i18next'
 import { HW, ALARM, FONT, gapColor } from '../../components/UI'
 import {
   Bot, Save, RefreshCw, Eye, EyeOff, CheckCircle,
@@ -57,7 +60,7 @@ const PROVIDERS = [
     tag: 'FREE · LOCAL',
     tagColor: HW.blue,
     models: ['qwen2', 'qwen2.5', 'llama3.2', 'llama3.1', 'mistral', 'phi3', 'codellama'],
-    fieldType: 'url',                       // BUG-2/4: URL, not a key
+    fieldType: 'url',
     fieldLabel: 'Ollama Base URL',
     fieldHint: 'Start Ollama first: ollama serve  →  ollama pull qwen2',
     fieldPlaceholder: 'http://localhost:11434',
@@ -91,15 +94,14 @@ const PROVIDERS = [
     keyLink: 'https://console.anthropic.com',
   },
   {
-    // CA-4: model list kept, generation artifacts removed
     id: 'groq',
     label: 'Groq (Free Tier)',
     tag: 'FREE · FAST',
     tagColor: '#F97316',
     models: [
-      'llama-3.3-70b-versatile',   // production-ready 70B
-      'llama-3.1-8b-instant',      // fastest (1,000+ tok/s)
-      'qwen/qwen3-32b',            // Mixtral replacement
+      'llama-3.3-70b-versatile',
+      'llama-3.1-8b-instant',
+      'qwen/qwen3-32b',
       'openai/gpt-oss-120b',
       'openai/gpt-oss-20b',
     ],
@@ -168,6 +170,7 @@ const inputStyle = (T) => ({
 
 // ══════════════════════════════════════════════════════════════════════
 export default function ConfigureAI() {
+  const { t } = useTranslation()
   const { theme: T } = useTheme()
   const GAP          = gapColor(T)
 
@@ -182,9 +185,8 @@ export default function ConfigureAI() {
   const [testRes,    setTestRes]    = useState(null)
   const [keyChanged, setKeyChanged] = useState(false)
 
-  // BUG-2/3/4/5: separate, never-masked Ollama URL state
   const [ollamaUrl,   setOllamaUrl]   = useState('http://localhost:11434')
-  const [customModel, setCustomModel] = useState('')   // BUG-6
+  const [customModel, setCustomModel] = useState('')
 
   const fetchConfig = useCallback(async () => {
     setLoading(true)
@@ -195,25 +197,24 @@ export default function ConfigureAI() {
       ])
       setCfg(cfgR.data)
       setStatus(stR.data)
-      if (cfgR.data.ollama_url) setOllamaUrl(cfgR.data.ollama_url)   // BUG-4
+      if (cfgR.data.ollama_url) setOllamaUrl(cfgR.data.ollama_url)
       const prov   = PROVIDERS.find(p => p.id === cfgR.data.provider)
       const inList = prov?.models.includes(cfgR.data.model)
-      if (!inList && cfgR.data.model) setCustomModel(cfgR.data.model) // BUG-6
+      if (!inList && cfgR.data.model) setCustomModel(cfgR.data.model)
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to load AI config')
+      setError(err.response?.data?.detail || t('ai.errors.loadFailed'))
     } finally { setLoading(false) }
-  }, [])
+  }, [t])
 
   useEffect(() => { fetchConfig() }, [fetchConfig])
 
   const saveConfig = async () => {
     setError(null); setSaved(false)
 
-    // CA-3: never persist the '__custom__' sentinel as a model name
     const effectiveModel = customModel.trim() ||
       (cfg.model !== '__custom__' ? cfg.model : '')
     if (!effectiveModel) {
-      setError('Enter a custom model name before saving')
+      setError(t('ai.errors.customModelRequired'))
       return
     }
 
@@ -230,7 +231,6 @@ export default function ConfigureAI() {
       }
 
       if (cfg.provider === 'ollama') {
-        // BUG-3: always send ollama_url for Ollama; api_key omitted
         payload.ollama_url = ollamaUrl.trim() || 'http://localhost:11434'
       } else if (keyChanged && cfg.api_key && !cfg.api_key.includes('••')) {
         payload.api_key = cfg.api_key
@@ -243,17 +243,16 @@ export default function ConfigureAI() {
       setCustomModel('')
       fetchConfig()
     } catch (err) {
-      setError(err.response?.data?.detail || 'Save failed')
+      setError(err.response?.data?.detail || t('ai.errors.saveFailed'))
     } finally { setSaving(false) }
   }
 
   const testConnection = async () => {
     setTesting(true); setTestRes(null)
     try {
-      // CA-2: correct brand, no glyph
       const r = await axios.post(`${BASE}/api/ai/chat`, {
         messages: [{ role: 'user',
-          content: 'Reply with exactly: "SpiriCom AI online"' }],
+          content: t('ai.test.prompt') }],
         language: 'en',
         inject_context: false,
       }, { headers: hdr() })
@@ -271,19 +270,17 @@ export default function ConfigureAI() {
     } catch {}
   }
 
-  // ── Derived ────────────────────────────────────────────────────────
   const provider = PROVIDERS.find(p => p.id === cfg?.provider) || PROVIDERS[0]
   const isOllama = cfg?.provider === 'ollama'
   const usage    = cfg?.token_usage || {}
 
-  // ── Loading ────────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ padding: 40, textAlign: 'center', color: T.textDim }}>
       <RefreshCw size={20} color={T.textDim} style={{
         animation: 'noc-spin .8s linear infinite',
         display: 'block', margin: '0 auto 10px',
       }}/>
-      Loading AI configuration…
+      {t('ai.common.loading')}
     </div>
   )
 
@@ -296,18 +293,16 @@ export default function ConfigureAI() {
         padding: '14px 18px', fontSize: 12, color: ALARM.critical,
       }}>
         <AlertTriangle size={14} color={ALARM.critical}/>
-        {error || 'Could not load config — is the backend running?'}
+        {error || t('ai.errors.noConfig')}
       </div>
     </div>
   )
 
-  // ── Render ─────────────────────────────────────────────────────────
   return (
     <div style={{
       padding: '32px 36px 80px', background: T.bg,
       minHeight: 'calc(100vh - 64px)', color: T.text,
     }}>
-      {/* CA-5: one focus rule replaces per-input JS mutation */}
       <style>{`
         .ca-input:focus { border-color: ${HW.blue} !important; }
         .ca-reset { transition: all .2s; }
@@ -326,24 +321,23 @@ export default function ConfigureAI() {
           <Bot size={12} color={HW.blue}/>
           <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2.5px',
             textTransform: 'uppercase', color: HW.blue }}>
-            AI Configuration
+            {t('ai.page.badge')}
           </span>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between',
           alignItems: 'flex-end', flexWrap: 'wrap', gap: 14 }}>
           <div>
-            {/* The ONE brand-red element on this page */}
             <h1 style={{
               fontFamily: FONT.display,
               fontSize: 'clamp(24px,3vw,44px)', fontWeight: 900,
               letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
               margin: '0 0 6px',
             }}>
-              CONFIGURE <span style={{ color: HW.red, fontStyle: 'italic' }}>AI</span>
+              {t('ai.page.title')} <span style={{ color: HW.red, fontStyle: 'italic' }}>{t('ai.page.titleAccent')}</span>
             </h1>
             <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
-              LLM provider · API keys · system prompt · token usage
+              {t('ai.page.subtitle')}
             </p>
           </div>
 
@@ -358,10 +352,9 @@ export default function ConfigureAI() {
             }}>
               <Zap size={12} style={{ animation: testing
                 ? 'noc-spin .8s linear infinite' : undefined }}/>
-              {testing ? 'Testing…' : 'Test Connection'}
+              {testing ? t('ai.common.testing') : t('ai.common.testConnection')}
             </button>
 
-            {/* CA-1: primary action = blue, not legacy red */}
             <button onClick={saveConfig} disabled={saving} style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: saving ? T.border
@@ -373,10 +366,10 @@ export default function ConfigureAI() {
             }}>
               {saving
                 ? <><RefreshCw size={12}
-                    style={{ animation: 'noc-spin .8s linear infinite' }}/> Saving…</>
+                    style={{ animation: 'noc-spin .8s linear infinite' }}/> {t('ai.common.saving')}</>
                 : saved
-                ? <><CheckCircle size={12}/> Saved!</>
-                : <><Save size={12}/> Save Config</>}
+                ? <><CheckCircle size={12}/> {t('ai.common.saved')}</>
+                : <><Save size={12}/> {t('ai.common.saveConfig')}</>}
             </button>
           </div>
         </div>
@@ -395,7 +388,7 @@ export default function ConfigureAI() {
         </div>
       )}
 
-      {/* ── Test result banner — CA-2: icon carries the meaning ── */}
+      {/* ── Test result banner ── */}
       {testRes && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
@@ -437,15 +430,14 @@ export default function ConfigureAI() {
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: T.text,
                   marginBottom: 4 }}>
-                  AI Assistant
+                  {t('ai.toggle.label')}
                 </div>
                 <div style={{ fontSize: 10, color: T.textDim }}>
-                  Enable/disable the floating chat bubble for all users
+                  {t('ai.toggle.hint')}
                 </div>
               </div>
-              {/* CA-6: switch semantics */}
               <button role="switch" aria-checked={cfg.enabled}
-                aria-label="AI Assistant enabled"
+                aria-label={t('ai.toggle.ariaLabel')}
                 onClick={() => setCfg(c => ({ ...c, enabled: !c.enabled }))}
                 style={{
                   width: 48, height: 26, borderRadius: 13,
@@ -465,12 +457,12 @@ export default function ConfigureAI() {
             </div>
           </div>
 
-          {/* Provider selection — CA-1: selection = blue */}
+          {/* Provider selection */}
           <div style={{
             background: T.bgCard, border: `1px solid ${T.border}`,
             padding: '18px 20px', marginBottom: 16,
           }}>
-            <SectionHead label="LLM Provider"/>
+            <SectionHead label={t('ai.provider.title')}/>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {PROVIDERS.map(p => {
                 const active = cfg.provider === p.id
@@ -478,7 +470,6 @@ export default function ConfigureAI() {
                   <button key={p.id}
                     aria-pressed={active}
                     onClick={() => {
-                      // BUG-5: ollamaUrl state independent — preserved
                       setCfg(c => ({
                         ...c,
                         provider: p.id,
@@ -527,12 +518,12 @@ export default function ConfigureAI() {
             background: T.bgCard, border: `1px solid ${T.border}`,
             padding: '18px 20px',
           }}>
-            <SectionHead label="Model & Credentials"/>
+            <SectionHead label={t('ai.credentials.title')}/>
 
-            <Fld label="Model" T={T}>
+            <Fld label={t('ai.credentials.model')} T={T}>
               <div style={{ position: 'relative' }}>
                 <select value={cfg.model} className="ca-input"
-                  aria-label="Model"
+                  aria-label={t('ai.credentials.model')}
                   onChange={e => {
                     setCfg(c => ({ ...c, model: e.target.value }))
                     setCustomModel('')
@@ -549,12 +540,11 @@ export default function ConfigureAI() {
                   {provider.models.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
-                  {/* BUG-6: surface current non-listed model */}
                   {cfg.model && cfg.model !== '__custom__' &&
                     !provider.models.includes(cfg.model) && (
-                    <option value={cfg.model}>{cfg.model} (current)</option>
+                    <option value={cfg.model}>{cfg.model} ({t('ai.credentials.current')})</option>
                   )}
-                  <option value="__custom__">Custom model name…</option>
+                  <option value="__custom__">{t('ai.credentials.customOption')}</option>
                 </select>
               </div>
 
@@ -562,22 +552,22 @@ export default function ConfigureAI() {
                 <input
                   className="ca-input"
                   value={customModel}
-                  aria-label="Custom model name"
+                  aria-label={t('ai.credentials.customLabel')}
                   onChange={e => {
                     setCustomModel(e.target.value)
                     setCfg(c => ({ ...c,
                       model: e.target.value || '__custom__' }))
                   }}
                   placeholder={isOllama
-                    ? 'e.g. qwen2, qwen2.5, llama3.2' : 'model name'}
+                    ? t('ai.credentials.ollamaPlaceholder')
+                    : t('ai.credentials.modelPlaceholder')}
                   style={{ ...inputStyle(T), marginTop: 6 }}
                 />
               )}
             </Fld>
 
-            {/* BUG-2/4: Ollama URL input vs cloud key input */}
             {isOllama ? (
-              <Fld label="Ollama Base URL" hint={provider.fieldHint} T={T}>
+              <Fld label={t('ai.credentials.ollamaUrl')} hint={t('ai.hints.ollamaStart')} T={T}>
                 <div style={{ position: 'relative' }}>
                   <div style={{
                     position: 'absolute', left: 11, top: '50%',
@@ -588,7 +578,7 @@ export default function ConfigureAI() {
                   <input
                     type="text" className="ca-input"
                     value={ollamaUrl}
-                    aria-label="Ollama Base URL"
+                    aria-label={t('ai.credentials.ollamaUrl')}
                     onChange={e => setOllamaUrl(e.target.value)}
                     placeholder="http://localhost:11434"
                     style={{ ...inputStyle(T), paddingLeft: 30 }}
@@ -596,7 +586,7 @@ export default function ConfigureAI() {
                 </div>
                 <div style={{ marginTop: 6, display: 'flex',
                   alignItems: 'center', gap: 6, fontSize: 10 }}>
-                  <span style={{ color: T.textDim }}>Installed models:</span>
+                  <span style={{ color: T.textDim }}>{t('ai.credentials.installedModels')}</span>
                   <code style={{ fontSize: 10, color: HW.blueLight,
                     fontFamily: 'monospace' }}>
                     ollama list
@@ -625,7 +615,7 @@ export default function ConfigureAI() {
                       paddingRight: 40 }}
                   />
                   <button type="button" onClick={() => setShowKey(v => !v)}
-                    aria-label={showKey ? 'Hide API key' : 'Show API key'}
+                    aria-label={showKey ? t('ai.common.hideKey') : t('ai.common.showKey')}
                     style={{
                       position: 'absolute', right: 10, top: '50%',
                       transform: 'translateY(-50%)', background: 'transparent',
@@ -639,7 +629,7 @@ export default function ConfigureAI() {
                   <a href={provider.keyLink} target="_blank" rel="noreferrer"
                     style={{ fontSize: 10, color: HW.blue, marginTop: 4,
                       display: 'inline-block', textDecoration: 'none' }}>
-                    Get API key →
+                    {t('ai.credentials.getKey')} →
                   </a>
                 )}
               </Fld>
@@ -649,38 +639,39 @@ export default function ConfigureAI() {
 
         {/* ══ RIGHT COLUMN ══ */}
         <div>
-          {/* Generation settings — CA-1: slider accents = blue */}
+          {/* Generation settings */}
           <div style={{
             background: T.bgCard, border: `1px solid ${T.border}`,
             padding: '18px 20px', marginBottom: 16,
           }}>
-            <SectionHead label="Generation Settings"/>
+            <SectionHead label={t('ai.settings.title')}/>
 
-            <Fld label={`Max Tokens — ${cfg.max_tokens}`} T={T}>
+            <Fld label={`${t('ai.settings.maxTokens')} — ${cfg.max_tokens}`} T={T}>
               <input type="range" min={200} max={2000} step={100}
                 value={cfg.max_tokens}
-                aria-label="Max tokens"
+                aria-label={t('ai.settings.maxTokens')}
                 onChange={e => setCfg(c => ({ ...c, max_tokens: +e.target.value }))}
                 style={{ width: '100%', accentColor: HW.blue,
                   cursor: 'pointer' }}/>
               <div style={{ display: 'flex', justifyContent: 'space-between',
                 fontSize: 9, color: T.textDim, marginTop: 3 }}>
-                <span>200 (concise)</span><span>2000 (detailed)</span>
+                <span>{t('ai.settings.maxTokensLow')}</span>
+                <span>{t('ai.settings.maxTokensHigh')}</span>
               </div>
             </Fld>
 
-            <Fld label={`Temperature — ${cfg.temperature}`}
-              hint="0 = deterministic · 0.35 recommended for NOC · 1 = creative"
-              T={T}>
+            <Fld label={`${t('ai.settings.temperature')} — ${cfg.temperature}`}
+              hint={t('ai.hints.temperature')} T={T}>
               <input type="range" min={0} max={1} step={0.05}
                 value={cfg.temperature}
-                aria-label="Temperature"
+                aria-label={t('ai.settings.temperature')}
                 onChange={e => setCfg(c => ({ ...c, temperature: +e.target.value }))}
                 style={{ width: '100%', accentColor: HW.blue,
                   cursor: 'pointer' }}/>
               <div style={{ display: 'flex', justifyContent: 'space-between',
                 fontSize: 9, color: T.textDim, marginTop: 3 }}>
-                <span>0 (precise)</span><span>1 (creative)</span>
+                <span>{t('ai.settings.temperatureLow')}</span>
+                <span>{t('ai.settings.temperatureHigh')}</span>
               </div>
             </Fld>
 
@@ -691,15 +682,14 @@ export default function ConfigureAI() {
               <div>
                 <div style={{ fontSize: 12, fontWeight: 700, color: T.text,
                   marginBottom: 3 }}>
-                  Auto-inject context
+                  {t('ai.autoContext.label')}
                 </div>
                 <div style={{ fontSize: 10, color: T.textDim, maxWidth: 220 }}>
-                  Inject complaint stats, churn scores, anomalies, and
-                  forecasts into every prompt
+                  {t('ai.autoContext.hint')}
                 </div>
               </div>
               <button role="switch" aria-checked={cfg.auto_context}
-                aria-label="Auto-inject context"
+                aria-label={t('ai.autoContext.label')}
                 onClick={() => setCfg(c => ({ ...c,
                   auto_context: !c.auto_context }))}
                 style={{
@@ -725,19 +715,15 @@ export default function ConfigureAI() {
             background: T.bgCard, border: `1px solid ${T.border}`,
             padding: '18px 20px', marginBottom: 16,
           }}>
-            <SectionHead label="Custom System Prompt"/>
-            <Fld label="Additional instructions (appended to base NOC prompt)" T={T}>
+            <SectionHead label={t('ai.prompt.title')}/>
+            <Fld label={t('ai.prompt.label')} T={T}>
               <textarea
                 className="ca-input"
                 value={cfg.system_prompt || ''}
-                aria-label="Custom system prompt"
+                aria-label={t('ai.prompt.label')}
                 onChange={e => setCfg(c => ({ ...c,
                   system_prompt: e.target.value }))}
-                placeholder={
-                  "e.g. Always respond in formal French.\n" +
-                  "Focus on Tunis region only.\n" +
-                  "Escalate anything with urgency > 0.9 to NOC lead."
-                }
+                placeholder={t('ai.prompt.placeholder')}
                 rows={5}
                 style={{
                   width: '100%', background: T.bgCardHover, color: T.text,
@@ -750,21 +736,21 @@ export default function ConfigureAI() {
             </Fld>
           </div>
 
-          {/* Token usage — CA-6: gapColor, token KPI colors */}
+          {/* Token usage */}
           <div style={{
             background: T.bgCard, border: `1px solid ${T.border}`,
             padding: '18px 20px',
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between',
               alignItems: 'flex-start' }}>
-              <SectionHead label="Token Usage"/>
+              <SectionHead label={t('ai.usage.title')}/>
               <button onClick={resetUsage} className="ca-reset" style={{
                 display: 'flex', alignItems: 'center', gap: 5,
                 background: 'transparent', border: `1px solid ${T.border}`,
                 color: T.textDim, cursor: 'pointer', padding: '4px 10px',
                 fontSize: 10, fontWeight: 700,
               }}>
-                <Trash2 size={10}/> Reset
+                <Trash2 size={10}/> {t('ai.usage.reset')}
               </button>
             </div>
 
@@ -772,9 +758,9 @@ export default function ConfigureAI() {
               gridTemplateColumns: 'repeat(3,1fr)',
               gap: 1, background: GAP }}>
               {[
-                { l: 'Requests',    v: usage.requests  || 0, c: HW.blue       },
-                { l: 'Input (~w)',  v: usage.total_in  || 0, c: HW.blueLight  },
-                { l: 'Output (~w)', v: usage.total_out || 0, c: ALARM.normal  },
+                { l: t('ai.usage.requests'),    v: usage.requests  || 0, c: HW.blue       },
+                { l: t('ai.usage.input'),  v: usage.total_in  || 0, c: HW.blueLight  },
+                { l: t('ai.usage.output'), v: usage.total_out || 0, c: ALARM.normal  },
               ].map(k => (
                 <div key={k.l} style={{
                   background: T.bgCardHover, padding: '14px 12px',
@@ -797,29 +783,28 @@ export default function ConfigureAI() {
 
             <div style={{ marginTop: 10, fontSize: 10, color: T.textDim,
               lineHeight: 1.6 }}>
-              <strong style={{ color: T.text }}>Provider:</strong>{' '}
+              <strong style={{ color: T.text }}>{t('ai.usage.provider')}</strong>{' '}
               {status?.provider || cfg.provider} / {status?.model || cfg.model}
               <br/>
-              {/* CA-2: dot spans / icons instead of glyph characters */}
               {isOllama ? (
                 <span style={{ color: HW.blue, display: 'inline-flex',
                   alignItems: 'center', gap: 5 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%',
                     background: HW.blue, display: 'inline-block' }}/>
-                  Local — no token cost · Ollama URL: {ollamaUrl}
+                  {t('ai.usage.localNoCost', { url: ollamaUrl })}
                 </span>
               ) : status?.has_key ? (
                 <span style={{ color: ALARM.normal, display: 'inline-flex',
                   alignItems: 'center', gap: 5 }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%',
                     background: ALARM.normal, display: 'inline-block' }}/>
-                  API key configured
+                  {t('ai.usage.keyConfigured')}
                 </span>
               ) : (
                 <span style={{ color: ALARM.minor, display: 'inline-flex',
                   alignItems: 'center', gap: 5 }}>
                   <AlertTriangle size={10}/>
-                  No API key — configure above
+                  {t('ai.usage.noKey')}
                 </span>
               )}
             </div>

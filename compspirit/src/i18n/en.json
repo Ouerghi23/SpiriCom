@@ -296,8 +296,7 @@
     "detectedScore": "Detected —",
     "timeline": "Combined Score",
     "noDataDesc": "Run 07_Anomaly_Detection.ipynb to generate anomaly_results.parquet"
-  },
-  "forecast": {
+  },  "forecast": {
     "liveBadge": "CHURN INTELLIGENCE",
     "subtitle": "Churn risk prediction · SHAP drivers · 5G adoption forecast",
     "titleShort": "CHURN",
@@ -365,7 +364,46 @@
     "noShapDesc": "Run NB06 and expose /api/churn/shap endpoint",
     "noForecast": "5G forecast unavailable",
     "noForecastDesc": "Run NB02 · expose /api/forecast/5g",
-    "noHighRisk": "No high-risk data — ensure /api/churn/high-risk returns churn_scores.parquet"
+    "noHighRisk": "No high-risk data — ensure /api/churn/high-risk returns churn_scores.parquet",
+    "brand": {
+      "kpi": {
+        "brands": "Brands",
+        "customers": "Customers",
+        "highestChurn": "Highest Churn",
+        "best5g": "Best 5G Adopt."
+      },
+      "subtitle": "{{count}} brands · {{customers}} customers · Huawei pinned",
+      "loading": "Loading brand intelligence…",
+      "errorSub": "Run /api/brand/performance — requires le_brand.pkl + churn_features.parquet",
+      "unavailable": "Brand data unavailable",
+      "errorDesc": "GET /api/brand/performance · run NB04",
+      "filterAll": "all",
+      "sortLabel": "Sort brands",
+      "sortCustomers": "Sort: Customers",
+      "sortChurn": "Sort: Churn Risk",
+      "sort5gAdoption": "Sort: 5G Adoption",
+      "sort5gTraffic": "Sort: 5G Traffic",
+      "sponsor": "SPONSOR",
+      "share": "share",
+      "users": "users",
+      "showTop": "Show top 15",
+      "showAll": "Show all {{count}} brands",
+      "categories": {
+        "flagship": "flagship",
+        "mid-range": "mid-range",
+        "budget": "budget",
+        "device": "device",
+        "other": "other"
+      },
+      "table": {
+        "brand": "Brand",
+        "customers": "Customers",
+        "churn5g": "Churn / 5G",
+        "churnPct": "Churn%",
+        "fiveGPct": "5G%",
+        "traffic": "Traffic"
+      }
+    }
   },
   "rootcause": {
     "title": "Root Cause Analysis",
@@ -782,5 +820,433 @@
     "testi2": "The forecasting module is exceptional. We can now anticipate complaint surges days in advance.",
     "testi3": "The root cause analysis is remarkably insightful. It not only identifies anomalies — it clearly explains what drives customer complaints.",
     "testi4": "Before SpiriComp, we operated entirely in reactive mode. Today, we are fully proactive."
+  },
+  "admin": {
+    "brand": {
+      "name": "SpiriCom",
+      "console": "Admin Console",
+      "title": "SpiriCom Admin Console"
+    },
+    "nav": {
+      "dashboard": "Dashboard",
+      "users": "Manage Users",
+      "ai": "Configure AI",
+      "system": "Monitor System",
+      "logs": "Access Logs",
+      "navigation": "Navigation",
+      "administrator": "Administrator"
+    },
+    "header": {
+      "console": "Admin Console",
+      "systemLive": "System Live",
+      "switchTheme": "Switch to {mode} mode",
+      "themeLight": "Light mode",
+      "themeDark": "Dark mode",
+      "switchLang": "Switch to {lang}",
+      "langEn": "English",
+      "langZh": "Chinese"
+    },
+    "user": {
+      "initials": "AD",
+      "admin": "Admin",
+      "logout": "Sign Out",
+      "logoutConfirm": "Are you sure you want to sign out?"
+    },
+    "sidebar": {
+      "huawei": "Huawei SpiriCom"
+    },
+    "clock": {
+      "label": "Live",
+      "short": "Live"
+    }
+  },
+    "users": {
+    "page": {
+      "liveBadge": "LIVE · User Management",
+      "title": "MANAGE ",
+      "titleAccent": "USERS",
+      "subtitle": "Create · Edit · Monitor NOC engineers and platform accounts",
+      "addEngineer": "Add Engineer",
+      "searchPlaceholder": "Search username, name, email…",
+      "searchLabel": "Search users",
+      "roleLabel": "Role",
+      "roleFilterLabel": "Filter by role",
+      "allRoles": "All Roles",
+      "loading": "Loading from /api/admin/users…",
+      "noResults": "No users match current filters",
+      "backendError": "Backend error — see banner above",
+      "loadError": "Could not load users.",
+      "checkLogs": "Check uvicorn for 'Admin routes registered → /api/admin/*'",
+      "stats": {
+        "total": "Total Users",
+        "active": "Active",
+        "onShift": "On Shift Now",
+        "admins": "Admins",
+        "engineers": "Engineers"
+      }
+    },
+    "roles": {
+      "admin": "Admin",
+      "engineer": "NOC Engineer",
+      "viewer": "Viewer"
+    },
+    "fields": {
+      "username": "Username",
+      "fullName": "Full Name",
+      "email": "Email",
+      "role": "Role",
+      "status": "Status",
+      "password": "Password",
+      "newPassword": "New Password (blank = keep)"
+    },
+    "placeholders": {
+      "username": "e.g. noc_engineer_02",
+      "fullName": "e.g. Ouerghi Chaima",
+      "email": "engineer@huawei.com",
+      "password": "Min 6 characters",
+      "newPassword": "Leave blank to keep"
+    },
+    "status": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "off": "Off"
+    },
+    "table": {
+      "id": "ID",
+      "user": "User",
+      "email": "Email",
+      "role": "Role",
+      "shift": "Shift",
+      "status": "Status",
+      "actions": "Actions",
+      "notSet": "Not set",
+      "onShiftTitle": "On shift",
+      "edit": "Edit",
+      "disable": "Disable",
+      "reactivate": "Reactivate"
+    },
+    "tabs": {
+      "engineers": "Engineers",
+      "workingHours": "Working Hours",
+      "live": "live"
+    },
+    "common": {
+      "close": "Close",
+      "cancel": "Cancel",
+      "saving": "Saving…",
+      "refresh": "Refresh",
+      "retry": "Retry",
+      "users": "users",
+      "created": "Created",
+      "updated": "Updated",
+      "disabled": "Disabled",
+      "reactivated": "Reactivated",
+      "failed": "failed",
+      "deleteFailed": "Delete failed",
+      "requestFailed": "Request failed",
+      "clear": "Clear search",
+      "copyPassword": "Copy password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password"
+    },
+    "modal": {
+      "newTitle": "New Account",
+      "editTitle": "Edit Account",
+      "addEngineer": "Add NOC Engineer",
+      "createAccount": "Create Account",
+      "saveChanges": "Save Changes",
+      "generatePassword": "Generate secure password",
+      "errors": {
+        "requiredFields": "Username, full name, and password are required",
+        "fullNameRequired": "Full name required"
+      }
+    },
+    "delete": {
+      "title": "Disable Account",
+      "message": "Disable {name}? They can no longer log in. All data is preserved.",
+      "disable": "Disable",
+      "disabling": "Disabling…"
+    },
+    "shift": {
+      "title": "Shift Schedule",
+      "start": "Shift Start",
+      "end": "Shift End",
+      "duration": "Shift duration",
+      "hours": "hours",
+      "weeklyTotal": "Weekly total",
+      "week": "week",
+      "shift": "shift",
+      "save": "Save Schedule",
+      "edit": "Edit",
+      "schedule": "Schedule",
+      "today": "Today",
+      "thisWeek": "This Week",
+      "onShift": "On Shift",
+      "offShift": "Off Shift",
+      "checkin": "Check-in",
+      "clockIn": "Clock In",
+      "clockOut": "Clock Out",
+      "checkedIn": "Checked in",
+      "checkedOut": "Checked out",
+      "hoursReset": "Hours reset",
+      "noSchedule": "No schedule configured",
+      "sessionDuration": "Session duration",
+      "resetTitle": "Reset today's hours",
+      "overtime": "Overtime — {hours}h over schedule",
+      "showing": "Showing {count} active engineers",
+      "exportCsv": "Export CSV",
+      "noEngineers": "No engineers found",
+      "noEngineersDesc": "Create NOC engineers in the Engineers tab first",
+      "teamThisWeek": "Team this week:",
+      "totalHours": "Total hours",
+      "onShiftNow": "On shift now",
+      "avgPerEngineer": "Avg per engineer",
+      "updateSuccess": "Shift schedule updated for {name}",
+      "errors": {
+        "bothRequired": "Both times required",
+        "endAfterStart": "End must be after start",
+        "updateFailed": "Failed to update"
+      },
+      "kpi": {
+        "engineers": "Engineers",
+        "onShift": "On Shift",
+        "hoursToday": "Hours Today",
+        "scheduled": "Scheduled",
+        "nocViewer": "NOC + Viewer",
+        "currentlyActive": "Currently active",
+        "allEngineers": "All engineers",
+        "haveShift": "Have shift set"
+      },
+      "csv": {
+        "name": "Name",
+        "username": "Username",
+        "role": "Role",
+        "shift": "Shift",
+        "onShift": "On Shift",
+        "today": "Today (h)",
+        "week": "Week (h)",
+        "notSet": "Not set",
+        "yes": "Yes",
+        "no": "No"
+      }
+    }
+  },
+    "ai": {
+    "page": {
+      "badge": "AI Configuration",
+      "title": "CONFIGURE ",
+      "titleAccent": "AI",
+      "subtitle": "LLM provider · API keys · system prompt · token usage"
+    },
+    "common": {
+      "loading": "Loading AI configuration…",
+      "saving": "Saving…",
+      "saved": "Saved!",
+      "saveConfig": "Save Config",
+      "testConnection": "Test Connection",
+      "testing": "Testing…",
+      "showKey": "Show API key",
+      "hideKey": "Hide API key"
+    },
+    "toggle": {
+      "label": "AI Assistant",
+      "hint": "Enable/disable the floating chat bubble for all users",
+      "ariaLabel": "AI Assistant enabled"
+    },
+    "provider": {
+      "title": "LLM Provider"
+    },
+    "credentials": {
+      "title": "Model & Credentials",
+      "model": "Model",
+      "current": "current",
+      "customOption": "Custom model name…",
+      "customLabel": "Custom model name",
+      "ollamaPlaceholder": "e.g. qwen2, qwen2.5, llama3.2",
+      "modelPlaceholder": "model name",
+      "ollamaUrl": "Ollama Base URL",
+      "installedModels": "Installed models:",
+      "getKey": "Get API key"
+    },
+    "settings": {
+      "title": "Generation Settings",
+      "maxTokens": "Max Tokens",
+      "maxTokensLow": "200 (concise)",
+      "maxTokensHigh": "2000 (detailed)",
+      "temperature": "Temperature",
+      "temperatureLow": "0 (precise)",
+      "temperatureHigh": "1 (creative)"
+    },
+    "autoContext": {
+      "label": "Auto-inject context",
+      "hint": "Inject complaint stats, churn scores, anomalies, and forecasts into every prompt"
+    },
+    "prompt": {
+      "title": "Custom System Prompt",
+      "label": "Additional instructions (appended to base NOC prompt)",
+      "placeholder": "e.g. Always respond in formal French.\nFocus on Tunis region only.\nEscalate anything with urgency > 0.9 to NOC lead."
+    },
+    "usage": {
+      "title": "Token Usage",
+      "reset": "Reset",
+      "requests": "Requests",
+      "input": "Input (~w)",
+      "output": "Output (~w)",
+      "provider": "Provider:",
+      "localNoCost": "Local — no token cost · Ollama URL: {url}",
+      "keyConfigured": "API key configured",
+      "noKey": "No API key — configure above"
+    },
+    "test": {
+      "prompt": "Reply with exactly: \"SpiriCom AI online\""
+    },
+    "hints": {
+      "ollamaStart": "Start Ollama first: ollama serve  →  ollama pull qwen2",
+      "temperature": "0 = deterministic · 0.35 recommended for NOC · 1 = creative"
+    },
+    "errors": {
+      "loadFailed": "Failed to load AI config",
+      "saveFailed": "Save failed",
+      "noConfig": "Could not load config — is the backend running?",
+      "customModelRequired": "Enter a custom model name before saving"
+    }
+  },
+    "system": {
+    "page": {
+      "title": "SYSTEM ",
+      "titleAccent": "HEALTH",
+      "subtitle": "Real-time server, database, and API health metrics",
+      "last": "Last"
+    },
+    "common": {
+      "refresh": "Refresh",
+      "fetching": "Fetching real system metrics…"
+    },
+    "header": {
+      "live": "LIVE · System Monitor",
+      "offline": "OFFLINE",
+      "refreshesEvery": "refreshes every 15s"
+    },
+    "status": {
+      "healthy": "NOMINAL",
+      "degraded": "DEGRADED",
+      "critical": "CRITICAL",
+      "system": "System",
+      "uptime": "Uptime",
+      "apiLatency": "API latency",
+      "online": "Online",
+      "offline": "Offline",
+      "ok": "OK",
+      "error": "ERROR"
+    },
+    "metrics": {
+      "database": "Database",
+      "users": "Users",
+      "logs": "Log Entries",
+      "processResources": "Process Resources",
+      "cpuUsage": "CPU Usage",
+      "ramUsage": "RAM Usage",
+      "hostInformation": "Host Information",
+      "hostname": "Hostname",
+      "platform": "Platform",
+      "python": "Python",
+      "uptime": "Uptime"
+    },
+    "services": {
+      "title": "API Services",
+      "authApi": "Auth API",
+      "authDesc": "JWT / User management",
+      "nlpApi": "NLP API",
+      "nlpDesc": "Complaint classification",
+      "analyticsApi": "Analytics API",
+      "analyticsDesc": "KPI data & anomalies"
+    },
+    "errors": {
+      "cannotReach": "Cannot reach backend.",
+      "startFastAPI": "Start FastAPI:"
+    }
+  },
+   "logs": {
+    "page": {
+      "title": "ACCESS ",
+      "titleAccent": "LOGS",
+      "subtitle": "Real-time audit trail · {{total}} total events in database"
+    },
+    "common": {
+      "refresh": "Refresh",
+      "exportPage": "Export Page",
+      "clear": "Clear search"
+    },
+    "header": {
+      "live": "LIVE · Real Audit Log",
+      "offline": "OFFLINE · No data"
+    },
+    "status": {
+      "success": "Success",
+      "failed": "Failed"
+    },
+    "filter": {
+      "searchPlaceholder": "Search user, action, IP…",
+      "searchLabel": "Search logs",
+      "actionLabel": "Action",
+      "statusLabel": "Status",
+      "allActions": "All Actions",
+      "allStatus": "All Status",
+      "shownTotal": "shown / {{total}} total"
+    },
+    "table": {
+      "timestamp": "Timestamp",
+      "user": "User",
+      "action": "Action",
+      "target": "Target",
+      "ip": "IP Address",
+      "status": "Status",
+      "detail": "Detail",
+      "loading": "Loading logs from database…",
+      "noData": "No log entries found — admin actions will appear here automatically",
+      "noConnection": "Cannot connect to backend — start FastAPI server"
+    },
+    "pagination": {
+      "entries": "{{total}} entries",
+      "previous": "Previous page",
+      "next": "Next page",
+      "page": "Page {{page}}",
+      "pageOf": "Page {{page}} / {{totalPages}}"
+    },
+    "actions": {
+      "All": "All Actions",
+      "login": "Login",
+      "logout": "Logout",
+      "login_failed": "Login Failed",
+      "create_user": "Create User",
+      "update_user": "Update User",
+      "delete_user": "Delete User",
+      "config_ai": "Configure AI",
+      "ai_chat": "AI Chat",
+      "send_message": "Send Message",
+      "submit_complaint": "Submit Complaint",
+      "update_complaint_status": "Update Status",
+      "delete_complaint": "Delete Complaint",
+      "view_overview": "View Overview",
+      "view_anomalies": "View Anomalies",
+      "view_map": "View Map",
+      "view_nlp": "View NLP",
+      "view_logs": "View Logs",
+      "view_system": "View System"
+    },
+    "errors": {
+      "cannotReach": "Backend not reachable.",
+      "startFastAPI": "Start the FastAPI server with"
+    },
+    "csv": {
+      "timestamp": "Timestamp",
+      "user": "User",
+      "action": "Action",
+      "target": "Target",
+      "ip": "IP Address",
+      "status": "Status",
+      "detail": "Detail"
+    }
   }
+
 }

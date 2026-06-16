@@ -17,7 +17,6 @@
   "e2e_delay_ms_imputed",
   "client_rtt_ms_imputed",
   "is_2g_only",
-  "has_3g",
   "has_lte",
   "has_nr",
   "brand_APPLE",

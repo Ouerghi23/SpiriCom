@@ -38,9 +38,12 @@
 //        NOC shifts (e.g. 22:00–06:00) impossible to schedule. Needs
 //        a backend decision on cross-midnight hour computation before
 //        the frontend check can be relaxed.
+//  MU-8  i18n integration — all hardcoded strings replaced with
+//        translation keys from users namespace.
 // ─────────────────────────────────────────────────────────────────────
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { useTranslation } from 'react-i18next'
 import { HW, ALARM, FONT, gapColor } from '../../components/UI'
 import {
   Users, Plus, Trash2, Shield, Edit2, Check, X,
@@ -66,13 +69,15 @@ const ROLE_META = {
 }
 
 const RoleBadge = ({ role }) => {
+  const { t } = useTranslation()
   const m = ROLE_META[role?.toLowerCase()] || ROLE_META.viewer
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5,
       background: m.bg, border: `1px solid ${m.border}`, color: m.color,
       padding: '3px 10px', fontSize: 9, fontWeight: 800,
       letterSpacing: '1px', textTransform: 'uppercase', borderRadius: 4 }}>
-      <Shield size={9} color={m.color}/>{role || 'viewer'}
+      <Shield size={9} color={m.color}/>
+      {t(`users.roles.${role?.toLowerCase() || 'viewer'}`)}
     </span>
   )
 }
@@ -177,6 +182,7 @@ function LiveTimer({ checkinISO }) {
    SHIFT SCHEDULE MODAL — MU-7 flag in header
 ═══════════════════════════════════════════════════════════════ */
 function ShiftModal({ user, onClose, onSave, T }) {
+  const { t } = useTranslation()
   const [start,   setStart]   = useState(user?.shift_start || '08:00')
   const [end,     setEnd]     = useState(user?.shift_end   || '17:00')
   const [loading, setLoading] = useState(false)
@@ -191,10 +197,10 @@ function ShiftModal({ user, onClose, onSave, T }) {
   })()
 
   const submit = async () => {
-    if (!start || !end) { setError('Both times required'); return }
+    if (!start || !end) { setError(t('users.shift.errors.bothRequired')); return }
     // MU-7: blocks overnight shifts — relax once backend handles
     // cross-midnight hour computation
-    if (start >= end)   { setError('End must be after start'); return }
+    if (start >= end)   { setError(t('users.shift.errors.endAfterStart')); return }
     setLoading(true); setError(null)
     try {
       await axios.patch(
@@ -203,7 +209,7 @@ function ShiftModal({ user, onClose, onSave, T }) {
       )
       onSave({ ...user, shift_start: start, shift_end: end })
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update')
+      setError(err.response?.data?.detail || t('users.shift.errors.updateFailed'))
     } finally { setLoading(false) }
   }
 
@@ -240,14 +246,16 @@ function ShiftModal({ user, onClose, onSave, T }) {
               </div>
               <div>
                 <div style={{ fontSize: 9, color: HW.blue, letterSpacing: '2px',
-                  fontWeight: 800, textTransform: 'uppercase' }}>Shift Schedule</div>
+                  fontWeight: 800, textTransform: 'uppercase' }}>
+                  {t('users.shift.title')}
+                </div>
                 <div style={{ fontFamily: FONT.display, fontSize: 18,
                   fontWeight: 900, color: T.text, lineHeight: 1.2 }}>
                   {user?.full_name || user?.username}
                 </div>
               </div>
             </div>
-            <button onClick={onClose} aria-label="Close" style={{
+            <button onClick={onClose} aria-label={t('users.common.close')} style={{
               background: T.mode === 'dark'
                 ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.05)',
               border: `1px solid ${T.border}`, borderRadius: 8,
@@ -273,8 +281,8 @@ function ShiftModal({ user, onClose, onSave, T }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr',
             gap: 16, marginBottom: 16 }}>
             {[
-              { label: 'Shift Start', val: start, set: setStart },
-              { label: 'Shift End',   val: end,   set: setEnd   },
+              { label: t('users.shift.start'), val: start, set: setStart },
+              { label: t('users.shift.end'),   val: end,   set: setEnd   },
             ].map(({ label, val, set }) => (
               <Fld key={label} label={label} T={T}>
                 <input type="time" value={val} onChange={e => set(e.target.value)}
@@ -295,15 +303,15 @@ function ShiftModal({ user, onClose, onSave, T }) {
               padding: '12px 16px' }}>
               <Timer size={16} color={HW.blue}/>
               <div>
-                <div style={{ fontSize: 11, color: T.textDim }}>Shift duration</div>
+                <div style={{ fontSize: 11, color: T.textDim }}>{t('users.shift.duration')}</div>
                 <div style={{ fontSize: 16, fontWeight: 800, color: HW.blue }}>
-                  {shiftHours} hours
+                  {shiftHours} {t('users.shift.hours')}
                 </div>
               </div>
               <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: T.textDim }}>Weekly total</div>
+                <div style={{ fontSize: 11, color: T.textDim }}>{t('users.shift.weeklyTotal')}</div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-                  {(shiftHours * 5).toFixed(0)}h / week
+                  {(shiftHours * 5).toFixed(0)}h / {t('users.shift.week')}
                 </div>
               </div>
             </div>
@@ -317,7 +325,7 @@ function ShiftModal({ user, onClose, onSave, T }) {
             background: 'transparent', border: `1px solid ${T.border}`,
             borderRadius: 8, color: T.textMuted, cursor: 'pointer',
             padding: '9px 20px', fontSize: 12, fontWeight: 600,
-            fontFamily: 'inherit' }}>Cancel</button>
+            fontFamily: 'inherit' }}>{t('users.common.cancel')}</button>
           <button onClick={submit} disabled={loading} style={{
             background: loading ? T.border
               : 'linear-gradient(135deg, #0093D5, #0070A8)',
@@ -329,8 +337,8 @@ function ShiftModal({ user, onClose, onSave, T }) {
             opacity: loading ? 0.7 : 1, transition: 'all .2s' }}>
             {loading
               ? <><RefreshCw size={12}
-                  style={{ animation: 'noc-spin .8s linear infinite' }}/> Saving…</>
-              : <><Check size={12}/> Save Schedule</>}
+                  style={{ animation: 'noc-spin .8s linear infinite' }}/> {t('users.common.saving')}</>
+              : <><Check size={12}/> {t('users.shift.save')}</>}
           </button>
         </div>
       </div>
@@ -342,6 +350,7 @@ function ShiftModal({ user, onClose, onSave, T }) {
    USER CREATE / EDIT MODAL — MU-1: blue admin chrome, no emojis
 ═══════════════════════════════════════════════════════════════ */
 function UserModal({ mode, user, onClose, onSave, T }) {
+  const { t } = useTranslation()
   const isCreate = mode === 'create'
   const [form, setForm] = useState({
     username:  user?.username  || '',
@@ -370,9 +379,9 @@ function UserModal({ mode, user, onClose, onSave, T }) {
   const submit = async () => {
     setError(null)
     if (isCreate && (!form.username.trim() || !form.full_name.trim() || !form.password)) {
-      setError('Username, full name, and password are required'); return
+      setError(t('users.modal.errors.requiredFields')); return
     }
-    if (!isCreate && !form.full_name.trim()) { setError('Full name required'); return }
+    if (!isCreate && !form.full_name.trim()) { setError(t('users.modal.errors.fullNameRequired')); return }
     setLoading(true)
     try {
       if (isCreate) {
@@ -391,7 +400,7 @@ function UserModal({ mode, user, onClose, onSave, T }) {
           { headers: hdr() })
         onSave(r.data, false)
       }
-    } catch (err) { setError(err.response?.data?.detail || 'Request failed')
+    } catch (err) { setError(err.response?.data?.detail || t('users.common.requestFailed'))
     } finally { setLoading(false) }
   }
 
@@ -421,14 +430,14 @@ function UserModal({ mode, user, onClose, onSave, T }) {
           <div>
             <div style={{ fontSize: 9, color: HW.blue, letterSpacing: '2.5px',
               fontWeight: 800, textTransform: 'uppercase', marginBottom: 5 }}>
-              {isCreate ? 'New Account' : 'Edit Account'}
+              {isCreate ? t('users.modal.newTitle') : t('users.modal.editTitle')}
             </div>
             <div style={{ fontFamily: FONT.display,
               fontSize: 22, fontWeight: 900, color: T.text }}>
-              {isCreate ? 'Add NOC Engineer' : user?.full_name || user?.username}
+              {isCreate ? t('users.modal.addEngineer') : user?.full_name || user?.username}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close" style={{
+          <button onClick={onClose} aria-label={t('users.common.close')} style={{
             background: T.mode === 'dark'
               ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)',
             border: `1px solid ${T.border}`, borderRadius: 8,
@@ -450,55 +459,54 @@ function UserModal({ mode, user, onClose, onSave, T }) {
             </div>
           )}
           {isCreate && (
-            <Fld label="Username *" T={T}>
+            <Fld label={t('users.fields.username') + ' *'} T={T}>
               <Inp value={form.username} T={T} icon={User}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
-                placeholder="e.g. noc_engineer_02"/>
+                placeholder={t('users.placeholders.username')}/>
             </Fld>
           )}
-          <Fld label="Full Name *" T={T}>
+          <Fld label={t('users.fields.fullName') + ' *'} T={T}>
             <Inp value={form.full_name} T={T} icon={User}
               onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
-              placeholder="e.g. Ouerghi Chaima"/>
+              placeholder={t('users.placeholders.fullName')}/>
           </Fld>
-          <Fld label="Email" T={T}>
+          <Fld label={t('users.fields.email')} T={T}>
             <Inp value={form.email} T={T} icon={Mail} type="email"
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-              placeholder="engineer@huawei.com"/>
+              placeholder={t('users.placeholders.email')}/>
           </Fld>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <Fld label="Role *" T={T}>
-              {/* MU-2: no emojis */}
-              <Sel value={form.role} label="Role"
+            <Fld label={t('users.fields.role') + ' *'} T={T}>
+              <Sel value={form.role} label={t('users.fields.role')}
                 onChange={e => setForm(f => ({ ...f, role: e.target.value }))} T={T}
                 options={[
-                  { value: 'engineer', label: 'NOC Engineer' },
-                  { value: 'viewer',   label: 'Viewer'       },
-                  { value: 'admin',    label: 'Admin'        },
+                  { value: 'engineer', label: t('users.roles.engineer') },
+                  { value: 'viewer',   label: t('users.roles.viewer') },
+                  { value: 'admin',    label: t('users.roles.admin') },
                 ]}/>
             </Fld>
             {!isCreate && (
-              <Fld label="Status" T={T}>
-                <Sel value={form.active.toString()} label="Status"
+              <Fld label={t('users.fields.status')} T={T}>
+                <Sel value={form.active.toString()} label={t('users.fields.status')}
                   onChange={e => setForm(f => ({ ...f,
                     active: e.target.value === 'true' }))}
                   T={T} options={[
-                    { value: 'true',  label: 'Active'   },
-                    { value: 'false', label: 'Disabled' },
+                    { value: 'true',  label: t('users.status.active') },
+                    { value: 'false', label: t('users.status.disabled') },
                   ]}/>
               </Fld>
             )}
           </div>
-          <Fld label={isCreate ? 'Password *' : 'New Password (blank = keep)'} T={T}>
+          <Fld label={isCreate ? t('users.fields.password') + ' *' : t('users.fields.newPassword')} T={T}>
             <Inp value={form.password} T={T} icon={Lock}
               type={showPw ? 'text' : 'password'}
               onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              placeholder={isCreate ? 'Min 6 characters' : 'Leave blank to keep'}
+              placeholder={isCreate ? t('users.placeholders.password') : t('users.placeholders.newPassword')}
               right={
                 <div style={{ display: 'flex', gap: 4 }}>
                   {form.password && (
                     <button type="button" onClick={copyPw}
-                      aria-label="Copy password"
+                      aria-label={t('users.common.copyPassword')}
                       style={{ background: 'transparent', border: 'none',
                         cursor: 'pointer',
                         color: copied ? ALARM.normal : T.textDim, padding: 4 }}>
@@ -506,7 +514,7 @@ function UserModal({ mode, user, onClose, onSave, T }) {
                     </button>
                   )}
                   <button type="button" onClick={() => setShowPw(v => !v)}
-                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    aria-label={showPw ? t('users.common.hidePassword') : t('users.common.showPassword')}
                     style={{ background: 'transparent', border: 'none',
                       cursor: 'pointer', color: T.textDim, padding: 4 }}>
                     {showPw ? <EyeOff size={13}/> : <Eye size={13}/>}
@@ -514,7 +522,6 @@ function UserModal({ mode, user, onClose, onSave, T }) {
                 </div>
               }/>
           </Fld>
-          {/* MU-2: Lucide Zap instead of the bolt emoji; MU-6: CSS hover */}
           <button type="button" onClick={genPw} className="mu-genpw"
             style={{ background: 'transparent',
               border: `1px solid ${T.border}`, borderRadius: 8,
@@ -522,7 +529,7 @@ function UserModal({ mode, user, onClose, onSave, T }) {
               fontWeight: 700, padding: '6px 14px', marginBottom: 16,
               fontFamily: 'inherit', display: 'inline-flex',
               alignItems: 'center', gap: 6 }}>
-            <Zap size={11}/> Generate secure password
+            <Zap size={11}/> {t('users.modal.generatePassword')}
           </button>
         </div>
 
@@ -532,7 +539,9 @@ function UserModal({ mode, user, onClose, onSave, T }) {
           <button onClick={onClose} style={{ background: 'transparent',
             border: `1px solid ${T.border}`, borderRadius: 8,
             color: T.textMuted, cursor: 'pointer', padding: '9px 20px',
-            fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>Cancel</button>
+            fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>
+            {t('users.common.cancel')}
+          </button>
           <button onClick={submit} disabled={loading} style={{
             background: loading ? T.border
               : 'linear-gradient(135deg, #0093D5, #0070A8)',
@@ -544,8 +553,8 @@ function UserModal({ mode, user, onClose, onSave, T }) {
             opacity: loading ? 0.7 : 1 }}>
             {loading
               ? <><RefreshCw size={12}
-                  style={{ animation: 'noc-spin .8s linear infinite' }}/> Saving…</>
-              : <><Check size={12}/>{isCreate ? 'Create Account' : 'Save Changes'}</>}
+                  style={{ animation: 'noc-spin .8s linear infinite' }}/> {t('users.common.saving')}</>
+              : <><Check size={12}/>{isCreate ? t('users.modal.createAccount') : t('users.modal.saveChanges')}</>}
           </button>
         </div>
       </div>
@@ -557,6 +566,7 @@ function UserModal({ mode, user, onClose, onSave, T }) {
    DELETE CONFIRM — destructive = ALARM.critical (convention)
 ═══════════════════════════════════════════════════════════════ */
 function DelConfirm({ user, onClose, onConfirm, T }) {
+  const { t } = useTranslation()
   const [busy, setBusy] = useState(false)
   const go = async () => { setBusy(true); await onConfirm(); setBusy(false) }
   return (
@@ -586,20 +596,20 @@ function DelConfirm({ user, onClose, onConfirm, T }) {
           </div>
           <div style={{ fontFamily: FONT.display, fontSize: 22,
             fontWeight: 900, color: T.text, marginBottom: 10 }}>
-            Disable Account
+            {t('users.delete.title')}
           </div>
           <p style={{ fontSize: 13, color: T.textMuted, lineHeight: 1.7,
             margin: 0 }}>
-            Disable <strong style={{ color: T.text }}>
-              {user?.full_name || user?.username}
-            </strong>? They can no longer log in. All data is preserved.
+            {t('users.delete.message', { name: user?.full_name || user?.username })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
           <button onClick={onClose} style={{ flex: 1, background: 'transparent',
             border: `1px solid ${T.border}`, borderRadius: 8,
             color: T.textMuted, cursor: 'pointer', padding: 10,
-            fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>Cancel</button>
+            fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>
+            {t('users.common.cancel')}
+          </button>
           <button onClick={go} disabled={busy} style={{ flex: 1,
             background: `linear-gradient(135deg, ${ALARM.critical}, #991B1B)`,
             border: 'none', borderRadius: 8, color: '#fff',
@@ -608,7 +618,7 @@ function DelConfirm({ user, onClose, onConfirm, T }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: 7,
             boxShadow: busy ? 'none' : '0 4px 16px rgba(220,38,38,.35)' }}>
-            {busy ? 'Disabling…' : <><Trash2 size={12}/> Disable</>}
+            {busy ? t('users.delete.disabling') : <><Trash2 size={12}/> {t('users.delete.disable')}</>}
           </button>
         </div>
       </div>
@@ -620,6 +630,7 @@ function DelConfirm({ user, onClose, onConfirm, T }) {
    WORKING HOURS TAB
 ═══════════════════════════════════════════════════════════════ */
 function WorkingHoursTab({ users, onUpdate, notify, T }) {
+  const { t } = useTranslation()
   const [shiftModal, setShiftModal] = useState(null)
   const [busy,       setBusy]       = useState({})
   const GAP = gapColor(T)
@@ -642,12 +653,12 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
         const updated = full.data.find(u => u.id === userId)
         if (updated) onUpdate(updated)
       } catch {}
-      // MU-2: emoji-free toast copy
-      const verb = action === 'checkin' ? 'Checked in'
-                 : action === 'checkout' ? 'Checked out' : 'Hours reset'
+      const verb = action === 'checkin' ? t('users.shift.checkedIn')
+                 : action === 'checkout' ? t('users.shift.checkedOut') 
+                 : t('users.shift.hoursReset')
       notify(`${verb} — ${engineers.find(u => u.id === userId)?.username || ''}`)
     } catch (err) {
-      notify(err.response?.data?.detail || `${action} failed`, false)
+      notify(err.response?.data?.detail || `${action} ${t('users.common.failed')}`, false)
     } finally {
       setBusy(b => { const n = { ...b }; delete n[userId]; return n })
     }
@@ -655,7 +666,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
 
   const handleShiftSave = (updated) => {
     onUpdate(updated)
-    notify(`Shift schedule updated for ${updated.full_name || updated.username}`)
+    notify(t('users.shift.updateSuccess', { name: updated.full_name || updated.username }))
     setShiftModal(null)
   }
 
@@ -665,12 +676,16 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
   const scheduledAll = engineers.filter(u => u.shift_start && u.shift_end).length
 
   const exportCSV = () => {
-    const rows = [['Name', 'Username', 'Role', 'Shift', 'On Shift',
-      'Today (h)', 'Week (h)']]
+    const rows = [
+      [t('users.shift.csv.name'), t('users.shift.csv.username'), 
+       t('users.shift.csv.role'), t('users.shift.csv.shift'),
+       t('users.shift.csv.onShift'), t('users.shift.csv.today'), 
+       t('users.shift.csv.week')]
+    ]
     engineers.forEach(u => rows.push([
       u.full_name || '', u.username, u.role,
-      u.shift_start && u.shift_end ? `${u.shift_start}-${u.shift_end}` : 'Not set',
-      u.is_on_shift ? 'Yes' : 'No',
+      u.shift_start && u.shift_end ? `${u.shift_start}-${u.shift_end}` : t('users.shift.csv.notSet'),
+      u.is_on_shift ? t('users.shift.csv.yes') : t('users.shift.csv.no'),
       (u.hours_today || 0).toFixed(2),
       (u.hours_week  || 0).toFixed(2),
     ]))
@@ -695,10 +710,10 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
         gap: 1, background: GAP, marginBottom: 20, borderRadius: 12,
         overflow: 'hidden' }}>
         {[
-          { l: 'Engineers',   v: engineers.length,            c: HW.blue,       sub: 'NOC + Viewer'     },
-          { l: 'On Shift',    v: onShift,                     c: ALARM.normal,  sub: 'Currently active' },
-          { l: 'Hours Today', v: totalToday.toFixed(1) + 'h', c: HW.blueLight,  sub: 'All engineers'    },
-          { l: 'Scheduled',   v: scheduledAll,                c: '#8B5CF6',     sub: 'Have shift set'   },
+          { l: t('users.shift.kpi.engineers'),   v: engineers.length,            c: HW.blue,       sub: t('users.shift.kpi.nocViewer') },
+          { l: t('users.shift.kpi.onShift'),    v: onShift,                     c: ALARM.normal,  sub: t('users.shift.kpi.currentlyActive') },
+          { l: t('users.shift.kpi.hoursToday'), v: totalToday.toFixed(1) + 'h', c: HW.blueLight,  sub: t('users.shift.kpi.allEngineers') },
+          { l: t('users.shift.kpi.scheduled'),   v: scheduledAll,                c: '#8B5CF6',     sub: t('users.shift.kpi.haveShift') },
         ].map(k => (
           <div key={k.l} style={{ background: T.bgCard, padding: '18px 16px',
             position: 'relative', overflow: 'hidden' }}>
@@ -723,7 +738,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
           <div style={{ width: 8, height: 8, borderRadius: '50%',
             background: HW.blue, boxShadow: `0 0 8px ${HW.blue}` }}/>
           <span style={{ fontSize: 12, color: T.textMuted }}>
-            Showing {engineers.length} active engineers
+            {t('users.shift.showing', { count: engineers.length })}
           </span>
         </div>
         <button onClick={exportCSV}
@@ -733,7 +748,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
             borderRadius: 8, color: HW.blue, cursor: 'pointer',
             padding: '7px 16px', fontSize: 11, fontWeight: 700,
             fontFamily: 'inherit' }}>
-          <Download size={13}/> Export CSV
+          <Download size={13}/> {t('users.shift.exportCsv')}
         </button>
       </div>
 
@@ -746,10 +761,10 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
             style={{ display: 'block', margin: '0 auto 14px' }}/>
           <div style={{ fontSize: 15, fontWeight: 700, color: T.text,
             marginBottom: 6 }}>
-            No engineers found
+            {t('users.shift.noEngineers')}
           </div>
           <div style={{ fontSize: 12, color: T.textDim }}>
-            Create NOC engineers in the Engineers tab first
+            {t('users.shift.noEngineersDesc')}
           </div>
         </div>
       ) : (
@@ -806,7 +821,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                   <span style={{ fontSize: 9, fontWeight: 700,
                     color: u.is_on_shift ? ALARM.normal : ALARM.unknown,
                     letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    {u.is_on_shift ? 'On Shift' : 'Off Shift'}
+                    {u.is_on_shift ? t('users.shift.onShift') : t('users.shift.offShift')}
                   </span>
                 </div>
 
@@ -848,12 +863,14 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                     <div>
                       <div style={{ fontSize: 9, color: T.textDim,
                         marginBottom: 2 }}>
-                        Session duration
+                        {t('users.shift.sessionDuration')}
                       </div>
                       <LiveTimer checkinISO={u.last_checkin}/>
                     </div>
                     <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
-                      <div style={{ fontSize: 9, color: T.textDim }}>Check-in</div>
+                      <div style={{ fontSize: 9, color: T.textDim }}>
+                        {t('users.shift.checkin')}
+                      </div>
                       <div style={{ fontSize: 11, fontWeight: 600,
                         color: T.text }}>
                         {new Date(u.last_checkin).toLocaleTimeString([],
@@ -880,14 +897,14 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                         {u.shift_end}
                       </div>
                       <div style={{ fontSize: 10, color: T.textDim }}>
-                        {shiftHours.toFixed(1)}h shift ·
-                        {' '}{(shiftHours * 5).toFixed(0)}h/week
+                        {shiftHours.toFixed(1)}h {t('users.shift.shift')} ·
+                        {' '}{(shiftHours * 5).toFixed(0)}h/{t('users.shift.week')}
                       </div>
                     </div>
                   ) : (
                     <span style={{ fontSize: 11, color: T.textDim,
                       fontStyle: 'italic', flex: 1 }}>
-                      No schedule configured
+                      {t('users.shift.noSchedule')}
                     </span>
                   )}
                   <button onClick={() => setShiftModal(u)}
@@ -896,7 +913,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                       color: HW.blue, cursor: 'pointer', padding: '4px 10px',
                       fontSize: 9, fontWeight: 800, fontFamily: 'inherit',
                       letterSpacing: '.5px', textTransform: 'uppercase' }}>
-                    Edit
+                    {t('users.shift.edit')}
                   </button>
                 </div>
 
@@ -906,7 +923,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                     letterSpacing: '1.5px', textTransform: 'uppercase',
                     marginBottom: 6, display: 'flex', alignItems: 'center',
                     gap: 5 }}>
-                    <TrendingUp size={9} color={T.textDim}/> Today
+                    <TrendingUp size={9} color={T.textDim}/> {t('users.shift.today')}
                   </div>
                   <HoursBar hours={u.hours_today || 0} target={shiftHours} T={T}/>
                 </div>
@@ -915,7 +932,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                     letterSpacing: '1.5px', textTransform: 'uppercase',
                     marginBottom: 6, display: 'flex', alignItems: 'center',
                     gap: 5 }}>
-                    <Activity size={9} color={T.textDim}/> This Week
+                    <Activity size={9} color={T.textDim}/> {t('users.shift.thisWeek')}
                   </div>
                   <HoursBar hours={u.hours_week || 0}
                     target={shiftHours * 5} T={T}/>
@@ -943,7 +960,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                       ? <RefreshCw size={11}
                           style={{ animation: 'noc-spin .8s linear infinite' }}/>
                       : <LogIn size={11}/>}
-                    Clock In
+                    {t('users.shift.clockIn')}
                   </button>
 
                   <button
@@ -965,7 +982,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                       ? <RefreshCw size={11}
                           style={{ animation: 'noc-spin .8s linear infinite' }}/>
                       : <LogOut size={11}/>}
-                    Clock Out
+                    {t('users.shift.clockOut')}
                   </button>
 
                   <button onClick={() => setShiftModal(u)}
@@ -978,13 +995,13 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                       padding: '8px 4px', fontSize: 10, fontWeight: 700,
                       fontFamily: 'inherit', transition: 'all .2s',
                     }}>
-                    <Calendar size={11}/> Schedule
+                    <Calendar size={11}/> {t('users.shift.schedule')}
                   </button>
 
-                  {/* MU-6: CSS hover class */}
                   <button disabled={!!isLoading} className="mu-reset"
                     onClick={() => doAction(u.id, 'reset', 'reset-hours')}
-                    title="Reset today's hours" aria-label="Reset today's hours"
+                    title={t('users.shift.resetTitle')} 
+                    aria-label={t('users.shift.resetTitle')}
                     style={{
                       display: 'flex', alignItems: 'center',
                       justifyContent: 'center',
@@ -1003,7 +1020,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                   </button>
                 </div>
 
-                {/* Overtime alert — minor severity */}
+                {/* Overtime alert */}
                 {u.hours_today > shiftHours * 1.1 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7,
                     background: 'rgba(202,138,4,.08)',
@@ -1012,8 +1029,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
                     <AlertCircle size={12} color={ALARM.minor}/>
                     <span style={{ fontSize: 11, color: ALARM.minor,
                       fontWeight: 600 }}>
-                      Overtime — {(u.hours_today - shiftHours).toFixed(1)}h
-                      over schedule
+                      {t('users.shift.overtime', { hours: (u.hours_today - shiftHours).toFixed(1) })}
                     </span>
                   </div>
                 )}
@@ -1034,16 +1050,16 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <TrendingUp size={16} color={HW.blue}/>
             <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
-              Team this week:
+              {t('users.shift.teamThisWeek')}
             </span>
           </div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             {[
-              { label: 'Total hours',
+              { label: t('users.shift.totalHours'),
                 val: totalWeek.toFixed(1) + 'h', color: HW.blue },
-              { label: 'On shift now',
+              { label: t('users.shift.onShiftNow'),
                 val: onShift + ' / ' + engineers.length, color: ALARM.normal },
-              { label: 'Avg per engineer',
+              { label: t('users.shift.avgPerEngineer'),
                 val: (engineers.length
                   ? totalWeek / engineers.length : 0).toFixed(1) + 'h',
                 color: HW.blueLight },
@@ -1066,6 +1082,7 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
    MAIN PAGE
 ═══════════════════════════════════════════════════════════════ */
 export default function ManageUsers() {
+  const { t } = useTranslation()
   const { theme: T } = useTheme()
   const GAP          = gapColor(T)
 
@@ -1116,12 +1133,11 @@ export default function ManageUsers() {
     onShift:   users.filter(u => u.is_on_shift).length,
   }), [users])
 
-  // MU-2: emoji-free toasts
   const handleSave = (saved, isCreate) => {
     setUsers(prev => isCreate
       ? [...prev, saved]
       : prev.map(u => u.id === saved.id ? saved : u))
-    notify(`${isCreate ? 'Created' : 'Updated'}: ${saved.username}`)
+    notify(`${isCreate ? t('users.common.created') : t('users.common.updated')}: ${saved.username}`)
     setModal(null)
   }
   const handleDelete = async () => {
@@ -1130,8 +1146,8 @@ export default function ManageUsers() {
         { headers: hdr() })
       setUsers(prev => prev.map(u =>
         u.id === delUser.id ? { ...u, active: false } : u))
-      notify(`Disabled: ${delUser.username}`)
-    } catch (err) { notify(err.response?.data?.detail || 'Delete failed', false) }
+      notify(`${t('users.common.disabled')}: ${delUser.username}`)
+    } catch (err) { notify(err.response?.data?.detail || t('users.common.deleteFailed'), false) }
     setDelUser(null)
   }
   const handleReactivate = async (user) => {
@@ -1140,8 +1156,8 @@ export default function ManageUsers() {
         `${BASE}/api/admin/users/${user.id}`,
         { active: true }, { headers: hdr() })
       setUsers(prev => prev.map(u => u.id === user.id ? r.data : u))
-      notify(`Reactivated: ${user.username}`)
-    } catch (err) { notify(err.response?.data?.detail || 'Failed', false) }
+      notify(`${t('users.common.reactivated')}: ${user.username}`)
+    } catch (err) { notify(err.response?.data?.detail || t('users.common.failed'), false) }
   }
   const handleUserUpdate = (updated) => {
     setUsers(prev => prev.map(u =>
@@ -1152,8 +1168,6 @@ export default function ManageUsers() {
     <div style={{ padding: '28px 32px 80px', background: T.bg,
       minHeight: 'calc(100vh - 56px)', color: T.text }}>
 
-      {/* MU-6: only page-specific keyframes; spin/pulse come from
-          <NocBaseStyles/> mounted in AdminLayout */}
       <style>{`
         @keyframes mu-toast { from{opacity:0;transform:translateY(-12px)}
           to{opacity:1;transform:translateY(0)} }
@@ -1206,7 +1220,7 @@ export default function ManageUsers() {
               animation: 'noc-pulse 2s infinite' }}/>
             <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2px',
               textTransform: 'uppercase', color: HW.blue }}>
-              LIVE · User Management
+              {t('users.page.liveBadge')}
             </span>
           </div>
         </div>
@@ -1217,15 +1231,15 @@ export default function ManageUsers() {
               fontSize: 'clamp(24px,3vw,42px)', fontWeight: 900,
               letterSpacing: '-1px', lineHeight: 1, color: T.text,
               margin: '0 0 6px' }}>
-              MANAGE <span style={{
+              {t('users.page.title')} <span style={{
                 background: `linear-gradient(90deg, ${HW.blue}, ${HW.blueLight})`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                fontStyle: 'italic' }}>USERS</span>
+                fontStyle: 'italic' }}>{t('users.page.titleAccent')}</span>
             </h1>
             <p style={{ fontSize: 13, color: T.textMuted, margin: 0,
               fontWeight: 300 }}>
-              Create · Edit · Monitor NOC engineers and platform accounts
+              {t('users.page.subtitle')}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1238,7 +1252,7 @@ export default function ManageUsers() {
                 fontWeight: 600, cursor: 'pointer', transition: 'all .2s' }}>
               <RefreshCw size={13} style={{ animation: loading
                 ? 'noc-spin .8s linear infinite' : undefined }}/>
-              Refresh
+              {t('users.common.refresh')}
             </button>
             {activeTab === 'engineers' && (
               <button onClick={() => setModal({ mode: 'create' })}
@@ -1249,7 +1263,7 @@ export default function ManageUsers() {
                   cursor: 'pointer', letterSpacing: '.3px',
                   boxShadow: '0 4px 16px rgba(0,147,213,.35)',
                   transition: 'all .2s' }}>
-                <Plus size={14}/> Add Engineer
+                <Plus size={14}/> {t('users.page.addEngineer')}
               </button>
             )}
           </div>
@@ -1261,11 +1275,11 @@ export default function ManageUsers() {
         gap: 1, background: GAP, borderRadius: 12, overflow: 'hidden',
         marginBottom: 24 }}>
         {[
-          { l: 'Total Users',  v: stats.total,     c: HW.blue       },
-          { l: 'Active',       v: stats.active,    c: ALARM.normal  },
-          { l: 'On Shift Now', v: stats.onShift,   c: HW.blueLight  },
-          { l: 'Admins',       v: stats.admins,    c: HW.red        },
-          { l: 'Engineers',    v: stats.engineers, c: '#8B5CF6'     },
+          { l: t('users.page.stats.total'),  v: stats.total,     c: HW.blue       },
+          { l: t('users.page.stats.active'),       v: stats.active,    c: ALARM.normal  },
+          { l: t('users.page.stats.onShift'), v: stats.onShift,   c: HW.blueLight  },
+          { l: t('users.page.stats.admins'),       v: stats.admins,    c: HW.red        },
+          { l: t('users.page.stats.engineers'),    v: stats.engineers, c: '#8B5CF6'     },
         ].map(k => (
           <div key={k.l} style={{ background: T.bgCard, padding: '16px 14px',
             position: 'relative', overflow: 'hidden' }}>
@@ -1286,8 +1300,8 @@ export default function ManageUsers() {
       <div style={{ display: 'flex', borderBottom: `1px solid ${T.border}`,
         marginBottom: 24 }}>
         {[
-          { key: 'engineers', label: 'Engineers',     Icon: Users },
-          { key: 'hours',     label: 'Working Hours', Icon: Clock },
+          { key: 'engineers', label: t('users.tabs.engineers'), Icon: Users },
+          { key: 'hours',     label: t('users.tabs.workingHours'), Icon: Clock },
         ].map(({ key, label, Icon }) => (
           <button key={key} onClick={() => setActiveTab(key)}
             aria-pressed={activeTab === key}
@@ -1307,7 +1321,7 @@ export default function ManageUsers() {
                 border: '1px solid rgba(22,163,74,.3)',
                 color: ALARM.normal, padding: '1px 8px', fontSize: 9,
                 fontWeight: 800, borderRadius: 10 }}>
-                {stats.onShift} live
+                {stats.onShift} {t('users.tabs.live')}
               </span>
             )}
           </button>
@@ -1327,13 +1341,13 @@ export default function ManageUsers() {
               <Search size={13} color={T.textDim}/>
               <input type="text" value={search}
                 onChange={e => setSearch(e.target.value)}
-                placeholder="Search username, name, email…"
-                aria-label="Search users"
+                placeholder={t('users.page.searchPlaceholder')}
+                aria-label={t('users.page.searchLabel')}
                 style={{ background: 'transparent', border: 'none',
                   outline: 'none', color: T.text, fontSize: 13,
                   fontFamily: 'inherit', flex: 1 }}/>
               {search && (
-                <button onClick={() => setSearch('')} aria-label="Clear search"
+                <button onClick={() => setSearch('')} aria-label={t('users.common.clear')}
                   style={{ background: 'transparent', border: 'none',
                     cursor: 'pointer', color: T.textDim, padding: 0 }}>
                   <X size={12}/>
@@ -1343,19 +1357,21 @@ export default function ManageUsers() {
             <div style={{ background: T.bgCard, padding: '10px 14px',
               display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 9, fontWeight: 800, color: T.textDim,
-                letterSpacing: '2px', textTransform: 'uppercase' }}>Role</span>
+                letterSpacing: '2px', textTransform: 'uppercase' }}>
+                {t('users.page.roleLabel')}
+              </span>
               <div style={{ position: 'relative' }}>
-                <select value={roleFilter} aria-label="Filter by role"
+                <select value={roleFilter} aria-label={t('users.page.roleFilterLabel')}
                   onChange={e => setRoleFilter(e.target.value)}
                   style={{ appearance: 'none', background: T.bgCardHover,
                     color: T.text, border: `1px solid ${T.border}`,
                     borderRadius: 6, padding: '6px 28px 6px 10px',
                     fontSize: 12, fontWeight: 600, cursor: 'pointer',
                     outline: 'none', fontFamily: 'inherit', minWidth: 130 }}>
-                  <option value="All">All Roles</option>
-                  <option value="admin">Admin</option>
-                  <option value="engineer">Engineer</option>
-                  <option value="viewer">Viewer</option>
+                  <option value="All">{t('users.page.allRoles')}</option>
+                  <option value="admin">{t('users.roles.admin')}</option>
+                  <option value="engineer">{t('users.roles.engineer')}</option>
+                  <option value="viewer">{t('users.roles.viewer')}</option>
                 </select>
                 <ChevronDown size={10} color={T.textDim} style={{
                   position: 'absolute', right: 8, top: '50%',
@@ -1370,7 +1386,7 @@ export default function ManageUsers() {
                 {filtered.length}
               </span>
               <span style={{ fontSize: 11, color: T.textDim }}>
-                / {users.length} users
+                / {users.length} {t('users.common.users')}
               </span>
             </div>
           </div>
@@ -1384,16 +1400,16 @@ export default function ManageUsers() {
               color: ALARM.critical, marginBottom: 16 }}>
               <AlertTriangle size={14}/>
               <div>
-                <strong>Could not load users.</strong> {error}
+                <strong>{t('users.page.loadError')}</strong> {error}
                 <div style={{ fontSize: 10, color: T.textDim, marginTop: 4 }}>
-                  Check uvicorn for "Admin routes registered → /api/admin/*"
+                  {t('users.page.checkLogs')}
                 </div>
               </div>
               <button onClick={fetchUsers} style={{ marginLeft: 'auto',
                 borderRadius: 6, background: 'transparent',
                 border: '1px solid rgba(220,38,38,.3)',
                 color: ALARM.critical, cursor: 'pointer',
-                padding: '4px 12px', fontSize: 11 }}>Retry</button>
+                padding: '4px 12px', fontSize: 11 }}>{t('users.common.retry')}</button>
             </div>
           )}
 
@@ -1410,8 +1426,15 @@ export default function ManageUsers() {
                   <tr style={{ background: T.mode === 'dark'
                       ? 'rgba(0,147,213,.06)' : 'rgba(0,147,213,.03)',
                     borderBottom: `1px solid ${T.border}` }}>
-                    {['ID', 'User', 'Email', 'Role', 'Shift', 'Status',
-                      'Actions'].map(h => (
+                    {[
+                      t('users.table.id'),
+                      t('users.table.user'),
+                      t('users.table.email'),
+                      t('users.table.role'),
+                      t('users.table.shift'),
+                      t('users.table.status'),
+                      t('users.table.actions')
+                    ].map(h => (
                       <th key={h} style={{ padding: '12px 14px',
                         textAlign: 'left', fontSize: 9, fontWeight: 800,
                         letterSpacing: '1.5px', textTransform: 'uppercase',
@@ -1426,15 +1449,14 @@ export default function ManageUsers() {
                       <RefreshCw size={20} color={HW.blue}
                         style={{ animation: 'noc-spin .8s linear infinite',
                           display: 'block', margin: '0 auto 10px' }}/>
-                      Loading from /api/admin/users…
+                      {t('users.page.loading')}
                     </td></tr>
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={7} style={{ padding: 52,
                       textAlign: 'center', color: T.textMuted }}>
                       <Users size={28} color={T.textDim}
                         style={{ display: 'block', margin: '0 auto 12px' }}/>
-                      {error ? 'Backend error — see banner above'
-                             : 'No users match current filters'}
+                      {error ? t('users.page.backendError') : t('users.page.noResults')}
                     </td></tr>
                   ) : filtered.map(u => (
                     <tr key={u.id} className="mu-row" style={{
@@ -1488,14 +1510,13 @@ export default function ManageUsers() {
                         ) : (
                           <span style={{ fontSize: 10, color: T.textDim,
                             fontStyle: 'italic' }}>
-                            Not set
+                            {t('users.table.notSet')}
                           </span>
                         )}
                       </td>
                       <td style={{ padding: '11px 14px' }}>
                         <div style={{ display: 'flex', alignItems: 'center',
                           gap: 6 }}>
-                          {/* MU-2: dot span instead of ● / ○ glyphs */}
                           <span style={{ display: 'inline-flex',
                             alignItems: 'center', gap: 5,
                             padding: '3px 10px', fontSize: 9, fontWeight: 800,
@@ -1511,20 +1532,21 @@ export default function ManageUsers() {
                               background: u.active
                                 ? ALARM.normal : ALARM.unknown,
                               display: 'inline-block' }}/>
-                            {u.active ? 'Active' : 'Off'}
+                            {u.active ? t('users.status.active') : t('users.status.off')}
                           </span>
                           {u.is_on_shift && (
                             <div style={{ width: 7, height: 7,
                               borderRadius: '50%', background: ALARM.normal,
                               boxShadow: `0 0 6px ${ALARM.normal}`,
                               animation: 'noc-pulse 2s infinite' }}
-                              title="On shift"/>
+                              title={t('users.table.onShiftTitle')}/>
                           )}
                         </div>
                       </td>
                       <td style={{ padding: '11px 14px' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          <button title="Edit" aria-label={`Edit ${u.username}`}
+                          <button title={t('users.table.edit')} 
+                            aria-label={`${t('users.table.edit')} ${u.username}`}
                             onClick={() => setModal({ mode: 'edit', user: u })}
                             style={{ background: 'rgba(0,147,213,.1)',
                               border: '1px solid rgba(0,147,213,.25)',
@@ -1536,8 +1558,8 @@ export default function ManageUsers() {
                             <Edit2 size={11}/>
                           </button>
                           {u.active ? (
-                            <button title="Disable"
-                              aria-label={`Disable ${u.username}`}
+                            <button title={t('users.table.disable')}
+                              aria-label={`${t('users.table.disable')} ${u.username}`}
                               onClick={() => setDelUser(u)}
                               style={{ background: 'rgba(220,38,38,.1)',
                                 border: '1px solid rgba(220,38,38,.25)',
@@ -1549,8 +1571,8 @@ export default function ManageUsers() {
                               <Trash2 size={11}/>
                             </button>
                           ) : (
-                            <button title="Reactivate"
-                              aria-label={`Reactivate ${u.username}`}
+                            <button title={t('users.table.reactivate')}
+                              aria-label={`${t('users.table.reactivate')} ${u.username}`}
                               onClick={() => handleReactivate(u)}
                               style={{ background: 'rgba(22,163,74,.1)',
                                 border: '1px solid rgba(22,163,74,.25)',

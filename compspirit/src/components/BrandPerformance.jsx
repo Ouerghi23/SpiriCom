@@ -28,6 +28,8 @@
 //  BP-6  Show-more hover via CSS class (no inline mouseEnter
 //        mutation). "Churn ▸ 5G" glyph → "Churn / 5G".
 //        Typography floor: 7/8px labels → 9/10px.
+//  BP-7  i18n integration — all hardcoded strings replaced with
+//        translation keys from forecast.brand namespace.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useMemo, useEffect } from 'react'
@@ -130,7 +132,7 @@ function DualBar({ churnRate, maxChurn, ratio5g, maxRatio }) {
       minWidth: 100, flex: 1 }}>
       <div style={{ height: 4, background: track, borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ width: `${churnPct}%`, height: '100%',
-          background: churnSeverity(churnRate),                  // BP-3
+          background: churnSeverity(churnRate),
           borderRadius: 2, transition: 'width .5s' }}/>
       </div>
       <div style={{ height: 4, background: track, borderRadius: 2, overflow: 'hidden' }}>
@@ -192,16 +194,18 @@ export default function BrandPerformanceSection() {
 
   // ── Summary KPIs — BP-3: token colors ──────────────────────────────
   const summaryKpis = [
-    { label: 'Brands',         value: brands.length,                        icon: BarChart2,     color: HW.blue       },
-    { label: 'Customers',      value: totalCustomers.toLocaleString(),      icon: Users,         color: ALARM.normal  },
-    { label: 'Highest Churn',  value: `${(maxChurn * 100).toFixed(1)}%`,    icon: AlertTriangle, color: ALARM.critical },
-    { label: 'Best 5G Adopt.', value: `${(maxRatio * 100).toFixed(1)}%`,    icon: Wifi,          color: HW.blueLight  },
+    { label: t('forecast.brand.kpi.brands'),         value: brands.length,                        icon: BarChart2,     color: HW.blue       },
+    { label: t('forecast.brand.kpi.customers'),      value: totalCustomers.toLocaleString(),      icon: Users,         color: ALARM.normal  },
+    { label: t('forecast.brand.kpi.highestChurn'),  value: `${(maxChurn * 100).toFixed(1)}%`,    icon: AlertTriangle, color: ALARM.critical },
+    { label: t('forecast.brand.kpi.best5g'),        value: `${(maxRatio * 100).toFixed(1)}%`,    icon: Wifi,          color: HW.blueLight  },
   ]
 
   // ── Loading skeleton ──────────────────────────────────────────────
   if (loading) return (
     <div style={{ marginTop: 44 }}>
-      <SectionLabel sub="Loading brand intelligence…">BRAND PERFORMANCE</SectionLabel>
+      <SectionLabel sub={t('forecast.brand.loading')}>
+        {t('forecast.brandSection')}
+      </SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} style={{ height: 52, background: T.bgCard, opacity: 0.3 + i * 0.1 }}/>
@@ -213,14 +217,14 @@ export default function BrandPerformanceSection() {
   // ── Empty / error state ───────────────────────────────────────────
   if (error || brands.length === 0) return (
     <div style={{ marginTop: 44 }}>
-      <SectionLabel sub="Run /api/brand/performance — requires le_brand.pkl + churn_features.parquet">
-        BRAND PERFORMANCE
+      <SectionLabel sub={t('forecast.brand.errorSub')}>
+        {t('forecast.brandSection')}
       </SectionLabel>
       <div style={{ background: T.bgCard, border: `1px solid ${T.border}`,
         padding: '40px 24px', textAlign: 'center', color: T.textMuted, fontSize: 12 }}>
-        {t('forecast.noBrand') || 'Brand data unavailable'}
+        {t('forecast.brand.unavailable')}
         <div style={{ fontSize: 10, color: T.textDim, marginTop: 4 }}>
-          {t('forecast.noBrandDesc') || 'GET /api/brand/performance · run NB04'}
+          {t('forecast.brand.errorDesc')}
         </div>
       </div>
     </div>
@@ -238,7 +242,10 @@ export default function BrandPerformanceSection() {
 
       {/* ── Section header ── */}
       <SectionLabel
-        sub={`${brands.length} brands · ${totalCustomers.toLocaleString()} customers · Huawei pinned`}
+        sub={t('forecast.brand.subtitle', { 
+          count: brands.length, 
+          customers: totalCustomers.toLocaleString() 
+        })}
         action={
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <div style={{ display: 'flex', gap: 2 }}>
@@ -254,27 +261,27 @@ export default function BrandPerformanceSection() {
                     color: filterCat === c ? HW.blue : T.textDim,
                     transition: 'all .15s',
                   }}>
-                  {c}
+                  {c === 'all' ? t('forecast.brand.filterAll') : c}
                 </button>
               ))}
             </div>
             <select value={sortKey} onChange={e => setSortKey(e.target.value)}
-              aria-label="Sort brands"
+              aria-label={t('forecast.brand.sortLabel')}
               style={{
                 appearance: 'none', background: T.bgCard, color: T.text,
                 border: `1px solid ${T.border}`, padding: '5px 10px',
                 fontSize: 9, fontWeight: 700, fontFamily: 'inherit',
                 letterSpacing: '1px', cursor: 'pointer', outline: 'none',
               }}>
-              <option value="customer_count">Sort: Customers</option>
-              <option value="churn_rate">Sort: Churn Risk</option>
-              <option value="ratio_5g_mean">Sort: 5G Adoption</option>
-              <option value="traffic_5g_mean">Sort: 5G Traffic</option>
+              <option value="customer_count">{t('forecast.brand.sortCustomers')}</option>
+              <option value="churn_rate">{t('forecast.brand.sortChurn')}</option>
+              <option value="ratio_5g_mean">{t('forecast.brand.sort5gAdoption')}</option>
+              <option value="traffic_5g_mean">{t('forecast.brand.sort5gTraffic')}</option>
             </select>
           </div>
         }
       >
-        {t('forecast.brandSection') || 'BRAND PERFORMANCE'}
+        {t('forecast.brandSection')}
       </SectionLabel>
 
       {/* ── Summary KPI strip ── */}
@@ -308,12 +315,12 @@ export default function BrandPerformanceSection() {
         textTransform: 'uppercase',
       }}>
         <span/>
-        <span>Brand</span>
-        <span style={{ textAlign: 'right' }}>Customers</span>
-        <span style={{ paddingLeft: 4 }}>Churn / 5G</span>
-        <span style={{ textAlign: 'right' }}>Churn%</span>
-        <span style={{ textAlign: 'right' }}>5G%</span>
-        <span style={{ textAlign: 'right' }}>Traffic</span>
+        <span>{t('forecast.brand.table.brand')}</span>
+        <span style={{ textAlign: 'right' }}>{t('forecast.brand.table.customers')}</span>
+        <span style={{ paddingLeft: 4 }}>{t('forecast.brand.table.churn5g')}</span>
+        <span style={{ textAlign: 'right' }}>{t('forecast.brand.table.churnPct')}</span>
+        <span style={{ textAlign: 'right' }}>{t('forecast.brand.table.fiveGPct')}</span>
+        <span style={{ textAlign: 'right' }}>{t('forecast.brand.table.traffic')}</span>
       </div>
 
       {/* ── Brand rows ── */}
@@ -321,12 +328,12 @@ export default function BrandPerformanceSection() {
         {visible.map(b => {
           const cfg        = getBrand(b.brand_name)
           const isHuawei   = cfg.sponsor === true
-          const rank       = rankOf(b.brand_name)                 // BP-4
+          const rank       = rankOf(b.brand_name)
           const churnPct   = ((b.churn_rate || 0) * 100).toFixed(1)
           const fivePct    = ((b.ratio_5g_mean || 0) * 100).toFixed(1)
           const sharePct   = ((b.customer_count / Math.max(totalCustomers, 1)) * 100).toFixed(1)
           const trafficMB  = ((b.traffic_5g_mean || 0) / 1e6).toFixed(2)
-          const churnColor = churnSeverity(b.churn_rate || 0)     // BP-3
+          const churnColor = churnSeverity(b.churn_rate || 0)
 
           return (
             <div key={b.brand_name} className="bp-row" style={{
@@ -357,13 +364,13 @@ export default function BrandPerformanceSection() {
                       letterSpacing: '1.5px', color: HW.red,
                       background: HW.redDim, border: `1px solid ${HW.redBd}`,
                       padding: '1px 5px' }}>
-                      SPONSOR
+                      {t('forecast.brand.sponsor')}
                     </span>
                   )}
                 </div>
                 <div style={{ fontSize: 9, color: T.textDim,
                   letterSpacing: '1px', marginTop: 1 }}>
-                  #{rank} · {cfg.category || 'device'} · {sharePct}% share
+                  #{rank} · {t(`forecast.brand.categories.${cfg.category || 'device'}`)} · {sharePct}% {t('forecast.brand.share')}
                 </div>
               </div>
 
@@ -373,7 +380,9 @@ export default function BrandPerformanceSection() {
                   fontWeight: 800, color: T.text, lineHeight: 1 }}>
                   {b.customer_count?.toLocaleString()}
                 </div>
-                <div style={{ fontSize: 9, color: T.textDim, marginTop: 1 }}>users</div>
+                <div style={{ fontSize: 9, color: T.textDim, marginTop: 1 }}>
+                  {t('forecast.brand.users')}
+                </div>
               </div>
 
               <DualBar
@@ -423,8 +432,8 @@ export default function BrandPerformanceSection() {
             justifyContent: 'center', gap: 6,
           }}>
           {showAll
-            ? <><ChevronUp size={11}/> Show top 15</>
-            : <><ChevronDown size={11}/> Show all {sorted.length} brands</>}
+            ? <><ChevronUp size={11}/> {t('forecast.brand.showTop')}</>
+            : <><ChevronDown size={11}/> {t('forecast.brand.showAll', { count: sorted.length })}</>}
         </button>
       )}
     </div>

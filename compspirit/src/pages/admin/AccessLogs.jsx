@@ -1,36 +1,11 @@
 // src/pages/admin/AccessLogs.jsx
 // ─────────────────────────────────────────────────────────────────────
 // Real audit logs from GET /api/admin/logs (v2) — no mock data
-//
-// MIGRATION (vs previous version):
-//  LG-1  REAL BUG: pagination rendered only pages 1..7
-//        (Array.from({length: min(totalPages, 7)})) — with more than
-//        175 log entries, pages 8+ were unreachable. Replaced with
-//        the windowed paginator used on the NLP page (first · … ·
-//     around current · … · last) and Lucide chevrons instead of
-//        the ← / → glyph characters.
-//  LG-2  ACTION_META severity corrected on the ALARM ladder:
-//        login_failed / delete_user / delete_complaint → critical
-//        (were legacy #FF4060/#CF0A2C); logout was AMBER — logging
-//        out is not a warning — now neutral gray, as are all plain
-//        view_* page-visit events (view_anomalies was amber too).
-//        login → normal, creates → blue, updates → purple,
-//        AI/config → blueLight.
-//  LG-3  Legacy red purged from chrome: refresh button, count badge,
-//        table accent, pagination active state, user avatar gradient
-//        (now blue→navy like every other avatar). h1 italic accent
-//        keeps HW.red as the page's one brand-red element.
-//  LG-4  Export button labeled "Export Page" — it exports only the
-//        currently loaded page (server-side pagination), and the old
-//        label implied the full table. FLAG: a true full export needs
-//        a backend endpoint (e.g. GET /api/admin/logs/export).
-//  LG-5  Local keyframes deleted (global noc-* via AdminLayout);
-//        inline hover mutation → CSS classes; selects + search get
-//        aria-labels; IP code color → HW.blueLight token.
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTheme } from '../../context/ThemeContext'
+import { useTranslation } from 'react-i18next'
 import { HW, ALARM, FONT } from '../../components/UI'
 import {
   FileText, RefreshCw, Search, X, Download,
@@ -47,47 +22,31 @@ const authHeader = () => {
   return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
-// ── LG-2: action meta on the ALARM ladder ─────────────────────────────
-const meta = (color, Icon, dim = '10', bd = '25') => ({
-  color, Icon,
-  bg: `${color}${dim === '10' ? '1A' : '14'}`.slice(0, 7) + (dim === '10' ? '1A' : '14'),
-})
-// (explicit table below for clarity instead of the helper)
+// ── ACTION META ─────────────────────────────────────────────────────────
 const ACTION_META = {
-  // Auth
   login:        { color: ALARM.normal,   bg: 'rgba(22,163,74,.10)',   border: 'rgba(22,163,74,.25)',   Icon: LogIn },
   logout:       { color: ALARM.unknown,  bg: 'rgba(107,114,128,.10)', border: 'rgba(107,114,128,.22)', Icon: LogOut },
   login_failed: { color: ALARM.critical, bg: 'rgba(220,38,38,.10)',   border: 'rgba(220,38,38,.28)',   Icon: AlertTriangle },
-
-  // User management (admin actions)
   create_user:  { color: HW.blue,        bg: 'rgba(0,147,213,.10)',   border: 'rgba(0,147,213,.25)',   Icon: Plus },
   delete_user:  { color: ALARM.critical, bg: 'rgba(220,38,38,.12)',   border: 'rgba(220,38,38,.28)',   Icon: Trash2 },
   update_user:  { color: '#8B5CF6',      bg: 'rgba(139,92,246,.10)',  border: 'rgba(139,92,246,.25)',  Icon: Edit2 },
-
-  // AI
   config_ai:    { color: HW.blueLight,   bg: 'rgba(0,195,255,.10)',   border: 'rgba(0,195,255,.25)',   Icon: Shield },
   ai_chat:      { color: HW.blueLight,   bg: 'rgba(0,195,255,.08)',   border: 'rgba(0,195,255,.2)',    Icon: Shield },
-
-  // Messaging
   send_message: { color: HW.blue,        bg: 'rgba(0,147,213,.08)',   border: 'rgba(0,147,213,.2)',    Icon: Plus },
-
-  // Complaints / NLP actions
   submit_complaint:        { color: HW.blue,        bg: 'rgba(0,147,213,.08)',   border: 'rgba(0,147,213,.2)',   Icon: Plus },
   update_complaint_status: { color: '#8B5CF6',      bg: 'rgba(139,92,246,.08)',  border: 'rgba(139,92,246,.2)',  Icon: Edit2 },
   delete_complaint:        { color: ALARM.critical, bg: 'rgba(220,38,38,.08)',   border: 'rgba(220,38,38,.2)',   Icon: Trash2 },
-
-  // Dashboard views — LG-2: page visits are neutral, not warnings
   view_overview:  { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: FileText },
   view_anomalies: { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: AlertTriangle },
   view_map:       { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: FileText },
   view_nlp:       { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: FileText },
   view_logs:      { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: FileText },
   view_system:    { color: ALARM.unknown, bg: 'rgba(107,114,128,.06)', border: 'rgba(107,114,128,.15)', Icon: Activity },
-
   default: { color: ALARM.unknown, bg: 'rgba(107,114,128,.08)', border: 'rgba(107,114,128,.2)', Icon: FileText },
 }
 
 const ActionBadge = ({ action }) => {
+  const { t } = useTranslation()
   const m = ACTION_META[action] || ACTION_META.default
   const { Icon } = m
   return (
@@ -97,7 +56,7 @@ const ActionBadge = ({ action }) => {
       letterSpacing: '1px', textTransform: 'uppercase',
       whiteSpace: 'nowrap' }}>
       <Icon size={9} color={m.color}/>
-      {action?.replace(/_/g, ' ')}
+      {t(`logs.actions.${action}`, { defaultValue: action?.replace(/_/g, ' ') })}
     </span>
   )
 }
@@ -105,6 +64,7 @@ const ActionBadge = ({ action }) => {
 const PAGE_SIZE = 25
 
 export default function AccessLogs() {
+  const { t } = useTranslation()
   const { theme: T } = useTheme()
   const [logs,         setLogs]         = useState([])
   const [total,        setTotal]        = useState(0)
@@ -130,9 +90,11 @@ export default function AccessLogs() {
     setLoading(true)
     try {
       const params = new URLSearchParams({
-        limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE,
+        limit: PAGE_SIZE, 
+        offset: (page - 1) * PAGE_SIZE,
         ...(filterAction !== 'All' && { action: filterAction }),
         ...(filterStatus !== 'All' && { status: filterStatus }),
+        ...(search.trim() && { search: search.trim() }),
       })
       const r = await axios.get(`${API}/api/admin/logs?${params}`,
         { headers: authHeader() })
@@ -143,8 +105,9 @@ export default function AccessLogs() {
       console.error('AccessLogs fetch:', err)
       setApiOnline(false)
       setLogs([])
+      setTotal(0)
     } finally { setLoading(false) }
-  }, [page, filterAction, filterStatus])
+  }, [page, filterAction, filterStatus, search])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
   useEffect(() => { setPage(1) }, [filterAction, filterStatus, search])
@@ -163,9 +126,16 @@ export default function AccessLogs() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
-  // LG-4: exports the current page only — full export needs backend
   const exportCSV = () => {
-    const rows = ['Timestamp,User,Action,Target,IP,Status,Detail'.split(',')]
+    const rows = [
+      t('logs.csv.timestamp'),
+      t('logs.csv.user'),
+      t('logs.csv.action'),
+      t('logs.csv.target'),
+      t('logs.csv.ip'),
+      t('logs.csv.status'),
+      t('logs.csv.detail')
+    ]
     logs.forEach(l => rows.push([l.timestamp, l.user, l.action,
       l.target, l.ip, l.status, l.detail || '']))
     const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
@@ -173,6 +143,10 @@ export default function AccessLogs() {
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
     a.download = `access_logs_page${page}.csv`; a.click()
   }
+
+  // Safe formatting helpers
+  const formatTotal = (num) => num?.toLocaleString() || '0'
+  const formatPageOf = (current, total) => `Page ${current} / ${total}`
 
   return (
     <div style={{ padding: '32px 36px 80px', background: T.bg,
@@ -203,27 +177,24 @@ export default function AccessLogs() {
           <span style={{ fontSize: 9, fontWeight: 800,
             letterSpacing: '2.5px', textTransform: 'uppercase',
             color: apiOnline ? ALARM.normal : ALARM.critical }}>
-            {apiOnline ? 'LIVE · Real Audit Log' : 'OFFLINE · No data'}
+            {apiOnline ? t('logs.header.live') : t('logs.header.offline')}
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between',
           alignItems: 'flex-end', flexWrap: 'wrap', gap: 14 }}>
           <div>
-            {/* The ONE brand-red element on this page */}
             <h1 style={{ fontFamily: FONT.display,
               fontSize: 'clamp(24px,3vw,44px)', fontWeight: 900,
               letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
               margin: '0 0 6px' }}>
-              ACCESS <span style={{ color: HW.red,
-                fontStyle: 'italic' }}>LOGS</span>
+              {t('logs.page.title')} <span style={{ color: HW.red,
+                fontStyle: 'italic' }}>{t('logs.page.titleAccent')}</span>
             </h1>
             <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
-              Real-time audit trail · {total.toLocaleString()} total
-              events in database
+              {t('logs.page.subtitle', { total: formatTotal(total) })}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            {/* LG-3: refresh = blue chrome */}
             <button onClick={fetchLogs} disabled={loading} style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: HW.blueDim, border: `1px solid ${HW.blueBd}`,
@@ -233,16 +204,15 @@ export default function AccessLogs() {
               opacity: loading ? 0.6 : 1 }}>
               <RefreshCw size={12} style={{ animation: loading
                 ? 'noc-spin .8s linear infinite' : undefined }}/>
-              Refresh
+              {t('logs.common.refresh')}
             </button>
-            {/* LG-4: honest label + CSS hover */}
             <button onClick={exportCSV} className="al-export" style={{
               display: 'flex', alignItems: 'center', gap: 6,
               background: 'transparent',
               border: `1px solid ${T.border}`, color: T.textMuted,
               padding: '8px 16px', fontSize: 11, fontWeight: 700,
               cursor: 'pointer' }}>
-              <Download size={12}/>Export Page
+              <Download size={12}/>{t('logs.common.exportPage')}
             </button>
           </div>
         </div>
@@ -258,8 +228,8 @@ export default function AccessLogs() {
           style={{ flexShrink: 0, marginTop: 1 }}/>
         <div style={{ fontSize: 11, color: T.textMuted }}>
           <span style={{ color: ALARM.minor, fontWeight: 700,
-            marginRight: 6 }}>Backend not reachable.</span>
-          Start the FastAPI server with{' '}
+            marginRight: 6 }}>{t('logs.errors.cannotReach')}</span>
+          {t('logs.errors.startFastAPI')}
           <code style={{ background: T.mode === 'dark'
               ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.06)',
             padding: '1px 6px', fontSize: 10, color: HW.blueLight }}>
@@ -279,13 +249,13 @@ export default function AccessLogs() {
           <Search size={12} color={T.textDim}/>
           <input type="text" value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search user, action, IP…"
-            aria-label="Search logs"
+            placeholder={t('logs.filter.searchPlaceholder')}
+            aria-label={t('logs.filter.searchLabel')}
             style={{ background: 'transparent', border: 'none',
               outline: 'none', color: T.text, fontSize: 12,
               fontFamily: 'inherit', flex: 1 }}/>
           {search && <button onClick={() => setSearch('')}
-            aria-label="Clear search"
+            aria-label={t('logs.common.clear')}
             style={{ background: 'transparent', border: 'none',
               cursor: 'pointer', color: T.textDim, padding: 0 }}>
             <X size={11}/>
@@ -294,9 +264,11 @@ export default function AccessLogs() {
         <div style={{ background: T.bgCard, padding: '10px 14px',
           display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 9, fontWeight: 800, color: T.textDim,
-            letterSpacing: '2px', textTransform: 'uppercase' }}>Action</span>
+            letterSpacing: '2px', textTransform: 'uppercase' }}>
+            {t('logs.filter.actionLabel')}
+          </span>
           <div style={{ position: 'relative' }}>
-            <select value={filterAction} aria-label="Filter by action"
+            <select value={filterAction} aria-label={t('logs.filter.actionLabel')}
               onChange={e => setFilterAction(e.target.value)}
               style={{ appearance: 'none', background: T.bgCardHover,
                 color: T.text, border: `1px solid ${T.border}`,
@@ -305,7 +277,9 @@ export default function AccessLogs() {
                 outline: 'none', fontFamily: 'inherit', minWidth: 130 }}>
               {uniqueActions.map(a => (
                 <option key={a} value={a}>
-                  {a === 'All' ? 'All Actions' : a.replace(/_/g, ' ')}
+                  {a === 'All' 
+                    ? t('logs.filter.allActions') 
+                    : t(`logs.actions.${a}`, { defaultValue: a.replace(/_/g, ' ') })}
                 </option>
               ))}
             </select>
@@ -317,18 +291,20 @@ export default function AccessLogs() {
         <div style={{ background: T.bgCard, padding: '10px 14px',
           display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontSize: 9, fontWeight: 800, color: T.textDim,
-            letterSpacing: '2px', textTransform: 'uppercase' }}>Status</span>
+            letterSpacing: '2px', textTransform: 'uppercase' }}>
+            {t('logs.filter.statusLabel')}
+          </span>
           <div style={{ position: 'relative' }}>
-            <select value={filterStatus} aria-label="Filter by status"
+            <select value={filterStatus} aria-label={t('logs.filter.statusLabel')}
               onChange={e => setFilterStatus(e.target.value)}
               style={{ appearance: 'none', background: T.bgCardHover,
                 color: T.text, border: `1px solid ${T.border}`,
                 padding: '6px 28px 6px 10px',
                 fontSize: 11, fontWeight: 600, cursor: 'pointer',
                 outline: 'none', fontFamily: 'inherit', minWidth: 110 }}>
-              <option value="All">All Status</option>
-              <option value="success">Success</option>
-              <option value="failed">Failed</option>
+              <option value="All">{t('logs.filter.allStatus')}</option>
+              <option value="success">{t('logs.status.success')}</option>
+              <option value="failed">{t('logs.status.failed')}</option>
             </select>
             <ChevronDown size={10} color={T.textDim}
               style={{ position: 'absolute', right: 8, top: '50%',
@@ -341,12 +317,12 @@ export default function AccessLogs() {
           <span style={{ fontFamily: FONT.display, fontSize: 15,
             fontWeight: 800, color: HW.blue }}>{filtered.length}</span>
           <span style={{ fontSize: 10, color: T.textDim }}>
-            shown / {total} total
+            {t('logs.filter.shownTotal', { total: formatTotal(total) })}
           </span>
         </div>
       </div>
 
-      {/* Table — LG-3: blue chrome accent */}
+      {/* Table */}
       <div style={{ border: `1px solid ${T.border}`, overflow: 'hidden',
         position: 'relative', marginBottom: 1 }}>
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0,
@@ -359,8 +335,15 @@ export default function AccessLogs() {
               <tr style={{ background: T.mode === 'dark'
                   ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.04)',
                 borderBottom: `1px solid ${T.border}` }}>
-                {['Timestamp', 'User', 'Action', 'Target', 'IP Address',
-                  'Status', 'Detail'].map(h => (
+                {[
+                  t('logs.table.timestamp'),
+                  t('logs.table.user'),
+                  t('logs.table.action'),
+                  t('logs.table.target'),
+                  t('logs.table.ip'),
+                  t('logs.table.status'),
+                  t('logs.table.detail')
+                ].map(h => (
                   <th key={h} style={{ padding: '11px 14px',
                     textAlign: 'left', fontSize: 9, fontWeight: 800,
                     letterSpacing: '1.5px', textTransform: 'uppercase',
@@ -375,7 +358,7 @@ export default function AccessLogs() {
                   <RefreshCw size={18} color={T.textDim}
                     style={{ animation: 'noc-spin .8s linear infinite',
                       display: 'block', margin: '0 auto 8px' }}/>
-                  Loading logs from database…
+                  {t('logs.table.loading')}
                 </td></tr>
               ) : filtered.length === 0 ? (
                 <tr><td colSpan={7} style={{ padding: 48,
@@ -383,8 +366,8 @@ export default function AccessLogs() {
                   <FileText size={24} color={T.textDim}
                     style={{ display: 'block', margin: '0 auto 10px' }}/>
                   {apiOnline
-                    ? 'No log entries found — admin actions will appear here automatically'
-                    : 'Cannot connect to backend — start FastAPI server'}
+                    ? t('logs.table.noData')
+                    : t('logs.table.noConnection')}
                 </td></tr>
               ) : filtered.map((log, i) => (
                 <tr key={log.id || i} className="al-row"
@@ -409,7 +392,6 @@ export default function AccessLogs() {
                   <td style={{ padding: '9px 14px' }}>
                     <div style={{ display: 'flex', alignItems: 'center',
                       gap: 7 }}>
-                      {/* LG-3: avatar gradient = platform blue, not red */}
                       <div style={{ width: 24, height: 24,
                         borderRadius: '50%',
                         background: `linear-gradient(135deg, ${HW.blue}, ${HW.navy})`,
@@ -446,7 +428,7 @@ export default function AccessLogs() {
                         ? 'rgba(22,163,74,.25)' : 'rgba(220,38,38,.28)'}`,
                       color: log.status === 'success'
                         ? ALARM.normal : ALARM.critical }}>
-                      {log.status}
+                      {t(`logs.status.${log.status}`, { defaultValue: log.status })}
                     </span>
                   </td>
                   <td style={{ padding: '9px 14px', color: T.textDim,
@@ -461,79 +443,81 @@ export default function AccessLogs() {
         </div>
       </div>
 
-      {/* Pagination — LG-1: windowed, reaches every page */}
-      {total > PAGE_SIZE && <div style={{ display: 'flex',
-        alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 18px',
-        background: T.bgCard, border: `1px solid ${T.border}` }}>
-        <div style={{ fontSize: 11, color: T.textMuted }}>
-          <span style={{ fontFamily: FONT.display, fontSize: 15,
-            fontWeight: 800, color: HW.blue }}>
-            {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
-          </span>
-          <span style={{ color: T.textDim }}> / {total} entries</span>
-        </div>
-        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-          <button className="al-page" aria-label="Previous page"
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            style={{ width: 30, height: 30,
-              border: `1px solid ${T.border}`, background: 'transparent',
-              color: T.textMuted,
-              cursor: page === 1 ? 'not-allowed' : 'pointer',
-              opacity: page === 1 ? .4 : 1,
-              display: 'flex', alignItems: 'center',
-              justifyContent: 'center' }}>
-            <ChevronLeft size={12}/>
-          </button>
+      {/* Pagination */}
+      {total > PAGE_SIZE && (
+        <div style={{ display: 'flex',
+          alignItems: 'center', justifyContent: 'space-between',
+          padding: '12px 18px',
+          background: T.bgCard, border: `1px solid ${T.border}` }}>
+          <div style={{ fontSize: 11, color: T.textMuted }}>
+            <span style={{ fontFamily: FONT.display, fontSize: 15,
+              fontWeight: 800, color: HW.blue }}>
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)}
+            </span>
+            <span style={{ color: T.textDim }}> / {formatTotal(total)} {t('logs.pagination.entriesSuffix')}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <button className="al-page" aria-label={t('logs.pagination.previous')}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              style={{ width: 30, height: 30,
+                border: `1px solid ${T.border}`, background: 'transparent',
+                color: T.textMuted,
+                cursor: page === 1 ? 'not-allowed' : 'pointer',
+                opacity: page === 1 ? .4 : 1,
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'center' }}>
+              <ChevronLeft size={12}/>
+            </button>
 
-          {Array.from({ length: totalPages }, (_, i) => i + 1)
-            .filter(p => p === 1 || p === totalPages ||
-              Math.abs(p - page) <= 1)
-            .reduce((acc, p, idx, arr) => {
-              if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…')
-              acc.push(p); return acc
-            }, [])
-            .map((p, idx) => p === '…' ? (
-              <span key={`e${idx}`} style={{ width: 30,
-                textAlign: 'center', color: T.textDim,
-                fontSize: 11 }}>…</span>
-            ) : (
-              <button key={p} onClick={() => setPage(p)}
-                className={`al-page${p === page ? ' active' : ''}`}
-                aria-label={`Page ${p}`}
-                aria-current={p === page ? 'page' : undefined}
-                style={{ width: 30, height: 30,
-                  background: p === page ? HW.blue : 'transparent',
-                  border: `1px solid ${p === page ? HW.blue : T.border}`,
-                  color: p === page ? '#fff' : T.textMuted,
-                  cursor: 'pointer', fontSize: 11,
-                  fontWeight: p === page ? 800 : 500,
-                  fontFamily: FONT.display }}>
-                {p}
-              </button>
-            ))
-          }
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter(p => p === 1 || p === totalPages ||
+                Math.abs(p - page) <= 1)
+              .reduce((acc, p, idx, arr) => {
+                if (idx > 0 && p - arr[idx - 1] > 1) acc.push('…')
+                acc.push(p); return acc
+              }, [])
+              .map((p, idx) => p === '…' ? (
+                <span key={`e${idx}`} style={{ width: 30,
+                  textAlign: 'center', color: T.textDim,
+                  fontSize: 11 }}>…</span>
+              ) : (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`al-page${p === page ? ' active' : ''}`}
+                  aria-label={t('logs.pagination.page', { page: p })}
+                  aria-current={p === page ? 'page' : undefined}
+                  style={{ width: 30, height: 30,
+                    background: p === page ? HW.blue : 'transparent',
+                    border: `1px solid ${p === page ? HW.blue : T.border}`,
+                    color: p === page ? '#fff' : T.textMuted,
+                    cursor: 'pointer', fontSize: 11,
+                    fontWeight: p === page ? 800 : 500,
+                    fontFamily: FONT.display }}>
+                  {p}
+                </button>
+              ))
+            }
 
-          <button className="al-page" aria-label="Next page"
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            style={{ width: 30, height: 30,
-              border: `1px solid ${T.border}`, background: 'transparent',
-              color: T.textMuted,
-              cursor: page === totalPages ? 'not-allowed' : 'pointer',
-              opacity: page === totalPages ? .4 : 1,
-              display: 'flex', alignItems: 'center',
-              justifyContent: 'center' }}>
-            <ChevronRight size={12}/>
-          </button>
+            <button className="al-page" aria-label={t('logs.pagination.next')}
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              style={{ width: 30, height: 30,
+                border: `1px solid ${T.border}`, background: 'transparent',
+                color: T.textMuted,
+                cursor: page === totalPages ? 'not-allowed' : 'pointer',
+                opacity: page === totalPages ? .4 : 1,
+                display: 'flex', alignItems: 'center',
+                justifyContent: 'center' }}>
+              <ChevronRight size={12}/>
+            </button>
+          </div>
+          <div style={{ fontSize: 9, color: T.textDim,
+            letterSpacing: '1.5px', textTransform: 'uppercase',
+            fontWeight: 700 }}>
+            {formatPageOf(page, totalPages)}
+          </div>
         </div>
-        <div style={{ fontSize: 9, color: T.textDim,
-          letterSpacing: '1.5px', textTransform: 'uppercase',
-          fontWeight: 700 }}>
-          Page {page} / {totalPages}
-        </div>
-      </div>}
+      )}
     </div>
   )
 }
