@@ -307,18 +307,18 @@ export default function LoginPage() {
       const res = await axios.post(`${API}/api/auth/guest`)
       storeSession(res.data, false)             // FIX-5: was always sessionStorage
       navigate(roleDestination())
-    } catch { alert('Guest access temporarily unavailable') }
-  }, [navigate])
+    } catch { alert(t('login.guestUnavailable')) }
+  }, [navigate, t])
 
   const handleForgotPassword = async e => {
     e.preventDefault()
-    if (!fpEmail.trim()) { setFpErr('Email requis'); return }
+    if (!fpEmail.trim()) { setFpErr(t('forgot.emailRequired')); return }
     setFpLoad(true); setFpErr(null)
     try {
       await axios.post(`${API}/api/auth/forgot-password`, { email: fpEmail.trim() })
       setFpSent(true)
     } catch (err) {
-      setFpErr(err.response?.data?.detail || 'Erreur de connexion')
+      setFpErr(err.response?.data?.detail || t('forgot.connectionError'))
     } finally { setFpLoad(false) }
   }
 
@@ -373,13 +373,13 @@ export default function LoginPage() {
   const cardTitle = {
     signin: t('login.title').toUpperCase(),
     signup: t('signup.title').toUpperCase(),
-    forgot: 'MOT DE PASSE OUBLIÉ',
+    forgot: t('forgot.cardTitle').toUpperCase(),
   }[tab] || ''
 
   const cardSub = {
     signin: t('login.subtitle'),
     signup: t('signup.subtitle'),
-    forgot: 'Réinitialisez votre accès NOC',
+    forgot: t('forgot.cardSub'),
   }[tab] || ''
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -669,7 +669,7 @@ export default function LoginPage() {
                   <div style={{ animation:'slide-r .2s ease both' }}>
                     <form onSubmit={handleSignIn}>
                       {isLocked && (
-                        <AlertBar msg={`Compte bloqué ${minutesLeft} minute(s). Trop de tentatives.`}/>
+                        <AlertBar msg={`${t('login.lockout')} ${minutesLeft} ${t('login.lockoutMinutes')}`}/>
                       )}
                       <div style={{ marginBottom:18 }}>
                         <FieldLabel>{t('login.username')}</FieldLabel>
@@ -692,7 +692,7 @@ export default function LoginPage() {
                           background:'none', border:'none', color:RED, fontSize:11,
                           cursor:'pointer', fontFamily:'inherit', fontWeight:600, letterSpacing:'.3px',
                         }}>
-                          Mot de passe oublié ?
+                          {t('login.forgotPassword')}
                         </button>
                       </div>
 
@@ -700,7 +700,7 @@ export default function LoginPage() {
                         <input type="checkbox" className="lp-check" id="rm"
                           checked={remember} onChange={e => setRemember(e.target.checked)}/>
                         <label htmlFor="rm" style={{ fontSize:11, color:MUTED, cursor:'pointer' }}>
-                          {remember ? 'Session persistante (7 jours)' : 'Session fermée à la déconnexion'}
+                          {remember ? t('login.sessionPersistent') : t('login.sessionEphemeral')}
                         </label>
                       </div>
 
@@ -710,7 +710,7 @@ export default function LoginPage() {
                         <div style={{ display:'flex', alignItems:'center', gap:6,
                           fontSize:10, color:'#F59E0B', marginBottom:12 }}>
                           <IcoWarn size={11} color="#F59E0B"/>
-                          {attemptsLeft} tentative{attemptsLeft>1?'s':''} restante{attemptsLeft>1?'s':''} avant blocage
+                          {attemptsLeft} {t('login.attemptsLeft')}
                         </div>
                       )}
 
@@ -727,7 +727,7 @@ export default function LoginPage() {
                       <div style={{ flex:1, height:1, background:BORDER }}/>
                       <span style={{ fontSize:9, color:DIM, letterSpacing:2,
                         textTransform:'uppercase', flexShrink:0, fontWeight:700 }}>
-                        or continue with
+                        {t('login.orContinueWith')}
                       </span>
                       <div style={{ flex:1, height:1, background:BORDER }}/>
                     </div>
@@ -735,11 +735,11 @@ export default function LoginPage() {
                     <div style={{ display:'flex', gap:8, marginBottom:18 }}>
                       <button className="btn-sso"
                         onClick={() => alert('Huawei SSO — configure OAuth2 endpoint')}>
-                        <HuaweiFlower size={15} red={RED}/>Huawei Account
+                        <HuaweiFlower size={15} red={RED}/>{t('login.huaweiAccount')}
                       </button>
                       <button className="btn-sso" style={{ flex:'0 0 auto', padding:'11px 16px' }}
                         onClick={handleGuest}>
-                        <IcoGuest size={13} color={DIM}/>Guest
+                        <IcoGuest size={13} color={DIM}/>{t('login.guestAccess')}
                       </button>
                     </div>
 
@@ -802,9 +802,9 @@ export default function LoginPage() {
                         {/* FIX-2: Email field — now also sent to backend */}
                         <div style={{ marginTop:14 }}>
                           <FieldLabel>
-                            Email{' '}
+                            {t('signup.emailLabel')}{' '}
                             <span style={{ color:DIM, fontWeight:400 }}>
-                              (optionnel — pour reset mot de passe)
+                              ({t('signup.emailOptional')})
                             </span>
                           </FieldLabel>
                           <TInput
@@ -813,7 +813,7 @@ export default function LoginPage() {
                             value={suEmail}
                             onChange={e => { setSuEmail(e.target.value); setSuErr(null) }}
                             type="email"
-                            placeholder="votre@email.com"
+                            placeholder={t('signup.emailPlaceholder')}
                             autoComplete="email"
                           />
                         </div>
@@ -865,7 +865,7 @@ export default function LoginPage() {
                             <div style={{ display:'flex', alignItems:'center', gap:5,
                               marginTop:5, fontSize:11, color:'#3FB950', marginBottom:14 }}>
                               <IcoCheck size={11} color="#3FB950"/>
-                              Mots de passe identiques ✓
+                              {t('signup.passwordsMatch')} ✓
                             </div>
                           )}
                           {!suConf && <div style={{ marginBottom:14 }}/>}
@@ -897,17 +897,27 @@ export default function LoginPage() {
                         </div>
                         <div style={{ fontFamily:"'Barlow Condensed',sans-serif",
                           fontSize:20, fontWeight:800, color:TEXT, marginBottom:8 }}>
-                          Email envoyé !
+                          {t('forgot.sent')}
                         </div>
                         <p style={{ fontSize:12, color:MUTED, lineHeight:1.7, marginBottom:20 }}>
-                          Si <strong style={{ color:TEXT }}>{fpEmail}</strong> est associé à un compte,
-                          un lien de réinitialisation a été envoyé.
+                          {(() => {
+                            const parts = t('forgot.sentDesc').split('{email}')
+                            const before = parts[0]
+                            const after  = parts.length > 1 ? parts[1] : ''
+                            return (
+                              <>
+                                {before}
+                                <strong style={{ color:TEXT }}>{fpEmail}</strong>
+                                {after}
+                              </>
+                            )
+                          })()}
                         </p>
                         <button
                           onClick={() => { setTab('signin'); setFpSent(false); setFpEmail('') }}
                           className="btn-primary"
                           style={{ justifyContent:'center', padding:'12px 32px' }}>
-                          Retour à la connexion
+                          {t('forgot.backToLogin')}
                         </button>
                       </div>
                     ) : (
@@ -915,18 +925,18 @@ export default function LoginPage() {
                         <div style={{ marginBottom:20 }}>
                           <div style={{ fontFamily:"'Barlow Condensed',sans-serif",
                             fontSize:18, fontWeight:800, color:TEXT, marginBottom:6 }}>
-                            Réinitialiser le mot de passe
+                            {t('forgot.title')}
                           </div>
                           <p style={{ fontSize:12, color:MUTED, lineHeight:1.6 }}>
-                            Entrez votre adresse email. Vous recevrez un lien pour créer un nouveau mot de passe.
+                            {t('forgot.subtitle')}
                           </p>
                         </div>
                         <div style={{ marginBottom:18 }}>
-                          <FieldLabel>Adresse email</FieldLabel>
+                          <FieldLabel>{t('forgot.emailLabel')}</FieldLabel>
                           <TInput theme={th} left={IcoMail} value={fpEmail}
                             onChange={e=>{setFpEmail(e.target.value);setFpErr(null)}}
                             type="email" autoFocus required
-                            placeholder="votre@email.com"
+                            placeholder={t('forgot.emailPlaceholder')}
                             autoComplete="email"/>
                         </div>
                         {fpErr && <AlertBar msg={fpErr}/>}
@@ -934,15 +944,15 @@ export default function LoginPage() {
                           disabled={fpLoad||!fpEmail.trim()}
                           style={{ width:'100%', justifyContent:'center', padding:'15px' }}>
                           {fpLoad
-                            ?<><LoadingDots/>Envoi en cours…</>
-                            :<><IcoShield size={14} color="#fff"/>Envoyer le lien<IcoArrow size={14}/></>}
+                            ?<><LoadingDots/>{t('forgot.submitting')}</>
+                            :<><IcoShield size={14} color="#fff"/>{t('forgot.submit')}<IcoArrow size={14}/></>}
                         </button>
                         <div style={{ textAlign:'center', marginTop:16 }}>
                           <button type="button" onClick={() => setTab('signin')} style={{
                             background:'none', border:'none', color:MUTED,
                             fontSize:11, cursor:'pointer', fontFamily:'inherit',
                           }}>
-                            ← Retour à la connexion
+                            ← {t('forgot.backToLogin')}
                           </button>
                         </div>
                       </form>
@@ -975,11 +985,11 @@ export default function LoginPage() {
                   </>
                 )}
                 {tab === 'forgot' && (
-                  <>Vous souvenez-vous ?{' '}
+                  <>{t('forgot.remember')}{' '}
                     <button onClick={() => setTab('signin')} style={{
                       background:'none', border:'none', color:RED, cursor:'pointer',
                       fontWeight:700, fontFamily:'inherit', fontSize:11 }}>
-                      Se connecter
+                      {t('login.tab')}
                     </button>
                   </>
                 )}

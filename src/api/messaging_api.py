@@ -19,6 +19,29 @@ Endpoints (all require valid JWT):
   PATCH /api/messages/{id}/read — mark message as read
   GET  /api/messages/unread    — count of unread messages for current user
   DELETE /api/messages/{id}    — delete own message (or admin deletes any)
+
+v2 — MSG-1/MSG-2:
+  MSG-1  REAL BUG (root cause of "every message shows as 'dev'" and the
+         left/right alignment looking broken): _get_current_user() tried
+         to import `require_current_user` from auth_api — a function
+         that doesn't exist anywhere in the codebase (auth_api defines
+         `current_user`). Both import attempts always raised ImportError
+         and silently fell through to the dev no-op, which returns
+         {"username": "dev", ...} for EVERY request. Every message was
+         therefore stored with from_user='dev', so the frontend's
+         `isMe = msg.from_user === user?.username` was always false —
+         alignment/avatar/status were all correctly rendering a
+         left-aligned "dev" message, because that's what the DB had.
+         Fixed to import the real `current_user` (src.api.auth_api
+         first, src.nlp.auth_api fallback for compat), and the dev
+         no-op now logs an ERROR if it's ever reached, so this failure
+         mode is never silent again.
+  MSG-2  send_message() now emits a 'new_message' notification — the
+         last of the 13 triggers from the notification spec. Routed by
+         recipient: to_user='admin' -> admin; 'all' -> both roles;
+         'all_engineers' or a specific engineer username -> engineers.
+         Import is defensive (NLP-1b/AUTH-1b pattern): a missing
+         notification system must never break messaging.
 """
 from __future__ import annotations
 
@@ -33,8 +56,22 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("messaging_api")
 
+# MSG-2: in-app notification bell — defensive import (see header).
+try:
+    from src.api.notification_service import emit_notification
+except Exception as _exc:                            # pragma: no cover
+    logger.warning(
+        "notification_service unavailable — message notifications disabled: %s",
+        _exc)
+    def emit_notification(*args, **kwargs):
+        return None
+
+# MSG-2: priority -> notification severity (ALARM ladder)
+PRIORITY_SEVERITY = {"urgent": "major", "info": "info", "normal": "info"}
+
+
 # ── DB path — same directory as the NLP/auth database ────────────────────────
-MSG_DB_PATH = Path("data/nlp/complaints.db")   # reuse same DB for simplicity
+MSG_DB_PATH = Path("data/nlp/messages.db")   # reuse same DB for simplicity
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -79,23 +116,35 @@ ensure_messages_table()
 
 
 # ── Dependency: require authenticated user ────────────────────────────────────
-# We import require_current_user from auth_api (already wired in analytics_api).
-# This gives us the decoded JWT payload as a dict: {username, role, ...}.
+# MSG-1: auth_api.py defines `current_user` (the JWT dependency) — NOT
+# `require_current_user`. The old names below never existed, so this
+# always fell through to the dev no-op (every message attributed to
+# 'dev'). src.api.auth_api is tried first (current location, see this
+# session's auth_api audit); src.nlp.auth_api kept as a compat fallback
+# in case of an older deployment layout.
 
 def _get_current_user():
     """
     Lazy import to avoid circular dependencies.
-    auth_api.py defines require_current_user (the JWT dependency).
+    auth_api.py defines `current_user` (the JWT dependency) — it returns
+    the decoded user dict: {username, role, full_name, ...}.
     """
     try:
-        from src.nlp.auth_api import require_current_user
-        return require_current_user
+        from src.api.auth_api import current_user
+        return current_user
     except ImportError:
         try:
-            from src.api.auth_api import require_current_user
-            return require_current_user
+            from src.nlp.auth_api import current_user
+            return current_user
         except ImportError:
-            # Fallback: no auth (dev mode)
+            # MSG-1: this fallback used to be silent. If you see this
+            # error, messaging is running in DEV/NO-AUTH mode and every
+            # message will be attributed to 'dev'.
+            logger.error(
+                "auth_api.current_user not found (tried src.api.auth_api "
+                "and src.nlp.auth_api) — messaging running in DEV/NO-AUTH "
+                "mode, all messages will be attributed to 'dev'"
+            )
             async def _noop():
                 return {"username": "dev", "role": "engineer"}
             return _noop
@@ -251,6 +300,27 @@ def send_message(
         "Message sent: %s → %s  (id=%d, priority=%s)",
         me, body.to_user, new_id, body.priority,
     )
+
+    # ── MSG-2: new_message notification — last of the 13 triggers ─────
+    severity = PRIORITY_SEVERITY.get(body.priority, "info")
+    preview  = content if len(content) <= 80 else content[:77] + "..."
+    if body.to_user == "admin":
+        target_role = "admin"
+    elif body.to_user == "all":
+        target_role = "all"               # both engineer + admin
+    else:
+        # 'all_engineers' or a specific engineer username. notifications_api
+        # is role-scoped (not per-user), so a direct message to one
+        # engineer is currently visible to all engineers via the bell —
+        # acceptable for this app's granularity, flagged for future work.
+        target_role = "engineer"
+    emit_notification(
+        target_role, "new_message",
+        f"New message from {me}", preview,
+        severity, {"url": "/messages", "id": new_id},
+    )
+    # ────────────────────────────────────────────────────────────────────
+
     return {"id": new_id, "message": "Message sent"}
 
 

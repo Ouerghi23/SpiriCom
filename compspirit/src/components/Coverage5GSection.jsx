@@ -1,6 +1,6 @@
 // src/components/Coverage5GSection.jsx
 // ─────────────────────────────────────────────────────────────────────
-// 5G Network Coverage & Adoption module for Forecasting.jsx (v2)
+// 5G Network Coverage & Adoption module for Forecasting.jsx (v3)
 // Consumes GET /api/coverage/5g · requires analyticsApi.coverage5g()
 //
 // MIGRATION (vs previous version):
@@ -21,6 +21,15 @@
 //        defaults (page crashed if the API omitted any of them).
 //  CV-6  Unused imports pruned (Radar*, Signal, TrendingUp, Users).
 //        Typography floor ≥10px for data labels.
+//  CV-7  REAL BUG: Device Generation Mix donut was rendering
+//        monochrome. GEN_COLORS keyed on exact '2G'|'3G'|'4G'|'5G',
+//        but generation_mix entries are CAPABILITY-TIER strings like
+//        "2G/3G/LTE" or "2G/3G/LTE/NR" — none of which match those
+//        keys except a bare "2G" — so every segment fell through to
+//        ALARM.unknown (gray). Added highestGen(): colors by the
+//        highest generation token present in the label (NR/5G > LTE/4G
+//        > 3G > 2G), so the donut reads as a capability ladder from
+//        gray (2G-only) to light blue (5G-capable).
 // ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect }  from 'react'
@@ -46,6 +55,18 @@ const GEN_COLORS = {
   '4G': HW.blue,
   '5G': HW.blueLight,
 }
+
+// CV-7: generation_mix entries are capability-tier strings, e.g.
+// "2G", "2G/3G", "2G/LTE", "3G/LTE", "2G/3G/LTE", "2G/3G/LTE/NR".
+// Color by the HIGHEST generation token present — checked NR/5G first
+// since "2G/3G/LTE/NR" would otherwise match the "LTE" (4G) branch.
+function highestGen(name = '') {
+  if (/NR|5G/.test(name)) return '5G'
+  if (/LTE|4G/.test(name)) return '4G'
+  if (/3G/.test(name))     return '3G'
+  return '2G'
+}
+const genColor = name => GEN_COLORS[highestGen(name)] || ALARM.unknown
 
 // CV-4: adoption severity (low coverage = problem)
 const adoptionColor = pct =>
@@ -258,7 +279,7 @@ export default function Coverage5GSection() {
                 <Bar dataKey="ratio_5g_pct" name="5G Adoption %"
                   fill={HW.blue} radius={[0, 3, 3, 0]}>
                   {provSlice.map((entry, i) => (
-                    <Cell key={i} fill={adoptionColor(entry.ratio_5g_pct)}/>   // CV-4
+                    <Cell key={i} fill={adoptionColor(entry.ratio_5g_pct)}/>
                   ))}
                 </Bar>
               </BarChart>
@@ -298,7 +319,7 @@ export default function Coverage5GSection() {
                   innerRadius={40} outerRadius={72}
                   dataKey="value" nameKey="name" strokeWidth={0}>
                   {genData.map((g, i) => (
-                    <Cell key={i} fill={GEN_COLORS[g.name] || ALARM.unknown}/>
+                    <Cell key={i} fill={genColor(g.name)}/>
                   ))}
                 </Pie>
                 {/* CV-2: theme-aware */}
@@ -312,12 +333,12 @@ export default function Coverage5GSection() {
                 {genData.map((g, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 10, height: 10, borderRadius: 2, flexShrink: 0,
-                      background: GEN_COLORS[g.name] || ALARM.unknown }}/>
+                      background: genColor(g.name) }}/>
                     <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: T.text }}>
                       {g.name}
                     </span>
                     <span style={{ fontSize: 12, fontWeight: 900,
-                      color: GEN_COLORS[g.name] || ALARM.unknown }}>
+                      color: genColor(g.name) }}>
                       {g.value}%
                     </span>
                     <span style={{ fontSize: 10, color: T.textDim }}>
