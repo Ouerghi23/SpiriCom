@@ -1,30 +1,5 @@
 // src/pages/NOCAssistant.jsx
-// ─────────────────────────────────────────────────────────────────────
-// BUGS FIXED vs original:
-//
-//  BUG-1  Welcome useEffect([lang]) wiped the entire messages array on
-//         every language switch — conversation history was lost.
-//         Fixed: functional updater checks if messages is already
-//         populated; if yes, keeps existing messages and only updates
-//         the suggestions language. Welcome is only set on first mount
-//         (empty array) or after clearChat.
-//
-//  BUG-2  T.green used in CopyBtn without fallback → CSS "undefined"
-//         if ThemeContext doesn't define the token.
-//         Fixed: T.green||'#22C55E'
-//
-//  BUG-3  T.primary used without fallback in 3 places:
-//         - .noc-cursor CSS animation color
-//         - Typing indicator dots background
-//         - clearChat button hover handlers
-//         Fixed: T.primary||'#3B82F6' in all three.
-//
-//  BUG-5  sendMessage useCallback rebuilds on every new message because
-//         `messages` was a dep. The history snapshot inside the callback
-//         could be stale on rapid sends. Fixed: added a messagesRef
-//         that stays current without being a useCallback dep, so history
-//         is always built from the latest messages array.
-// ─────────────────────────────────────────────────────────────────────
+
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -36,8 +11,9 @@ import {
 } from 'lucide-react'
 
 // ── Anthropic API call ────────────────────────────────────────────────
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL         = 'claude-sonnet-4-20250514'
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+
 
 // ── NOC System Prompt ─────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are SpiriComp NOC Assistant — an expert AI engineer specialized in:
@@ -265,83 +241,97 @@ export default function NOCAssistant() {
   }, [lang])
 
   // BUG-5: sendMessage no longer has `messages` as a dep — uses messagesRef
-  const sendMessage = useCallback(async (text) => {
-    const userText = (text || input).trim()
-    if (!userText || streaming) return
-
-    setInput('')
-    setError(null)
-
-    const userMsg = {
-      role:'user', content:userText,
-      ts: new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }),
-      id: Date.now(),
-    }
-    const assistantMsg = { role:'assistant', content:'', ts:'', id: Date.now() + 1 }
-
-    setMessages(prev => [...prev, userMsg, assistantMsg])
-    setStreaming(true)
+const sendMessage = useCallback(async (text) => {
+  const userText = (text || input).trim()
+  if (!userText || streaming) return
+ 
+  setInput('')
+  setError(null)
+ 
+  const userMsg = {
+    role: 'user', content: userText,
+    ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    id: Date.now(),
+  }
+  const assistantMsg = { role: 'assistant', content: '', ts: '', id: Date.now() + 1 }
+ 
+  setMessages(prev => [...prev, userMsg, assistantMsg])
+  setStreaming(true)
 
     // BUG-5: read current messages from ref — always fresh, not stale closure
-    const history = messagesRef.current
-      .filter(m => m.id !== 'welcome')
-      .map(m => ({ role:m.role, content:m.content }))
-    history.push({ role:'user', content:userText })
-
-    try {
-      const controller = new AbortController()
+  const history = messagesRef.current
+    .filter(m => m.id !== 'welcome')
+    .map(m => ({ role: m.role, content: m.content }))
+  history.push({ role: 'user', content: userText })
+ 
+  try {
+   const controller = new AbortController()
       abortRef.current = controller
 
-      const response = await fetch(ANTHROPIC_URL, {
+      // NA-BUG-1/3 fix: call the FastAPI backend, not Anthropic directly.
+      // The backend applies: API key, provider routing (Ollama/Groq/Claude/…),
+      // NOC context injection (churn scores, anomalies, 5G coverage),
+      // admin system prompt additions, token usage tracking, and the
+      // enabled/disabled flag set in ConfigureAI.
+      const tok = sessionStorage.getItem('spiricomp_token') ||
+                  localStorage.getItem('spiricomp_token') || ''
+
+      const response = await fetch(`${API_BASE}/api/ai/chat`, {
         method:  'POST',
-        headers: { 'Content-Type':'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+        },
         signal:  controller.signal,
         body: JSON.stringify({
-          model:      MODEL,
-          max_tokens: 1000,
-          system:     SYSTEM_PROMPT,
-          messages:   history,
+          messages:       history,
+          language:       lang,
+          inject_context: true,    // injects live NOC data from artifacts
         }),
       })
 
       const data = await response.json()
-      if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`)
+      if (!response.ok) {
+        throw new Error(data?.detail || `HTTP ${response.status}`)
+      }
 
-      const full = data.content?.[0]?.text || '…'
-
-      setMessages(prev => {
-        const updated = [...prev]
-        const last    = updated[updated.length - 1]
-        if (last?.role === 'assistant') {
-          updated[updated.length - 1] = {
-            ...last, content:full,
-            ts: new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }),
-          }
+      // Backend returns { reply, elapsed, provider, model }
+      const full = data.reply || '…'
+ 
+    setMessages(prev => {
+      const updated = [...prev]
+      const last    = updated[updated.length - 1]
+      if (last?.role === 'assistant') {
+        updated[updated.length - 1] = {
+          ...last, content: full,
+          ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }
-        return updated
-      })
+      }
+      return updated
+    })
 
-    } catch (err) {
-      if (err.name === 'AbortError') return
-      setError(err.message || 'Connection error')
-      setMessages(prev => {
-        const updated = [...prev]
-        if (updated[updated.length - 1]?.role === 'assistant') {
-          updated[updated.length - 1] = {
-            ...updated[updated.length - 1],
-            content: `⚠️ Erreur: ${err.message}`,
-            ts: new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }),
-          }
+} catch (err) {
+    if (err.name === 'AbortError') return
+    setError(err.message || 'Connection error')
+    setMessages(prev => {
+      const updated = [...prev]
+      if (updated[updated.length - 1]?.role === 'assistant') {
+        updated[updated.length - 1] = {
+          ...updated[updated.length - 1],
+          content: `⚠️ ${err.message}`,
+          ts: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }
-        return updated
-      })
-    } finally {
-      setStreaming(false)
-      abortRef.current = null
-      setTimeout(() => inputRef.current?.focus(), 100)
-    }
+      }
+      return updated
+    })
+  } finally {
+    setStreaming(false)
+    abortRef.current = null
+    setTimeout(() => inputRef.current?.focus(), 100)
+  }
   // BUG-5: `messages` removed from deps — read via messagesRef instead
-  }, [input, streaming])
+  }, [input, streaming, lang])
+
 
   const handleKeyDown = e => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -15,6 +15,7 @@ import RootCauseAnalysis from './pages/RootCauseAnalysis'
 import UserSegments      from './pages/UserSegments'
 import NLPAnalysis       from './pages/NLPAnalysis'
 import NOCAssistant      from './pages/NOCAssistant'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 // ── Admin pages ───────────────────────────────────────────────────────
 import AdminLayout   from './pages/admin/AdminLayout'
@@ -96,6 +97,7 @@ export default function App() {
         {/* ── Public ──────────────────────────────────────────────────── */}
         <Route path="/"      element={<LandingPage />} />
         <Route path="/login" element={loginRedirect} />
+<Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Public complaint form — no auth required */}
         <Route path="/form"      element={<ComplaintForm />} />

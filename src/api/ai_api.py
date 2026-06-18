@@ -1,36 +1,4 @@
 # src/api/ai_api.py
-# ─────────────────────────────────────────────────────────────────────
-# SpiriCom NOC — AI assistant backend (LLM section)
-#
-# Exports `ai_router` (the name analytics_api.py's registration loop
-# expects) and `router` (alias). Place in src/api/ next to
-# artifact_cache.py.
-#
-# Contract (defined by ConfigureAI.jsx + AIChatBubble.jsx):
-#   GET    /api/ai/status              -> {enabled, provider, model, has_key}
-#   GET    /api/ai/config              -> full config, api_key MASKED
-#   POST   /api/ai/config              -> save (api_key only if changed)
-#   DELETE /api/ai/config/reset-usage  -> zero the counters
-#   POST   /api/ai/chat                -> {reply, elapsed, provider, model}
-#       body: {messages:[{role,content}], language:'en'|'zh'|'fr',
-#              inject_context: bool}
-#
-# Providers: ollama (local URL), gemini, anthropic, groq, openai.
-# Offline behaviour: if the provider call fails, the endpoint returns
-# provider='offline_fallback' (the bubble renders CloudOff) with a
-# USEFUL reply built from cached NOC artifacts instead of an error.
-#
-# AI-1  /api/ai/status is intentionally auth-free (the chat bubble
-#       calls it before login state is known). Config/chat can be
-#       protected by plugging your dependency:
-#         from src.nlp.auth_api import get_current_user
-#         ai_router = APIRouter(..., dependencies=[Depends(get_current_user)])
-# AI-2  API keys are never returned raw: GET masks to '••••' + last 4.
-#       The frontend already skips re-sending masked values.
-# AI-3  Context injection reads the v6 pipeline artifacts through the
-#       mtime cache — re-running a notebook refreshes the assistant's
-#       knowledge without a restart.
-# ─────────────────────────────────────────────────────────────────────
 from __future__ import annotations
 
 import json
@@ -79,7 +47,8 @@ BASE_SYSTEM = (
 def _load_cfg() -> dict:
     if CFG_PATH.exists():
         try:
-            cfg = {**DEFAULT_CFG, **json.load(open(CFG_PATH, encoding="utf-8"))}
+            with open(CFG_PATH, encoding="utf-8") as f:
+                cfg = {**DEFAULT_CFG, **json.load(f)}
             cfg["token_usage"] = {**DEFAULT_CFG["token_usage"],
                                   **cfg.get("token_usage", {})}
             return cfg
@@ -315,7 +284,7 @@ def save_config(payload: dict = Body(...)):
     # AI-2: only store a real, unmasked key
     new_key = payload.get("api_key")
     if new_key and "••" not in new_key:
-        cfg.setdefault("api_keys", {})[cfg["provider"]] = new_key.strip()
+     cfg.setdefault("api_keys", {})[cfg["provider"]] = new_key.strip()
     _save_cfg(cfg)
     return {"ok": True}
 

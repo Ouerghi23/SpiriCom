@@ -1,33 +1,14 @@
 ﻿"""
 src/api/auth_api.py — VERSION CORRIGÉE
-======================================
-Fixes appliqués :
-- BUG-1: Suppression du backdoor admin
-- BUG-2: Validation stricte des prefixes bcrypt
-- BUG-3: hash_password simplifié et robuste
-- BUG-4: Vérification du montage du router dans main.py (à faire manuellement)
-
-v2 — notification + health fixes:
-- AUTH-1: emit_notification imported from notifications_api (in-app
-  SQLite/SSE bell), consistent with nlp_api's NLP-1 fix.
-- AUTH-2: self_checkin() notifies admins ('shift_start').
-- AUTH-3: self_checkout() notifies admins ('shift_end', with hours).
-- AUTH-4: register() (self-signup, always role='engineer') notifies
-  admins ('new_engineer').
-- AUTH-5: admin_create_user() notifies admins when role=='engineer'
-  ('new_engineer').
-- AUTH-6: admin_system_health() services dict was hardcoded
-  {"auth_api": True, "nlp_api": True} — always green, and missing the
-  "analytics_api" key that MonitorSystem.jsx reads (the MS-2 flag from
-  the dashboard audit). Now derived from real artifact checks across
-  the v6 pipeline routers, and a DB-down condition emits a deduplicated
-  'system_error' notification to admins.
 """
+
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import platform
+import smtplib
 import socket
 import sqlite3
 import threading
@@ -37,13 +18,17 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from pydantic import BaseModel
 import bcrypt
 import psutil
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from pydantic import BaseModel
-
+import mailtrap as mt
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from dotenv import load_dotenv
+load_dotenv()
 # AUTH-1: in-app notification bell (SQLite + SSE) — same module as NLP-1.
 # AUTH-1b: import is DEFENSIVE. If notifications_api (or its
 # artifact_cache dependency) isn't deployed yet, auth_api must still
@@ -56,14 +41,9 @@ except Exception as _exc:                            # pragma: no cover
         "notifications_api unavailable — notifications disabled: %s", _exc)
     def emit_notification(*args, **kwargs):
         return None
+APP_ENV = os.getenv("APP_ENV", "development")   # add this near the top of auth_api.py
 
 logger = logging.getLogger("auth_api")
-
-# ── Config ────────────────────────────────────────────────────────────────────
-SECRET_KEY  = os.getenv("SPIRICOMP_SECRET", "spiricomp-noc-pfe-huawei-2026-dev-only")
-ALGORITHM   = "HS256"
-TOKEN_HOURS = 8
-DB_PATH     = Path(os.getenv("SPIRICOMP_DB_PATH", "data/nlp/auth.db"))
 
 # ── Router ────────────────────────────────────────────────────────────────────
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -72,8 +52,16 @@ router        = APIRouter(prefix="/api/auth", tags=["Auth"])
 _db_ready      = False
 _db_ready_lock = threading.Lock()
 _PROCESS_START = time.time()
+RESET_TOKEN_EXPIRE_MINUTES = 30
+RESET_AUDIENCE = "spiricomp:password-reset"  
+GMAIL_NAME    = os.getenv("GMAIL_NAME", "SpiriCom NOC")
 
-
+# ADD THESE 5 LINES:
+DB_PATH = Path(os.getenv("SPIRICOMP_DB_PATH", "data/nlp/auth.db"))
+SECRET_KEY = os.getenv("SPIRICOMP_SECRET", "spiricomp-noc-pfe-huawei-2026-dev-only")
+ALGORITHM = "HS256"
+TOKEN_HOURS = 24
+ACCESS_TOKEN_EXPIRE_MINUTES = 30  # If you need this too
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 class Token(BaseModel):
     access_token: str
@@ -90,14 +78,12 @@ class RegisterRequest(BaseModel):
     email:     Optional[str] = None
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+ 
 class ResetPasswordRequest(BaseModel):
     token:        str
     new_password: str
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # FIX BUG-3: hash_password simplifié et robuste
@@ -332,7 +318,108 @@ def client_ip(request: Request) -> str:
         return xff.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
+# ── STEP 3: Replace send_reset_email() with this entire function ──────
+async def send_reset_email(to_email: str, reset_url: str) -> bool:
 
+    # ✅ FIX-2 : lire os.getenv() ICI (à l'appel), pas au niveau module
+    gmail_user    = os.getenv("GMAIL_USER",    "")
+    gmail_apppass = os.getenv("GMAIL_APPPASS", "")
+    gmail_name    = os.getenv("GMAIL_NAME",    "SpiriCom NOC")
+
+    # Debug — tu verras les vraies valeurs dans les logs
+    logger.info("SMTP: user=%r pass_len=%d", gmail_user, len(gmail_apppass))
+
+    if not gmail_user or not gmail_apppass:
+        logger.warning("GMAIL_USER / GMAIL_APPPASS not set — skipping email")
+        return False
+
+    plain = (
+        f"SpiriCom NOC — Password Reset\n{'='*40}\n\n"
+        f"Reset your password (expires in {RESET_TOKEN_EXPIRE_MINUTES} min):\n\n"
+        f"  {reset_url}\n\n"
+        f"— SpiriCom NOC · Huawei Technologies Tunisia · PFE 2026"
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0f172a;padding:48px 20px;">
+<tr><td align="center">
+<table width="480" cellpadding="0" cellspacing="0" border="0"
+  style="background:#1e293b;border-radius:8px;overflow:hidden;max-width:480px;width:100%;">
+  <tr><td style="height:4px;background:linear-gradient(90deg,#CF0A2C,rgba(207,10,44,.4),transparent);"/></tr>
+  <tr><td style="background:linear-gradient(135deg,#CF0A2C,#001F3F);padding:26px 32px;text-align:center;">
+    <div style="font-size:22px;font-weight:900;color:#fff;">
+      Spiri<span style="color:#FF8099;">Com</span>
+      <span style="font-weight:300;font-size:15px;opacity:.65;margin-left:6px;">NOC</span>
+    </div>
+    <div style="font-size:9px;color:rgba(255,255,255,.45);letter-spacing:4px;margin-top:5px;text-transform:uppercase;">
+      Huawei Technologies Tunisia
+    </div>
+  </td></tr>
+  <tr><td style="padding:32px;">
+    <h2 style="color:#f1f5f9;font-size:22px;font-weight:800;margin:0 0 14px;">Reset your password</h2>
+    <p style="color:#94a3b8;font-size:14px;line-height:1.7;margin:0 0 26px;">
+      You requested a password reset for your <strong style="color:#f1f5f9;">SpiriCom NOC</strong> account.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:26px;">
+      <tr><td style="background:linear-gradient(135deg,#D90B2E,#CF0A2C);border-radius:4px;">
+        <a href="{reset_url}" target="_blank"
+          style="display:inline-block;padding:14px 36px;color:#fff;text-decoration:none;
+            font-weight:800;font-size:12px;letter-spacing:1.8px;text-transform:uppercase;">
+          Reset Password &rarr;
+        </a>
+      </td></tr>
+    </table>
+    <div style="background:rgba(245,158,11,.08);border-left:3px solid #F59E0B;padding:10px 14px;margin-bottom:22px;">
+      <span style="font-size:12px;color:#FCD34D;">
+        Expires in <strong>{RESET_TOKEN_EXPIRE_MINUTES} minutes</strong>.
+      </span>
+    </div>
+    <p style="font-size:11px;color:#475569;margin:0;">
+      Or copy this URL:<br/>
+      <a href="{reset_url}" style="color:#CF0A2C;word-break:break-all;font-size:10px;">{reset_url}</a>
+    </p>
+  </td></tr>
+  <tr><td style="padding:12px 32px 18px;background:#0f172a;">
+    <p style="font-size:10px;color:rgba(255,255,255,.2);margin:0;text-align:center;">
+      &copy; 2026 SpiriCom &middot; Huawei Technologies Tunisia &middot; Ouerghi Chaima
+    </p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>"""
+
+    def _send_sync() -> bool:
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"]    = "SpiriCom NOC — Reset your password"
+            msg["From"]       = f"{gmail_name} <{gmail_user}>"
+            msg["To"]         = to_email
+            msg["X-Priority"] = "1"
+            msg.attach(MIMEText(plain, "plain", "utf-8"))
+            msg.attach(MIMEText(html,  "html",  "utf-8"))
+
+            with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as smtp:
+                smtp.ehlo()
+                smtp.starttls()
+                smtp.ehlo()
+                smtp.login(gmail_user, gmail_apppass)
+                smtp.sendmail(gmail_user, [to_email], msg.as_string())
+
+            logger.info("✅ Reset email sent to %s", to_email)
+            return True
+
+        except smtplib.SMTPAuthenticationError:
+            logger.error("❌ Gmail auth failed — check GMAIL_APPPASS in .env")
+            return False
+        except Exception as exc:
+            logger.error("❌ SMTP failed to %s: %s", to_email, exc)
+            return False
+
+    return await asyncio.to_thread(_send_sync)
+ 
+ 
 # ═════════════════════════════════════════════════════════════════════════════
 # AUTH ROUTER  /api/auth/*
 # ═════════════════════════════════════════════════════════════════════════════
@@ -425,62 +512,113 @@ def register(body: RegisterRequest):
         "full_name":    full_name,
         "role":         "engineer",
     }
-
-
+# ─────────────────────────────────────────────────────────────────────
+# LP-RESET-1:  POST /api/auth/forgot-password  (FIXED — uses get_conn)
+# ─────────────────────────────────────────────────────────────────────
 @router.post("/forgot-password")
-def forgot_password(body: ForgotPasswordRequest):
-    email = body.email.strip()
-    if not email:
-        raise HTTPException(status_code=422, detail="Email requis")
-    try:
-        username_found: str | None = None
-        with get_conn() as conn:
-            _ensure_email_column(conn)
-            row = conn.execute(
-                "SELECT username FROM users WHERE email = ? AND active = 1", (email,)
-            ).fetchone()
-            if row:
-                username_found = row["username"]
-        if username_found:
-            reset_token = create_token(
-                {"sub": username_found, "type": "reset"}, expires_hours=0.5
-            )
-            print(f"\n🔑 RESET LINK (dev): "
-                  f"http://localhost:5173/reset-password?token={reset_token}\n")
-            logger.info("Password reset requested for: %s", username_found)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("forgot_password crashed: %s", exc)
-        raise HTTPException(status_code=500, detail="Erreur serveur interne.")
-    return {"message": "Si cet email existe, un lien de réinitialisation a été envoyé."}
+async def forgot_password(req: ForgotPasswordRequest):
+    email = req.email.strip().lower()
 
-
-@router.post("/reset-password")
-def reset_password(body: ResetPasswordRequest):
-    exc = HTTPException(status_code=400, detail="Lien de réinitialisation invalide ou expiré")
-    try:
-        data = jwt.decode(body.token, SECRET_KEY, algorithms=[ALGORITHM])
-    except JWTError:
-        raise exc
-    if data.get("type") != "reset":
-        raise exc
-    username = data.get("sub")
-    if not username:
-        raise exc
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=422, detail="Le mot de passe doit contenir au moins 8 caractères")
-    hashed = hash_password(body.new_password)
     with get_conn() as conn:
-        updated = conn.execute(
-            "UPDATE users SET hashed_pw = ? WHERE username = ? AND active = 1",
-            (hashed, username),
-        ).rowcount
-    if updated == 0:
-        raise exc
-    logger.info("Password reset for: %s", username)
-    return {"message": "Mot de passe mis à jour avec succès."}
+        _ensure_email_column(conn)
 
+        row = conn.execute(
+            """
+            SELECT id, email
+            FROM users
+            WHERE LOWER(email) = LOWER(?)
+              AND active = 1
+              AND email IS NOT NULL
+            """,
+            (email,),
+        ).fetchone()
+
+    GENERIC_OK = {
+        "message": "If that email is registered, a reset link has been sent."
+    }
+
+    # 🔴 Always return success (security best practice)
+    if not row:
+        logger.warning(f"[FORGOT PASSWORD] email not found: {email}")
+        return GENERIC_OK
+
+    # 🔐 create reset token
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=RESET_TOKEN_EXPIRE_MINUTES
+    )
+
+    payload = {
+        "sub": str(row["id"]),
+        "email": row["email"],
+        "exp": expire,
+        "aud": RESET_AUDIENCE,
+    }
+
+    token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    reset_url = (
+        f"{os.getenv('FRONTEND_URL','http://localhost:3000')}"
+        f"/reset-password?token={token}"
+    )
+
+
+    sent = await send_reset_email(
+        to_email=row["email"],
+        reset_url=reset_url
+    )
+
+    # 🔴 production strict mode
+    if not sent and APP_ENV == "production":
+        raise HTTPException(
+            status_code=503,
+            detail="Email delivery failed — please try again later.",
+        )
+
+    # 🟡 dev mode (debug only)
+    if APP_ENV != "production":
+        return {
+            **GENERIC_OK,
+            "dev_reset_url": reset_url
+        }
+
+    return GENERIC_OK
+# ─────────────────────────────────────────────────────────────────────
+# LP-RESET-3:  POST /api/auth/reset-password  (FIXED — uses get_conn)
+# ─────────────────────────────────────────────────────────────────────
+@router.post("/reset-password")
+async def reset_password(req: ResetPasswordRequest):
+    if len(req.new_password) < 8:
+        raise HTTPException(status_code=422, detail="PASSWORD_TOO_SHORT")
+
+    try:
+        payload = jwt.decode(
+            req.token, SECRET_KEY, algorithms=[ALGORITHM],
+            audience=RESET_AUDIENCE,
+        )
+    except JWTError as exc:
+        detail = "TOKEN_EXPIRED" if "expired" in str(exc).lower() else "TOKEN_INVALID"
+        raise HTTPException(status_code=400, detail=detail)
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="TOKEN_INVALID")
+
+    hashed = hash_password(req.new_password)
+
+    with get_conn() as conn:    # ← utilise get_conn(), pas db: Session
+        row = conn.execute(
+            "SELECT id FROM users WHERE id = ? AND active = 1",
+            (int(user_id),),
+        ).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+
+        conn.execute(
+            "UPDATE users SET hashed_pw = ? WHERE id = ?",
+            (hashed, int(user_id)),
+        )
+
+    return {"message": "Password updated successfully."}
 
 @router.get("/users", dependencies=[Depends(require_admin)])
 async def list_users():

@@ -1,6 +1,40 @@
 // src/pages/Forecasting.jsx
 // ─────────────────────────────────────────────────────────────────────
 // SpiriCom NOC Dashboard — Forecasting & Churn Intelligence (v2)
+//
+// DATA SOURCES (KPI dataset — Dataset 2):
+//   /api/churn/model-summary · /api/churn/high-risk · /api/churn/shap
+//   /api/forecast/5g · /api/forecast/brand · /api/coverage/5g
+//
+// MIGRATION (vs previous version):
+//  FC-1  Duplicated HW / RISK / gapColor / SectionLabel / StatBlock /
+//        ChartPanel removed — imported from components/UI. No T prop
+//        drilling. fc-* keyframes/hover classes replaced by
+//        <NocBaseStyles/> classes (noc-stat / noc-panel).
+//  FC-2  RISK ladder mapped onto ALARM tokens — churn risk IS a
+//        severity scale: CRITICAL→critical, HIGH→major, MEDIUM→minor,
+//        LOW→normal. The same ladder drives the donut, the probability
+//        histogram deciles, RiskBar, and the table chips, so every
+//        surface agrees on what each color means.
+//  FC-3  Red discipline elsewhere: SHAP importance is magnitude →
+//        blueRamp (was red/amber by size); brand bars → blueRamp
+//        (was 12-color rainbow); group contribution → blue (a share
+//        is not an alarm); table hover → neutral; forecast line →
+//        blueLight dashed (a forecast is not an alarm); hero pill →
+//        blue identity chrome; "Churned" hero badge → ALARM.critical.
+//  FC-4  Live data vs training facts separated. Counts, churn rate,
+//        threshold, SHAP feature count, and subtitles now derive from
+//        modelSummary / shapResults. Numbers that are properties of a
+//        TRAINING RUN (MAPE/R² of NB02 models, churn-def quantiles)
+//        live in one TRAINING constant, clearly labeled "update on
+//        retrain" — not scattered through JSX pretending to be live.
+//  FC-5  ✓/✗ glyphs → Lucide Check/X. Typography floor ≥10px for
+//        data-bearing labels. Forecast markers stroke → T.bgCard.
+//  FC-6  Error banner → AlertBanner. isPrimary derives from
+//        best_model (was hardcoded to LR).
+
+// ─────────────────────────────────────────────────────────────────────
+
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }  from 'react-i18next'
 import ReactApexChart      from 'react-apexcharts'
@@ -130,9 +164,8 @@ export default function Forecasting() {
             : (c.risk_band || '').toUpperCase() === 'HIGH'   ? 'HIGH'
             : (c.risk_band || '').toUpperCase() === 'MEDIUM' ? 'MEDIUM' : 'LOW',
           // FC-FIX-2: NB06 stores top_reasons as a '; '-joined string
-          // (see reasons_for() in 06_Churn_Interpretation_v2.ipynb).
-          // Split to array so .slice(0, 3).map() works correctly.
-          // If the API already pre-splits to an array, the check is a no-op.
+          // (reasons_for() in 06_Churn_Interpretation_v2.ipynb). Split to
+          // array so .slice(0,3).map() works; no-op if API pre-splits.
           top_reasons: typeof c.top_reasons === 'string'
             ? c.top_reasons.split('; ').filter(Boolean)
             : (Array.isArray(c.top_reasons) ? c.top_reasons : []),
@@ -158,25 +191,35 @@ export default function Forecasting() {
   }, [fetchData])
 
   // ── Derived (FC-4: live values from the API) ──────────────────────
-  // FC-8 / FC-FIX-5: v6 payload — label block + served model block.
-  // disengagement_api.py may nest EDA fields under 'label' OR expose them
-  // at the top level of the summary; both shapes are handled.
-  const labelBlock     = modelSummary?.label || modelSummary || {}
+  // FC-8: v6 payload — label block + served model block
+  const labelBlock     = modelSummary?.label || {}
+  // FC-FIX-B: churnScores.length fallback — risk_scores_v2.parquet has
+  // one row per labelled subscriber (NB05-FIX-2a / NB06-FIX-1), so its
+  // length equals the labelled population when the API omits n_customers.
   const totalCustomers = labelBlock.labelled_customers
-                      || modelSummary?.n_customers || 0
+                      || modelSummary?.n_customers
+                      || churnScores.length
+                      || 0
+  // FC-FIX-C: disengagement_final.json has no 'disengaged' / 'n_churned';
+  // derive from baseline_prevalence (0.3384) when both keys are absent.
   const totalChurned   = labelBlock.disengaged
-                      || modelSummary?.n_churned || 0
+                      || modelSummary?.n_churned
+                      || (totalCustomers > 0 && modelSummary?.baseline_prevalence != null
+                          ? Math.round(totalCustomers * modelSummary.baseline_prevalence)
+                          : 0)
+  // FC-FIX-A: disengagement_final.json stores baseline_prevalence as a
+  // fraction (0.3384 → 33.8%). The existing keys (disengaged_share_pct /
+  // churn_rate_pct) come from churn_eda_v6.json which the API may or
+  // may not merge into the summary response.
   const churnRatePct   = labelBlock.disengaged_share_pct
-                      || modelSummary?.churn_rate_pct || 0
+                      || modelSummary?.churn_rate_pct
+                      || (modelSummary?.baseline_prevalence != null
+                          ? +(modelSummary.baseline_prevalence * 100).toFixed(1)
+                          : 0)
   const bestModel      = modelSummary?.selected_model || modelSummary?.best_model || 'random_forest'
   const bestModelLabel = bestModel.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-    + (modelSummary?.model?.calibration || modelSummary?.calibration
-       ? ' · Calibrated' : '')   // FC-FIX-6
-  // FC-FIX-7: NB06 disengagement_final.json stores threshold at
-  // calibration.threshold, not model.calibration.threshold.
-  const bestThreshold  = modelSummary?.calibration?.threshold
-                      ?? modelSummary?.model?.calibration?.threshold
-                      ?? modelSummary?.test_metrics_clean?.[bestModel]?.threshold
+    + (modelSummary?.model?.calibration ? ' · Calibrated' : '')
+  const bestThreshold  = modelSummary?.model?.calibration?.threshold
                       ?? modelSummary?.all_models?.[bestModel]?.threshold
                       ?? modelSummary?.models?.[bestModel]?.threshold
   const nTest          = null
@@ -199,12 +242,14 @@ export default function Forecasting() {
 
   const shapDrivers = useMemo(() => {
     // FC-FIX-4: NB06 disengagement_final.json stores shap_top_drivers as a
-    // plain {feature: mean_abs_shap} dict (e.g. {e2e_delay_ms: 0.8119, ...}).
-    // The component expected an array of {feature, mean_abs_shap} objects.
-    // Convert the dict to the expected shape; legacy array formats still work.
+    // plain {feature: mean_abs_shap} dict (e.g. {e2e_delay_ms: 0.8119}).
+    // The component expected {feature, mean_abs_shap} objects. Convert the
+    // dict to the expected shape; legacy array formats still work.
     const _shapDict = shapResults?.shap_top_drivers
-    const _shapFromDict = _shapDict && typeof _shapDict === 'object' && !Array.isArray(_shapDict)
-      ? Object.entries(_shapDict).map(([feature, v]) => ({ feature, mean_abs_shap: +v }))
+    const _shapFromDict = _shapDict && typeof _shapDict === 'object'
+      && !Array.isArray(_shapDict)
+      ? Object.entries(_shapDict).map(([feature, v]) =>
+          ({ feature, mean_abs_shap: +v }))
       : null
     const raw = _shapFromDict
       || shapResults?.drivers
@@ -218,9 +263,11 @@ export default function Forecasting() {
       .slice(0, 10)
   }, [shapResults])
 
-  const shapFeatureCount = shapResults?.drivers?.length
-                        || shapResults?.shap_importance_lr?.length
-                        || shapResults?.churn_profile?.length || 0
+  // FC-FIX-D: NB06 shap_top_drivers is a plain dict, not an array;
+  // keys 'drivers', 'shap_importance_lr', 'churn_profile' don't exist
+  // → count was always 0. FC-FIX-4 (above) already converts the dict
+  // to the shapDrivers array, so use its length directly.
+  const shapFeatureCount = shapDrivers.length
 
   const churnTrend = useMemo(() => {
     if (churnScores.length === 0) return []
@@ -241,6 +288,7 @@ export default function Forecasting() {
   }, [churnScores])
 
   // ── Chart configs ─────────────────────────────────────────────────
+  // Donut — FC-2: ALARM ladder
   const riskDonutChart = useMemo(() => ({
     series: [riskDist.CRITICAL, riskDist.HIGH, riskDist.MEDIUM, riskDist.LOW],
     options: {
@@ -266,6 +314,7 @@ export default function Forecasting() {
     },
   }), [riskDist, base, T, t, churnScores.length, totalCustomers])
 
+  // Probability histogram — FC-2: same ladder by decile
   const churnDistChart = useMemo(() => ({
     series: [{ name: t('forecast.customers') || 'Customers',
       data: churnTrend.map(b => b.count) }],
@@ -296,6 +345,7 @@ export default function Forecasting() {
     },
   }), [churnTrend, base, T, t])
 
+  // SHAP — FC-3: importance is magnitude → blueRamp
   const shapChart = useMemo(() => {
     if (shapDrivers.length === 0) return null
     const vals = shapDrivers.map(d =>
@@ -327,6 +377,7 @@ export default function Forecasting() {
     }
   }, [shapDrivers, base, T, t])
 
+  // 5G forecast — FC-3: forecast is projection, not alarm → blueLight
   const fiveGChart = useMemo(() => {
     if (forecast5g.length === 0) return null
     const hist = forecast5g.filter(d => !d.is_forecast && d.type !== 'forecast')
@@ -344,7 +395,7 @@ export default function Forecasting() {
         colors: [HW.blue, HW.blueLight],
         stroke: { curve: ['smooth', 'smooth'], width: [2, 2.5], dashArray: [0, 6] },
         markers: { size: [0, 5], strokeWidth: [0, 2],
-          strokeColors: ['transparent', T.bgCard], hover: { size: 7 } },
+          strokeColors: ['transparent', T.bgCard], hover: { size: 7 } },   // FC-5
         fill: { type: ['gradient', 'solid'],
           gradient: { shade: 'dark', type: 'vertical', gradientToColors: ['transparent'],
             opacityFrom: 0.2, opacityTo: 0.01, stops: [0, 90] } },
@@ -365,6 +416,7 @@ export default function Forecasting() {
     }
   }, [forecast5g, base, T, t])
 
+  // Brand bars — FC-3: rainbow → blueRamp (pre-sorted desc)
   const brandChart = useMemo(() => {
     if (brandForecast.length === 0) return null
     const sorted = [...brandForecast]
@@ -398,7 +450,7 @@ export default function Forecasting() {
   const kpiTiles = useMemo(() => [
     { label: t('forecast.totalCustomers') || 'Total Customers',
       value: totalCustomers.toLocaleString(), color: HW.blue, icon: Users,
-      sub: `${(labelBlock.unlabelled_imputed || modelSummary?.unlabelled_imputed || 0).toLocaleString()} unlabelled (imputed) excluded` },
+      sub: `${(labelBlock.unlabelled_imputed || 0).toLocaleString()} unlabelled (imputed) excluded` },
     { label: t('forecast.highRiskCount') || 'High-Risk Customers',
       value: nHighRisk.toLocaleString(), color: ALARM.critical, icon: AlertTriangle,
       alert: nHighRisk > 0,
@@ -409,29 +461,21 @@ export default function Forecasting() {
     { label: t('forecast.avgRiskScore') || 'Avg Risk Score',
       value: avgRiskScore, unit: '%', color: HW.blue, icon: Shield,
       sub: `Primary: ${bestModelLabel}` },
-  ], [totalCustomers, nHighRisk, churnRatePct, avgRiskScore, bestModelLabel,
-      labelBlock.unlabelled_imputed, modelSummary?.unlabelled_imputed, t])
+  ], [totalCustomers, nHighRisk, churnRatePct, avgRiskScore, bestModelLabel, labelBlock.unlabelled_imputed, t])
 
   const modelCards = useMemo(() => [
-    // FC-FIX-3: NB06 disengagement_final.json uses 'test_metrics_clean'
-    // as the key; fallback chain covers legacy 'all_models' / 'models' shapes.
     { label: 'Logistic Regression',
-      metrics: modelSummary?.test_metrics_clean?.logistic_regression
-            || modelSummary?.all_models?.logistic_regression
-            || modelSummary?.models?.logistic_regression,
+      metrics: modelSummary?.all_models?.logistic_regression || modelSummary?.models?.logistic_regression,
       color: HW.blue, isPrimary: bestModel === 'logistic_regression' },
     { label: 'Random Forest',
-      metrics: modelSummary?.test_metrics_clean?.random_forest
-            || modelSummary?.all_models?.random_forest
-            || modelSummary?.models?.random_forest,
+      metrics: modelSummary?.all_models?.random_forest || modelSummary?.models?.random_forest,
       color: '#8B5CF6', isPrimary: bestModel === 'random_forest' },
     { label: 'XGBoost',
-      metrics: modelSummary?.test_metrics_clean?.xgboost
-            || modelSummary?.all_models?.xgboost
-            || modelSummary?.models?.xgboost,
+      metrics: modelSummary?.all_models?.xgboost || modelSummary?.models?.xgboost,
       color: '#14B8A6', isPrimary: bestModel === 'xgboost' },
   ], [modelSummary, bestModel])
 
+  // ── Loading ───────────────────────────────────────────────────────
   if (loading) return (
     <div style={{ padding: '40px 48px', background: T.bg, minHeight: '100vh' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 48 }}>
@@ -446,6 +490,7 @@ export default function Forecasting() {
     </div>
   )
 
+  // ── Render ────────────────────────────────────────────────────────
   return (
     <div style={{ background: T.bg, minHeight: '100vh', color: T.text,
       transition: 'background .3s' }}>
@@ -455,8 +500,10 @@ export default function Forecasting() {
 
       <div style={{ padding: '36px 44px 80px', maxWidth: 1600, margin: '0 auto' }}>
 
+        {/* ══ HERO HEADER ════════════════════════════════════════════ */}
         <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 24, marginBottom: 24 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
+            {/* FC-3: section identity chrome → blue, not red */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 7,
               background: HW.blueDim, border: `1px solid ${HW.blueBd}`,
               padding: '5px 13px' }}>
@@ -485,6 +532,7 @@ export default function Forecasting() {
           <div style={{ display: 'flex', justifyContent: 'space-between',
             alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <div>
+              {/* The ONE brand-red element on this page */}
               <h1 style={{ fontFamily: FONT.display,
                 fontSize: 'clamp(26px, 3.5vw, 52px)', fontWeight: 900,
                 letterSpacing: '-1.5px', lineHeight: 1, color: T.text, marginBottom: 8 }}>
@@ -524,12 +572,14 @@ export default function Forecasting() {
           </div>
         </div>
 
+        {/* Error banner — FC-6 */}
         {error && (
           <AlertBanner severity="minor" icon={AlertTriangle}
             title={t('common.error') || 'ERROR'}
             message={`${error} — ${t('forecast.demoMode') || 'displaying empty state placeholders'}`}/>
         )}
 
+        {/* ══ §1. KPI TILES ══════════════════════════════════════════ */}
         <SectionLabel
           action={<Badge variant="blue">{tf('forecast.defBadgeV6', 'Disengagement Definition v6')}</Badge>}
           sub={`dou ≤ 1.86 MB OR duration ≤ 82 s (Q20, observed) · ${totalCustomers.toLocaleString()} labelled subscribers · ${bestModelLabel}`}>
@@ -540,6 +590,7 @@ export default function Forecasting() {
           {kpiTiles.map((kpi, i) => <StatBlock key={i} {...kpi}/>)}
         </GapGrid>
 
+        {/* ══ §2. MODEL PERFORMANCE ══════════════════════════════════ */}
         <SectionLabel
           sub={`Stratified 75/25 split · leak-free feature set v2 · test touched once · Targets: Acc>${TRAINING.targets.accuracy * 100}% F1>${TRAINING.targets.f1 * 100}% AUC>${TRAINING.targets.auc * 100}%`}>
           {t('forecast.modelSection') || 'MODEL PERFORMANCE'}
@@ -568,6 +619,7 @@ export default function Forecasting() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                 {[
+                  // FC-8: PR-AUC replaces accuracy (target = 2x the 33.8% baseline)
                   { label: 'PR-AUC',   value: metrics?.pr_auc,   target: 0.68 },
                   { label: 'F1-Score', value: metrics?.f1,       target: TRAINING.targets.f1 },
                   { label: 'ROC-AUC',  value: metrics?.roc_auc ?? metrics?.auc_roc, target: TRAINING.targets.auc },
@@ -586,6 +638,7 @@ export default function Forecasting() {
                         </span>
                         {value != null && <span style={{ fontSize: 9, color: T.textDim }}>%</span>}
                       </div>
+                      {/* FC-5: Lucide instead of ✓/✗ glyphs */}
                       <div style={{ fontSize: 9, color: T.textDim, marginTop: 2,
                         display: 'flex', alignItems: 'center', gap: 3 }}>
                         target {(target * 100).toFixed(0)}%
@@ -615,6 +668,7 @@ export default function Forecasting() {
           ))}
         </GapGrid>
 
+        {/* ══ §3. RISK DISTRIBUTION ══════════════════════════════════ */}
         <SectionLabel
           sub={tf('forecast.riskSubV6', 'Calibrated bands · CRITICAL ≥75% · HIGH ≥66% · MEDIUM ≥33%')}>
           {t('forecast.riskSection') || 'RISK DISTRIBUTION'}
@@ -642,6 +696,7 @@ export default function Forecasting() {
           </ChartPanel>
         </GapGrid>
 
+        {/* ══ §4. CHURN DRIVERS (SHAP) ═══════════════════════════════ */}
         <SectionLabel
           action={<Badge variant="blue">
             {`${bestModelLabel.split(' ·')[0]} SHAP${shapFeatureCount ? ` · ${shapFeatureCount} features` : ''}`}
@@ -675,6 +730,7 @@ export default function Forecasting() {
                     <span style={{ fontSize: 10, color: T.textDim, letterSpacing: '1px' }}>
                       {(g.group || '').replace('_', ' ')}
                     </span>
+                    {/* FC-3: a share is not an alarm */}
                     <span style={{ fontFamily: FONT.display, fontSize: 16,
                       fontWeight: 800, color: HW.blue }}>
                       {(g.contribution_pct || 0).toFixed(1)}%
@@ -697,19 +753,18 @@ export default function Forecasting() {
 
         <div style={{ border: `1px solid ${T.border}`, overflow: 'hidden',
           position: 'relative' }}>
+          {/* Panel accent — chrome, not alarm */}
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 1.5,
             background: `linear-gradient(90deg, transparent, ${HW.blue}, transparent)` }}/>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse',
-              fontSize: 11, minWidth: 620 }}>
+              fontSize: 11, minWidth: 700 }}>
               <thead>
                 <tr style={{ background: T.mode === 'dark'
                     ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.04)',
                   borderBottom: `1px solid ${T.border}` }}>
                   {[
-                    // FC-FIX-1: MSISDN removed (confidentialité).
-                    // Replaced with rank column so NOC can prioritise
-                    // without exposing subscriber identity.
+                    // Rank only — no subscriber identity shown
                     tf('forecast.thRank', '#'),
                     tf('forecast.thRiskV6', 'RISK BAND'),
                     tf('forecast.thProbV6', 'CALIBRATED RISK'),
@@ -746,12 +801,10 @@ export default function Forecasting() {
                       style={{ borderBottom: `1px solid ${T.mode === 'dark'
                         ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'}`,
                         transition: 'all .15s' }}>
-                      {/* FC-FIX-1: MSISDN hidden — confidentialité.        */}
-                      {/* Show rank (1 = highest risk) for NOC prioritisation */}
-                      {/* without exposing any subscriber identity.           */}
+                      {/* Rank column — subscriber identity never rendered */}
                       <td style={{ padding: '10px 14px', fontFamily: FONT.display,
                         fontSize: 14, fontWeight: 700, color: T.textDim,
-                        letterSpacing: '.5px', textAlign: 'center', minWidth: 48 }}>
+                        textAlign: 'center', minWidth: 40 }}>
                         #{i + 1}
                       </td>
                       <td style={{ padding: '10px 14px' }}>
@@ -766,7 +819,7 @@ export default function Forecasting() {
                         <RiskBar probability={prob} level={level}/>
                       </td>
                       <td style={{ padding: '10px 14px' }}>
-                        {/* FC-FIX-2: top_reasons is now always an array */}
+                        {/* FC-8: per-customer SHAP reasons from NB06 */}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                           {(customer.top_reasons || []).slice(0, 3).map((r, j) => (
                             <span key={j} style={{ fontSize: 9, fontWeight: 700,
@@ -791,6 +844,7 @@ export default function Forecasting() {
           </div>
         </div>
 
+        {/* ══ §6. 5G ADOPTION FORECAST ═══════════════════════════════ */}
         <SectionLabel
           action={<Badge variant="blue">{TRAINING.forecastModels[0].label} · {TRAINING.forecastModels[0].value}</Badge>}
           sub="Series is 91.8% imputation noise — re-run NB02 v2.1 after the NB00 semantic fix">
@@ -809,6 +863,7 @@ export default function Forecasting() {
               title={t('forecast.noForecast') || '5G forecast unavailable'}
               desc={t('forecast.noForecastDesc') || 'Run NB02 · expose /api/forecast/5g'}/>
           )}
+          {/* FC-4: training-run facts — one labeled constant, not JSX literals */}
           <div style={{ display: 'flex', gap: 1, background: GAP, marginTop: 16 }}>
             {TRAINING.forecastModels.map(({ label, value, color, sub }) => (
               <div key={label} style={{ flex: 1, background: T.bgCard,
@@ -823,6 +878,7 @@ export default function Forecasting() {
           </div>
         </ChartPanel>
 
+        {/* ══ §7. 5G NETWORK COVERAGE ════════════════════════════════ */}
         <SectionLabel
           action={<Badge variant="blue">NB04b · coverage_5g.json</Badge>}
           sub="5G adoption by province · generation mix · 5G vs 4G performance · coverage gap alerts">
@@ -831,8 +887,10 @@ export default function Forecasting() {
 
         <Coverage5GSection />
 
+        {/* ══ §8. BRAND PERFORMANCE ══════════════════════════════════ */}
         <BrandPerformanceSection />
 
+        {/* ══ §9. CHURN DEFINITION REFERENCE ═════════════════════════ */}
         <SectionLabel
           sub={tf('forecast.defSubV6',
             'Label audit 03b · leak-free features NB04 · calibrated model NB06 — v6 pipeline')}>

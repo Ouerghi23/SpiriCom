@@ -1,56 +1,11 @@
 // src/pages/admin/AdminLayout.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom Admin Console — "Grand UI" shell (v2)
-//
-// The admin area intentionally keeps its own chrome identity (rounded
-// corners, gradients, glow) distinct from the sharp NOC pages — that
-// stays. What changed:
-//
-//  AL-1  BRAND REGRESSION: "SpiriComp" → "SpiriCom" (logo text, alt,
-//        sidebar divider). Same regression previously fixed in
-//        AIChatBubble.
-//  AL-2  Tokens imported from components/UI (HW, ALARM, FONT) instead
-//        of scattered hex. Status greens (#00E5A0) → ALARM.normal so
-//        "live/healthy" means the same color platform-wide; logout
-//        destructive red → ALARM.critical.
-//  AL-3  <NocBaseStyles/> mounted — the shared MessagingWidget /
-//        AIChatBubble / FloatingControls depend on noc-pulse/noc-spin
-//        and hover classes; without this they silently no-op inside
-//        the admin shell.
-//  AL-4  Google Fonts @import removed from the component <style>
-//        (it re-parsed on every theme change and blocks rendering).
-//        ADD THIS ONCE to index.html <head> instead:
-//        <link rel="preconnect" href="https://fonts.googleapis.com">
-//        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-//        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Barlow+Condensed:wght@700;800;900&display=swap" rel="stylesheet">
-//  AL-5  Dead code removed: NavLink style fn set a '--accent' CSS var
-//        nothing consumed. LiveClock uses useTheme() (no T prop).
-//  AL-6  OVERLAP BUG: <FloatingControls/> (theme + EN/ZH FABs) floated
-//        bottom-left ABOVE the fixed sidebar, covering the Sign Out
-//        button. Floating FABs and a fixed sidebar will always fight
-//        for that corner, so the admin shell no longer mounts
-//        FloatingControls at all — the theme toggle and language
-//        toggle now live in the top bar next to the Bell, using the
-//        same hw-topbar-btn chrome. The NOC pages keep their floating
-//        controls (no sidebar there). The theme-toggle call is
-//        resolved defensively (toggleTheme / toggle / setMode) so it
-//        works whatever the ThemeContext exposes.
-//  AL-7  REAL BUG: <NotificationBell role={currentUser?.role ...}/> —
-//        `currentUser` was never declared (useAuth() returns `user`).
-//        An undeclared identifier throws ReferenceError even behind
-//        `?.`, which crashed the whole sidebar render. Fixed to `user`.
-//  AL-8  Unused `Bell` import removed — NotificationBell owns its own
-//        icon and aria-label now.
-//  AL-9  i18n integration — all hardcoded strings replaced with
-//        translation keys from admin namespace.
-// ─────────────────────────────────────────────────────────────────────
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate, Link, useLocation } from 'react-router-dom'
 import MessagingWidget  from '../../components/MessagingWidget'
 import { useTranslation } from 'react-i18next'
 import { useAuth }  from '../../hooks/useAuth.jsx'
 import { useTheme } from '../../context/ThemeContext'
-import { HW, ALARM, FONT, NocBaseStyles } from '../../components/UI'
+import { HW, ALARM, FONT, NocBaseStyles } from '../../components/UI.jsx'
 import {
   Users, Settings, Activity, FileText,
   LogOut, Shield, ChevronRight,

@@ -1,47 +1,8 @@
 """
 src/api/messaging_api.py
 ========================
-SpiriComp — Internal messaging system between Admin and NOC Engineers.
-
-DB table: messages
-  id          INTEGER PK AUTOINCREMENT
-  from_user   TEXT    NOT NULL   — sender username
-  to_user     TEXT    NOT NULL   — recipient username ('all' = broadcast)
-  content     TEXT    NOT NULL
-  timestamp   TEXT    DEFAULT strftime('%Y-%m-%dT%H:%M:%SZ','now')
-  read_by     TEXT    DEFAULT '[]'   — JSON list of usernames who read it
-  priority    TEXT    DEFAULT 'normal'  — normal | urgent | info
-  msg_type    TEXT    DEFAULT 'direct' — direct | broadcast | system
-
-Endpoints (all require valid JWT):
-  GET  /api/messages           — fetch messages for current user (paginated)
-  POST /api/messages           — send a message
-  PATCH /api/messages/{id}/read — mark message as read
-  GET  /api/messages/unread    — count of unread messages for current user
-  DELETE /api/messages/{id}    — delete own message (or admin deletes any)
-
-v2 — MSG-1/MSG-2:
-  MSG-1  REAL BUG (root cause of "every message shows as 'dev'" and the
-         left/right alignment looking broken): _get_current_user() tried
-         to import `require_current_user` from auth_api — a function
-         that doesn't exist anywhere in the codebase (auth_api defines
-         `current_user`). Both import attempts always raised ImportError
-         and silently fell through to the dev no-op, which returns
-         {"username": "dev", ...} for EVERY request. Every message was
-         therefore stored with from_user='dev', so the frontend's
-         `isMe = msg.from_user === user?.username` was always false —
-         alignment/avatar/status were all correctly rendering a
-         left-aligned "dev" message, because that's what the DB had.
-         Fixed to import the real `current_user` (src.api.auth_api
-         first, src.nlp.auth_api fallback for compat), and the dev
-         no-op now logs an ERROR if it's ever reached, so this failure
-         mode is never silent again.
-  MSG-2  send_message() now emits a 'new_message' notification — the
-         last of the 13 triggers from the notification spec. Routed by
-         recipient: to_user='admin' -> admin; 'all' -> both roles;
-         'all_engineers' or a specific engineer username -> engineers.
-         Import is defensive (NLP-1b/AUTH-1b pattern): a missing
-         notification system must never break messaging.
+SpiriCom — Internal messaging system between Admin and NOC Engineers.
+v2 — MSG-1/MSG-2/MSG-3: Fixed Depends(_get_current_user()) → module-level import.
 """
 from __future__ import annotations
 
@@ -56,37 +17,29 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("messaging_api")
 
-# MSG-2: in-app notification bell — defensive import (see header).
+# MSG-2: in-app notification bell — defensive import
 try:
     from src.api.notification_service import emit_notification
-except Exception as _exc:                            # pragma: no cover
+except Exception as _exc:
     logger.warning(
         "notification_service unavailable — message notifications disabled: %s",
         _exc)
     def emit_notification(*args, **kwargs):
         return None
 
-# MSG-2: priority -> notification severity (ALARM ladder)
 PRIORITY_SEVERITY = {"urgent": "major", "info": "info", "normal": "info"}
 
+MSG_DB_PATH = Path("data/nlp/messages.db")
 
-# ── DB path — same directory as the NLP/auth database ────────────────────────
-MSG_DB_PATH = Path("data/nlp/messages.db")   # reuse same DB for simplicity
-
-
-# ── DB helpers ────────────────────────────────────────────────────────────────
-
+# ── DB helpers ────────────────────────────────────────────────────────
 def get_conn() -> sqlite3.Connection:
-    """Return a Row-factory connection to the shared SQLite DB."""
     MSG_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(MSG_DB_PATH), check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")   # concurrent read/write safe
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
-
 def ensure_messages_table() -> None:
-    """Create the messages table if it does not exist yet (idempotent)."""
     with get_conn() as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -101,63 +54,31 @@ def ensure_messages_table() -> None:
                 msg_type  TEXT    NOT NULL DEFAULT 'direct'
             )
         """)
-        # Index for fast per-user queries
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_msg_to   ON messages (to_user)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_msg_from ON messages (from_user)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_to   ON messages (to_user)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_msg_from ON messages (from_user)")
     logger.info("messages table ready")
 
-
-# Call once at import time so the table exists before any endpoint runs
 ensure_messages_table()
 
-
-# ── Dependency: require authenticated user ────────────────────────────────────
-# MSG-1: auth_api.py defines `current_user` (the JWT dependency) — NOT
-# `require_current_user`. The old names below never existed, so this
-# always fell through to the dev no-op (every message attributed to
-# 'dev'). src.api.auth_api is tried first (current location, see this
-# session's auth_api audit); src.nlp.auth_api kept as a compat fallback
-# in case of an older deployment layout.
-
-def _get_current_user():
-    """
-    Lazy import to avoid circular dependencies.
-    auth_api.py defines `current_user` (the JWT dependency) — it returns
-    the decoded user dict: {username, role, full_name, ...}.
-    """
+# ── MSG-3: Module-level import (replaces broken _get_current_user()) ──
+try:
+    from src.nlp.auth_api import current_user
+except ImportError:
     try:
-        from src.api.auth_api import current_user
-        return current_user
+        from src.nlp.auth_api import current_user
     except ImportError:
-        try:
-            from src.nlp.auth_api import current_user
-            return current_user
-        except ImportError:
-            # MSG-1: this fallback used to be silent. If you see this
-            # error, messaging is running in DEV/NO-AUTH mode and every
-            # message will be attributed to 'dev'.
-            logger.error(
-                "auth_api.current_user not found (tried src.api.auth_api "
-                "and src.nlp.auth_api) — messaging running in DEV/NO-AUTH "
-                "mode, all messages will be attributed to 'dev'"
-            )
-            async def _noop():
-                return {"username": "dev", "role": "engineer"}
-            return _noop
+        logger.error(
+            "auth_api.current_user not found — messaging running in DEV/NO-AUTH mode"
+        )
+        async def current_user():
+            return {"username": "dev", "role": "engineer"}
 
-
-# ── Pydantic models ───────────────────────────────────────────────────────────
-
+# ── Pydantic models ───────────────────────────────────────────────────
 class SendMessageRequest(BaseModel):
-    to_user:  str                        # recipient username or 'all'
+    to_user:  str
     content:  str
-    priority: str = "normal"            # normal | urgent | info
-    msg_type: str = "direct"            # direct | broadcast
-
+    priority: str = "normal"
+    msg_type: str = "direct"
 
 class MessageOut(BaseModel):
     id:        int
@@ -168,16 +89,12 @@ class MessageOut(BaseModel):
     read_by:   list[str]
     priority:  str
     msg_type:  str
-    is_read:   bool                      # True if current user is in read_by
+    is_read:   bool
 
-
-# ── Router ────────────────────────────────────────────────────────────────────
-
+# ── Router ────────────────────────────────────────────────────────────
 msg_router = APIRouter(prefix="/api/messages", tags=["Messaging"])
 
-
 def _row_to_out(row: sqlite3.Row, current_username: str) -> dict:
-    """Convert a DB row to a serialisable dict with is_read computed."""
     read_by = json.loads(row["read_by"] or "[]")
     return {
         "id":        row["id"],
@@ -191,203 +108,117 @@ def _row_to_out(row: sqlite3.Row, current_username: str) -> dict:
         "is_read":   current_username in read_by,
     }
 
-
 @msg_router.get("")
 def list_messages(
-    limit:  int = 50,
+    limit: int = 50,
     offset: int = 0,
-    current_user: dict = Depends(_get_current_user()),
+    user: dict = Depends(current_user),  # ← MSG-3: direct reference
 ):
-    """
-    Return messages visible to the current user:
-    - Messages sent TO me (to_user = my username)
-    - Broadcast messages (to_user = 'all')
-    - Messages I SENT (from_user = my username)
-    Sorted newest-first.
-    """
-    me = current_user["username"]
-
+    me = user["username"]
     with get_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT * FROM messages
-            WHERE  to_user   = ?
-               OR  to_user   = 'all'
-               OR  from_user = ?
-            ORDER BY id DESC
-            LIMIT ? OFFSET ?
-            """,
+            """SELECT * FROM messages
+               WHERE to_user = ? OR to_user = 'all' OR from_user = ?
+               ORDER BY id DESC LIMIT ? OFFSET ?""",
             (me, me, limit, offset),
         ).fetchall()
-
         total = conn.execute(
-            """
-            SELECT COUNT(*) FROM messages
-            WHERE  to_user   = ?
-               OR  to_user   = 'all'
-               OR  from_user = ?
-            """,
+            """SELECT COUNT(*) FROM messages
+               WHERE to_user = ? OR to_user = 'all' OR from_user = ?""",
             (me, me),
         ).fetchone()[0]
-
-    return {
-        "total":    total,
-        "messages": [_row_to_out(r, me) for r in rows],
-    }
-
+    return {"total": total, "messages": [_row_to_out(r, me) for r in rows]}
 
 @msg_router.get("/unread")
-def unread_count(current_user: dict = Depends(_get_current_user())):
-    """Return the number of unread messages for the current user."""
-    me = current_user["username"]
-
+def unread_count(user: dict = Depends(current_user)):  # ← MSG-3
+    me = user["username"]
     with get_conn() as conn:
         rows = conn.execute(
-            """
-            SELECT read_by FROM messages
-            WHERE (to_user = ? OR to_user = 'all')
-              AND from_user != ?
-            """,
+            """SELECT read_by FROM messages
+               WHERE (to_user = ? OR to_user = 'all') AND from_user != ?""",
             (me, me),
         ).fetchall()
-
-    # Count rows where `me` is NOT in read_by
-    unread = sum(
-        1 for r in rows
-        if me not in json.loads(r["read_by"] or "[]")
-    )
+    unread = sum(1 for r in rows if me not in json.loads(r["read_by"] or "[]"))
     return {"unread": unread}
-
 
 @msg_router.post("")
 def send_message(
     body: SendMessageRequest,
-    current_user: dict = Depends(_get_current_user()),
+    user: dict = Depends(current_user),  # ← MSG-3
 ):
-    """
-    Send a message.
-    - Engineers can message 'admin' or broadcast to 'all'.
-    - Admins can message any user or broadcast.
-    Content must not be empty.
-    """
-    me      = current_user["username"]
-    role    = current_user.get("role", "engineer").lower()
+    me      = user["username"]
+    role    = user.get("role", "engineer").lower()
     content = body.content.strip()
 
     if not content:
         raise HTTPException(status_code=400, detail="Message content cannot be empty")
     if len(content) > 2000:
         raise HTTPException(status_code=400, detail="Message too long (max 2000 chars)")
-
-    # Engineers can only message admins or broadcast
     if role != "admin" and body.to_user not in ("admin", "all"):
-        raise HTTPException(
-            status_code=403,
-            detail="Engineers can only message 'admin' or broadcast to 'all'"
-        )
+        raise HTTPException(status_code=403,
+            detail="Engineers can only message 'admin' or broadcast to 'all'")
 
     with get_conn() as conn:
         conn.execute(
-            """
-            INSERT INTO messages (from_user, to_user, content, priority, msg_type)
-            VALUES (?, ?, ?, ?, ?)
-            """,
+            "INSERT INTO messages (from_user, to_user, content, priority, msg_type) "
+            "VALUES (?, ?, ?, ?, ?)",
             (me, body.to_user, content, body.priority, body.msg_type),
         )
         new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
-    logger.info(
-        "Message sent: %s → %s  (id=%d, priority=%s)",
-        me, body.to_user, new_id, body.priority,
-    )
+    logger.info("Message sent: %s → %s (id=%d)", me, body.to_user, new_id)
 
-    # ── MSG-2: new_message notification — last of the 13 triggers ─────
     severity = PRIORITY_SEVERITY.get(body.priority, "info")
     preview  = content if len(content) <= 80 else content[:77] + "..."
     if body.to_user == "admin":
         target_role = "admin"
     elif body.to_user == "all":
-        target_role = "all"               # both engineer + admin
+        target_role = "all"
     else:
-        # 'all_engineers' or a specific engineer username. notifications_api
-        # is role-scoped (not per-user), so a direct message to one
-        # engineer is currently visible to all engineers via the bell —
-        # acceptable for this app's granularity, flagged for future work.
         target_role = "engineer"
     emit_notification(
         target_role, "new_message",
         f"New message from {me}", preview,
         severity, {"url": "/messages", "id": new_id},
     )
-    # ────────────────────────────────────────────────────────────────────
-
     return {"id": new_id, "message": "Message sent"}
 
-
 @msg_router.patch("/{msg_id}/read")
-def mark_read(
-    msg_id: int,
-    current_user: dict = Depends(_get_current_user()),
-):
-    """Mark a specific message as read by the current user."""
-    me = current_user["username"]
-
+def mark_read(msg_id: int, user: dict = Depends(current_user)):  # ← MSG-3
+    me = user["username"]
     with get_conn() as conn:
-        row = conn.execute(
-            "SELECT * FROM messages WHERE id = ?", (msg_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Message not found")
-
         read_by = json.loads(row["read_by"] or "[]")
         if me not in read_by:
             read_by.append(me)
-            conn.execute(
-                "UPDATE messages SET read_by = ? WHERE id = ?",
-                (json.dumps(read_by), msg_id),
-            )
-
+            conn.execute("UPDATE messages SET read_by = ? WHERE id = ?",
+                        (json.dumps(read_by), msg_id))
     return {"message": "Marked as read", "read_by": read_by}
 
-
 @msg_router.patch("/read-all")
-def mark_all_read(current_user: dict = Depends(_get_current_user())):
-    """Mark all messages addressed to the current user as read."""
-    me = current_user["username"]
-
+def mark_all_read(user: dict = Depends(current_user)):  # ← MSG-3
+    me = user["username"]
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT id, read_by FROM messages WHERE to_user = ? OR to_user = 'all'",
             (me,),
         ).fetchall()
-
         updated = 0
         for row in rows:
             read_by = json.loads(row["read_by"] or "[]")
             if me not in read_by:
                 read_by.append(me)
-                conn.execute(
-                    "UPDATE messages SET read_by = ? WHERE id = ?",
-                    (json.dumps(read_by), row["id"]),
-                )
+                conn.execute("UPDATE messages SET read_by = ? WHERE id = ?",
+                            (json.dumps(read_by), row["id"]))
                 updated += 1
-
     return {"message": f"Marked {updated} messages as read"}
 
-
 @msg_router.delete("/{msg_id}")
-def delete_message(
-    msg_id: int,
-    current_user: dict = Depends(_get_current_user()),
-):
-    """
-    Delete a message.
-    - Owner can delete their own messages.
-    - Admin can delete any message.
-    """
-    me   = current_user["username"]
-    role = current_user.get("role", "engineer").lower()
-
+def delete_message(msg_id: int, user: dict = Depends(current_user)):  # ← MSG-3
+    me   = user["username"]
+    role = user.get("role", "engineer").lower()
     with get_conn() as conn:
         row = conn.execute(
             "SELECT from_user FROM messages WHERE id = ?", (msg_id,)
@@ -395,8 +226,7 @@ def delete_message(
         if not row:
             raise HTTPException(status_code=404, detail="Message not found")
         if role != "admin" and row["from_user"] != me:
-            raise HTTPException(status_code=403, detail="Cannot delete someone else's message")
-
+            raise HTTPException(status_code=403,
+                detail="Cannot delete someone else's message")
         conn.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
-
     return {"message": "Message deleted"}

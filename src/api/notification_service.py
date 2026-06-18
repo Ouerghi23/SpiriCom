@@ -1,31 +1,6 @@
 # src/api/notifications_api.py
-# ─────────────────────────────────────────────────────────────────────
 # SpiriCom NOC — In-app Notification System
-#
-# Exports:
-#   router              — APIRouter (prefix /api/notifications)
-#   emit_notification() — call from any router to fire a notification
-#   scan_artifacts()    — scan v6 artifacts, auto-emit alerts
-#
-# Registration in analytics_api.py (already attempted via the try-block):
-#   from src.api.notifications_api import router as notif_router
-#   app.include_router(notif_router)
-#   from src.api.notifications_api import scan_artifacts
-#   scan_artifacts()                         # initial scan on startup
-#
-# Roles:
-#   'engineer' — NOC engineers (the main dashboard users)
-#   'admin'    — Administrators (AdminLayout pages)
-#   'all'      — broadcast to both
-#
-# Notification types → target role:
-#   new_complaint, complaint_update, new_feedback  → engineer
-#   new_message                                     → engineer | admin
-#   high_risk_churn, coverage_gap, anomaly          → engineer
-#   shift_start, shift_end, new_engineer            → admin
-#   system_error, ml_complete, ml_failed            → admin
-#   high_risk_summary                               → admin
-# ─────────────────────────────────────────────────────────────────────
+
 from __future__ import annotations
 
 import asyncio

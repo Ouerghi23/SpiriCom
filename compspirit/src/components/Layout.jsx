@@ -1,25 +1,4 @@
 // src/components/Layout.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Redesigned Layout
-// Huawei Brand: Red #EE3A43 · Blue #0093D5 · Dark Navy #001F3F
-//
-// FIXES vs previous version:
-//  FIX-B1  Brand name unified as "SpiriCom" (brief spelling) everywhere
-//  FIX-B6  Nav overflow at 1024–1280px: gap reduced, links truncate gracefully
-//  FIX-B8  ShiftWidget receives T with null guard
-//  FIX-U1  Huawei Red corrected from #CF0A2C → #EE3A43
-//  FIX-U2  Huawei Dark Blue #001F3F applied consistently to avatar gradient
-//  FIX-U5  Footer localhost links removed, replaced with safe relative paths
-//  FIX-U6  Nav gap tightened; links hide at <1100px behind hamburger-ready class
-//
-// ENHANCEMENTS:
-//  - Glassmorphism navbar with Huawei red bottom-glow on scroll
-//  - Animated active nav indicator using Huawei Blue gradient
-//  - Refined avatar with red ring on admin role
-//  - Compact ShiftWidget zone with divider treatment
-//  - Footer redesigned: 3-column layout with live API status pill
-// ─────────────────────────────────────────────────────────────────────
-
 import { useState, useEffect }                from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import { useTranslation }                     from 'react-i18next'

@@ -16,8 +16,6 @@ const MAX_ATTEMPTS = 5
 const LOCKOUT_MS   = 15 * 60 * 1000  // 15 minutes
 
 // ── FIX-5: Centralised token storage helper ───────────────────────────────
-// Mirror whatever strategy useAuth uses.  Both localStorage (persistent)
-// and sessionStorage (ephemeral) paths live here so there is one place to change.
 function storeSession(tokenData, persistent = false) {
   const store = persistent ? localStorage : sessionStorage
   store.setItem('spiricomp_token', tokenData.access_token ?? tokenData.token ?? '')
@@ -37,19 +35,19 @@ const DEMO = [
 ]
 
 const FEATURES = [
-  { tag:'GIS',       title:'Spatio-Temporal Hotspots'   },
-  { tag:'ML',        title:'Anomaly Detection'           },
-  { tag:'AI',        title:'Predictive Forecasting'      },
-  { tag:'Analytics', title:'Root Cause Analysis'         },
-  { tag:'UX',        title:'Customer Segmentation'       },
-  { tag:'NLP',       title:'Multilingual Classification' },
+  { tag:'GIS',       titleKey:'modGisTitle'       },
+  { tag:'ML',        titleKey:'modMlTitle'        },
+  { tag:'AI',        titleKey:'modAiTitle'        },
+  { tag:'Analytics', titleKey:'modRcaTitle'       },
+  { tag:'UX',        titleKey:'modUxTitle'        },
+  { tag:'NLP',       titleKey:'modNlpTitle'       },
 ]
 
 const STATS = [
-  { value:'50K+', label:'Complaints'   },
-  { value:'552K', label:'KPI Records'  },
-  { value:'5K',   label:'Sites'        },
-  { value:'24',   label:'Governorates' },
+  { value:'50K+', labelKey:'statsComplaints'   },
+  { value:'552K', labelKey:'statsKpi'  },
+  { value:'5K',   labelKey:'statsSites'        },
+  { value:'24',   labelKey:'statsGovernorates' },
 ]
 
 // ── Icons ──────────────────────────────────────────────────────────────
@@ -103,9 +101,7 @@ function LoadingDots() {
   )
 }
 
-// ── NocInput — defined OUTSIDE the page component so it is never recreated
-//    on re-render.  This prevents the focused input from losing focus every
-//    time any piece of LoginPage state changes (a very common React pitfall).
+// ── NocInput ──────────────────────────────────────────────────────────
 function NocInput({ left:L, right, value, onChange, type='text',
   placeholder, autoComplete, autoFocus, required, extraBorder,
   mode, BORDER, TEXT, RED, DIM }) {
@@ -147,22 +143,6 @@ function NocInput({ left:L, right, value, onChange, type='text',
   )
 }
 
-// ── FIX-6: TInput OUTSIDE LoginPage ──────────────────────────────────────
-//  ROOT CAUSE OF THE FOCUS-LOSS BUG:
-//  Previously `TInput` was defined as `const TInput = (props) => ...` INSIDE
-//  the LoginPage function body.  This means:
-//    1. User types a character in any field
-//    2. State updates (siUser, suName, suEmail, etc.)
-//    3. LoginPage re-renders
-//    4. `const TInput = ...` executes again → brand-new function object in memory
-//    5. React sees a different component type at the same JSX position
-//    6. React unmounts the old input and mounts a fresh one
-//    7. The fresh input has no focus → cursor jumps to nothing / back to first field
-//
-//  Fix: move TInput here at module level so it is created exactly once.
-//  It receives theme values via a `theme` prop object so it stays pure.
-//  Call sites inside LoginPage use `<TInput theme={th} .../>` instead of
-//  the old `<TInput .../>` + injected-vars pattern.
 function TInput({ theme, ...rest }) {
   const { mode, BORDER, TEXT, RED, DIM } = theme
   return <NocInput {...rest} mode={mode} BORDER={BORDER} TEXT={TEXT} RED={RED} DIM={DIM}/>
@@ -177,7 +157,7 @@ export default function LoginPage() {
   const { t }                 = useTranslation()
   const { mode, toggleTheme } = useTheme()
 
-  // ── FIX-2 / FIX-1: palette memoised — only recomputes when mode changes
+  // ── FIX-2 / FIX-1: palette memoised ──────────────────────────────────
   const { RED, REDL, BG, BORDER, TEXT, MUTED, DIM } = useMemo(() => ({
     RED:    '#CF0A2C',
     REDL:   '#FF4060',
@@ -198,20 +178,16 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
 
-  // Rate-limiting state
   const [attempts,    setAttempts]    = useState(0)
   const [lockedUntil, setLockedUntil] = useState(null)
 
-  // FIX-3/4: ref lets useCallback read the latest lockedUntil without
-  // having it in the dependency array (which would recreate the callback
-  // on every failed attempt, risking stale closures on rapid clicks).
   const lockedUntilRef = useRef(lockedUntil)
   lockedUntilRef.current = lockedUntil
 
   // ── Sign-up state ─────────────────────────────────────────────────────
   const [suUser,   setSuUser]   = useState('')
   const [suName,   setSuName]   = useState('')
-  const [suEmail,  setSuEmail]  = useState('')   // FIX-1: moved here from mid-component
+  const [suEmail,  setSuEmail]  = useState('')
   const [suPass,   setSuPass]   = useState('')
   const [suConf,   setSuConf]   = useState('')
   const [suShowPw, setSuShowPw] = useState(false)
@@ -233,18 +209,13 @@ export default function LoginPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────
 
-  // ROLE-REDIRECT: decode role from JWT payload (base64) — works even if
-  // useAuth doesn't store spiricomp_user with role yet.
-  // Falls back to spiricomp_user in storage, then to /dashboard.
   const roleDestination = () => {
     try {
-      // 1. Try reading from stored user object
       const raw = localStorage.getItem('spiricomp_user') || sessionStorage.getItem('spiricomp_user')
       if (raw) {
         const u = JSON.parse(raw)
         if (u?.role) return u.role.toLowerCase() === 'admin' ? '/admin' : '/dashboard'
       }
-      // 2. Fallback: decode JWT token payload directly (no secret needed)
       const token = localStorage.getItem('spiricomp_token') || sessionStorage.getItem('spiricomp_token')
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))
@@ -254,8 +225,6 @@ export default function LoginPage() {
     return '/dashboard'
   }
 
-  // FIX-3 + FIX-4: functional state updater prevents stale counter; `attempts`
-  // removed from dependency array; `lockedUntilRef` used for lock check.
   const handleSignIn = useCallback(async e => {
     e.preventDefault()
     if (lockedUntilRef.current && Date.now() < lockedUntilRef.current) return
@@ -265,7 +234,7 @@ export default function LoginPage() {
       setAttempts(0)
       navigate(roleDestination())
     } else {
-      setAttempts(prev => {                     // FIX-3: functional updater
+      setAttempts(prev => {
         const next = prev + 1
         if (next >= MAX_ATTEMPTS) {
           setLockedUntil(Date.now() + LOCKOUT_MS)
@@ -273,9 +242,8 @@ export default function LoginPage() {
         return next
       })
     }
-  }, [siUser, siPass, remember, login, navigate])  // FIX-4: `attempts` removed
+  }, [siUser, siPass, remember, login, navigate])
 
-  // FIX-2: suEmail included in the POST body so the backend actually stores it.
   const handleSignUp = async e => {
     e.preventDefault()
     const errs = []
@@ -291,9 +259,9 @@ export default function LoginPage() {
         username:  suUser.trim(),
         full_name: suName.trim(),
         password:  suPass,
-        email:     suEmail.trim() || undefined,  // FIX-2: was silently missing
+        email:     suEmail.trim() || undefined,
       })
-      storeSession(res.data, remember)           // FIX-5: unified storage
+      storeSession(res.data, remember)
       setSuOk(true)
       setTimeout(() => navigate(roleDestination()), 2000)
     } catch (err) {
@@ -301,11 +269,10 @@ export default function LoginPage() {
     } finally { setSuLoad(false) }
   }
 
-  // FIX-5: uses unified storeSession so storage path matches useAuth
   const handleGuest = useCallback(async () => {
     try {
       const res = await axios.post(`${API}/api/auth/guest`)
-      storeSession(res.data, false)             // FIX-5: was always sessionStorage
+      storeSession(res.data, false)
       navigate(roleDestination())
     } catch { alert(t('login.guestUnavailable')) }
   }, [navigate, t])
@@ -318,7 +285,13 @@ export default function LoginPage() {
       await axios.post(`${API}/api/auth/forgot-password`, { email: fpEmail.trim() })
       setFpSent(true)
     } catch (err) {
-      setFpErr(err.response?.data?.detail || t('forgot.connectionError'))
+     
+  const raw = err.response?.data?.detail
+  const msg = Array.isArray(raw)
+    ? (raw[0]?.msg || t('forgot.connectionError'))   // erreur Pydantic 422
+    : (typeof raw === 'string' ? raw                 // erreur applicative
+    : t('forgot.connectionError'))                   // fallback
+  setFpErr(msg)
     } finally { setFpLoad(false) }
   }
 
@@ -337,11 +310,10 @@ export default function LoginPage() {
     {l:'Good',  c:'#3FB950'},{l:'Strong',c:'#22C55E'},
   ][str]
 
-  // ── Confirm password status ────────────────────────────────────────────
   const confMatch    = suConf.length > 0 && suPass === suConf
   const confMismatch = suConf.length > 0 && suPass !== suConf
 
-  // ── Inline components — no hooks, safe inside component body ──────────
+  // ── Inline components ──────────────────────────────────────────────────
   const FieldLabel = ({ children }) => (
     <label style={{ display:'block', fontSize:9.5, fontWeight:700,
       color:DIM, letterSpacing:2.4, textTransform:'uppercase', marginBottom:8 }}>
@@ -361,19 +333,14 @@ export default function LoginPage() {
     </div>
   )
 
-  // FIX-6: `th` is a stable object passed as `theme` prop to the module-level TInput.
-  // useMemo ensures the object reference only changes when the palette actually changes
-  // (i.e. when the user toggles dark/light mode), not on every keystroke.
-  // This replaces the old `const TInput = (props) => ...` inline definition which
-  // caused React to unmount/remount every input on each render → focus loss.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // ── Stable theme object ───────────────────────────────────────────────
   const th = useMemo(() => ({ mode, BORDER, TEXT, RED, DIM }), [mode, BORDER, TEXT, RED, DIM])
 
   // ── Tab titles ─────────────────────────────────────────────────────────
   const cardTitle = {
-    signin: t('login.title').toUpperCase(),
-    signup: t('signup.title').toUpperCase(),
-    forgot: t('forgot.cardTitle').toUpperCase(),
+    signin: t('login.title'),
+    signup: t('signup.title'),
+    forgot: t('forgot.cardTitle'),
   }[tab] || ''
 
   const cardSub = {
@@ -506,18 +473,7 @@ export default function LoginPage() {
           </div>
         </Link>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <button onClick={toggleTheme}
-            title={mode==='dark'?'Light mode':'Dark mode'}
-            style={{
-              width:34, height:34, borderRadius:8,
-              border:`1px solid ${BORDER}`,
-              background:mode==='dark'?'rgba(255,255,255,.05)':'rgba(0,0,0,.05)',
-              color:MUTED, cursor:'pointer',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              transition:'all .2s', flexShrink:0,
-            }}>
-            {mode==='dark' ? <Sun size={14}/> : <Moon size={14}/>}
-          </button>
+
           <Link to="/" className="btn-ghost" style={{ padding:'8px 18px', fontSize:10 }}>
             {t('login.back')}
           </Link>
@@ -550,7 +506,9 @@ export default function LoginPage() {
               letterSpacing:'-2px', lineHeight:.96, marginBottom:20, color:TEXT }}>
               NOC <span style={{ color:RED, fontStyle:'italic' }}>INTELLIGENCE</span>
               <br/>
-              <span style={{ color:MUTED, fontWeight:300, fontStyle:'italic' }}>Dashboard</span>
+              <span style={{ color:MUTED, fontWeight:300, fontStyle:'italic' }}>
+                {t('brand.subtitle')}
+              </span>
             </h1>
             <p style={{ fontSize:13, lineHeight:1.9, color:MUTED,
               fontWeight:300, maxWidth:380, marginBottom:36 }}>
@@ -559,7 +517,7 @@ export default function LoginPage() {
             <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)',
               gap:1, background:BORDER, marginBottom:32 }}>
               {STATS.map(s => (
-                <div key={s.label} style={{ textAlign:'center', padding:'22px 16px',
+                <div key={s.labelKey} style={{ textAlign:'center', padding:'22px 16px',
                   border:`1px solid ${BORDER}`,
                   background:mode==='dark'?'#0A0A0A':'#FFFFFF',
                   position:'relative', overflow:'hidden' }}>
@@ -572,7 +530,7 @@ export default function LoginPage() {
                   </div>
                   <div style={{ fontSize:9, color:DIM, marginTop:7,
                     letterSpacing:2, textTransform:'uppercase', fontWeight:600 }}>
-                    {s.label}
+                    {t(`landing.${s.labelKey}`)}
                   </div>
                 </div>
               ))}
@@ -580,13 +538,15 @@ export default function LoginPage() {
             <div>
               <div style={{ fontSize:9, fontWeight:800, color:DIM,
                 letterSpacing:3, textTransform:'uppercase', marginBottom:12 }}>
-                Platform Capabilities
+                {t('landing.platformSection')}
               </div>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 24px' }}>
                 {FEATURES.map(f => (
                   <div key={f.tag} className="feature-row">
                     <IcoCheckSm size={11} color={RED}/>
-                    <span style={{ flex:1, fontSize:12, color:MUTED, fontWeight:500 }}>{f.title}</span>
+                    <span style={{ flex:1, fontSize:12, color:MUTED, fontWeight:500 }}>
+                      {t(`landing.${f.titleKey}`)}
+                    </span>
                     <span className="tag">{f.tag}</span>
                   </div>
                 ))}
@@ -646,7 +606,7 @@ export default function LoginPage() {
                 <p style={{ fontSize:11, color:DIM, lineHeight:1.6 }}>{cardSub}</p>
               </div>
 
-              {/* Tabs — signin + signup only (forgot has its own back button) */}
+              {/* Tabs — signin + signup only */}
               {tab !== 'forgot' && (
                 <div style={{ display:'flex', borderBottom:`1px solid ${BORDER}`,
                   background:mode==='dark'?'rgba(0,0,0,.22)':'rgba(0,0,0,.02)' }}>
@@ -734,7 +694,7 @@ export default function LoginPage() {
 
                     <div style={{ display:'flex', gap:8, marginBottom:18 }}>
                       <button className="btn-sso"
-                        onClick={() => alert('Huawei SSO — configure OAuth2 endpoint')}>
+                        onClick={() => alert(t('login.huaweiAccount') + ' — configure OAuth2 endpoint')}>
                         <HuaweiFlower size={15} red={RED}/>{t('login.huaweiAccount')}
                       </button>
                       <button className="btn-sso" style={{ flex:'0 0 auto', padding:'11px 16px' }}
@@ -799,7 +759,6 @@ export default function LoginPage() {
                           </div>
                         </div>
 
-                        {/* FIX-2: Email field — now also sent to backend */}
                         <div style={{ marginTop:14 }}>
                           <FieldLabel>
                             {t('signup.emailLabel')}{' '}
@@ -1023,7 +982,7 @@ export default function LoginPage() {
       {/* FloatingControls: bottom-left pill — theme + EN↔ZH */}
       <FloatingControls />
       {/* TranslateWidget: bottom-right i18n button */}
-      <TranslateWidget />
+     
     </div>
   )
 }

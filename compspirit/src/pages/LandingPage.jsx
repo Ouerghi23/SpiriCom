@@ -1343,7 +1343,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-
       {/* Translate widget — fixed bottom-right */}
       <TranslateWidget/>
       
