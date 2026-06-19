@@ -192,7 +192,7 @@ export default function MonitorSystem() {
               fontSize: 'clamp(24px,3vw,44px)', fontWeight: 900,
               letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
               margin: '0 0 6px' }}>
-              {t('system.page.title')} <span style={{ color: HW.red,
+              {t('system.page.title')} <span style={{ color: HW.blue,
                 fontStyle: 'italic' }}>{t('system.page.titleAccent')}</span>
             </h1>
             <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>

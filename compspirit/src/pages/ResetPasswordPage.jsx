@@ -135,6 +135,12 @@ export default function ResetPasswordPage() {
   // ── Shared input shell (mirrors NocInput from LoginPage) ───────────
 const PwInput = ({ value, onChange, show, setShow, placeholder, autoFocus, otherValue }) => {
     const [focus, setFocus] = useState(false)
+    const inputRef          = useRef(null)
+     useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      inputRef.current.focus()                       // ← focus une seule fois
+    }
+  }, []) 
     // Utilise otherValue au lieu de référencer directement newPw/confPw
     const match    = otherValue !== undefined && value.length > 0 && value === otherValue
     const mismatch = otherValue !== undefined && value.length > 0 && otherValue.length > 0 && value !== otherValue
@@ -149,9 +155,9 @@ const PwInput = ({ value, onChange, show, setShow, placeholder, autoFocus, other
           pointerEvents:'none', display:'flex', transition:'color .2s' }}>
           <IcoLock size={14}/>
         </div>
-        <input type={show?'text':'password'} value={value} onChange={onChange}
+        <input ref={inputRef} type={show?'text':'password'} value={value} onChange={onChange}
           onFocus={()=>setFocus(true)} onBlur={()=>setFocus(false)}
-          placeholder={placeholder} required autoFocus={autoFocus}
+          placeholder={placeholder} required 
           style={{
             width:'100%', padding:'14px 46px 14px 44px',
             background:mode==='dark'?(focus?'#060609':'#04050A'):(focus?'#FFF':'#F5F7FF'),

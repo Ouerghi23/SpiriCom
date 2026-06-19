@@ -306,7 +306,7 @@ export default function ConfigureAI() {
               letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
               margin: '0 0 6px',
             }}>
-              CONFIGURE <span style={{ color: HW.red, fontStyle: 'italic' }}>AI</span>
+              CONFIGURE <span style={{ color: HW.blue, fontStyle: 'italic' }}>AI</span>
             </h1>
             <p style={{ fontSize: 12, color: T.textMuted, margin: 0 }}>
               LLM provider · API keys · system prompt · token usage

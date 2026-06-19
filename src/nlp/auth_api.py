@@ -855,30 +855,64 @@ def admin_update_user(user_id: int, body: UpdateUserRequest, request: Request,
     return {**dict(r), "active": bool(r["active"]), "email": r["email"] or ""}
 
 
-@admin_router.delete("/users/{user_id}", dependencies=[Depends(require_admin)])
-def admin_delete_user(user_id: int, request: Request,
-                      admin: dict = Depends(require_admin)):
+# APRÈS — supprime vraiment
+# APRÈS — version correcte, même emplacement
+@admin_router.delete("/users/{user_id}")
+def admin_delete_user(
+    user_id: int,
+    request: Request,
+    admin: dict = Depends(require_admin),
+):
+    """Hard delete — supprime définitivement l'utilisateur de la DB."""
     with get_conn() as conn:
         _ensure_email_and_active(conn)
+
+        # 1. Vérifier que l'user existe
         row = conn.execute(
-            "SELECT username, role FROM users WHERE id=?", (user_id,)
+            "SELECT id, username, role FROM users WHERE id=?", (user_id,)
         ).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="User not found")
-        if row["username"] == admin["username"]:
-            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+        # 2. Empêche de supprimer son propre compte
+        if row["id"] == admin["id"]:
+            raise HTTPException(
+                status_code=400, detail="Cannot delete your own account"
+            )
+
+        # 3. Empêche de supprimer le dernier admin
         if row["role"] == "admin":
-            admin_count = conn.execute(
+            n_admins = conn.execute(
                 "SELECT COUNT(*) FROM users WHERE role='admin' AND active=1"
             ).fetchone()[0]
-            if admin_count <= 1:
-                raise HTTPException(status_code=400, detail="Cannot delete the last admin account")
-        conn.execute("UPDATE users SET active=0 WHERE id=?", (user_id,))
-    log_action(admin["username"], "delete_user", row["username"],
-               client_ip(request), "success")
-    logger.info("Admin '%s' soft-deleted user '%s'", admin["username"], row["username"])
-    return {"message": f"User '{row['username']}' deactivated successfully"}
+            if n_admins <= 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot delete the last admin account"
+                )
 
+        # 4. Suppression définitive
+        conn.execute("DELETE FROM users WHERE id=?", (user_id,))
+        # get_conn() auto-commit à la sortie du with
+
+    log_action(
+        actor=admin["username"],
+        action="delete_user",
+        target_user=row["username"],
+        ip=client_ip(request),
+        status="success",
+        detail=f"Hard delete user #{user_id} ({row['username']}) role={row['role']}",
+    )
+    logger.info(
+        "Admin '%s' permanently deleted user '%s' (#%d)",
+        admin["username"], row["username"], user_id,
+    )
+
+    return {
+        "ok":       True,
+        "deleted":  user_id,
+        "username": row["username"],
+    }
 
 # ── Admin — Audit Logs ────────────────────────────────────────────────────────
 @admin_router.get("/logs", dependencies=[Depends(require_admin)])
