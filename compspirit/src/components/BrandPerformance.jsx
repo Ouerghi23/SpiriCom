@@ -51,7 +51,7 @@ import {
 const churnSeverity = rate =>
   rate > 0.40 ? ALARM.critical :
   rate > 0.28 ? ALARM.major    : ALARM.normal
-
+const MIN_N_RELIABLE = 30
 // ── Brand registry — official mark (simple-icons) + color + category ─
 // `icon` is a simple-icons object ({ path, hex }); null → monogram tile.
 export const BRAND_REGISTRY = {
@@ -168,10 +168,16 @@ export default function BrandPerformanceSection() {
   // ── Derived maxima ─────────────────────────────────────────────────
   const totalCustomers = useMemo(
     () => brands.reduce((s, b) => s + (b.customer_count || 0), 0), [brands])
-  const maxChurn = useMemo(
-    () => Math.max(...brands.map(b => b.churn_rate || 0), 0.01), [brands])
-  const maxRatio = useMemo(
-    () => Math.max(...brands.map(b => b.ratio_5g_mean || 0), 0.01), [brands])
+  const reliableBrands = useMemo(
+  () => brands.filter(b => (b.customer_count || 0) >= MIN_N_RELIABLE),
+  [brands]
+)
+const maxChurn = useMemo(
+  () => Math.max(...reliableBrands.map(b => b.churn_rate || 0), 0.01),
+  [reliableBrands])
+const maxRatio = useMemo(
+  () => Math.max(...reliableBrands.map(b => b.ratio_5g_mean || 0), 0.01),
+  [reliableBrands])
 
   const categories = useMemo(() => {
     const s = new Set(brands.map(b => getBrand(b.brand_name).category || 'other'))
@@ -199,6 +205,7 @@ export default function BrandPerformanceSection() {
     { label: t('forecast.brand.kpi.highestChurn'),  value: `${(maxChurn * 100).toFixed(1)}%`,    icon: AlertTriangle, color: ALARM.critical },
     { label: t('forecast.brand.kpi.best5g'),        value: `${(maxRatio * 100).toFixed(1)}%`,    icon: Wifi,          color: HW.blueLight  },
   ]
+
 
   // ── Loading skeleton ──────────────────────────────────────────────
   if (loading) return (

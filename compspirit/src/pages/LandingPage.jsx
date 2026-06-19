@@ -1,49 +1,11 @@
 // src/pages/LandingPage.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom — Landing Page (Full Redesign)
-// Huawei Brand: Red #EE3A43 · Blue #0093D5 · Dark Navy #001F3F
-//
-// ALL BUGS FIXED:
-//  FIX-B1  Brand name: "SpiriComp" → "SpiriCom" everywhere
-//  FIX-B2  Ticker bg reacts to scroll (was always transparent)
-//  FIX-B3  TranslateWidget kept; no duplicate theme toggle in nav
-//  FIX-B4  French text REMOVED: "50K+ Réclamations" → "50K+ Complaints"
-//          TICKER_ITEMS fully in English
-//  FIX-B5  Counter intervalRef cleared in IntersectionObserver disconnect
-//  FIX-B7  Hero h1 letterSpacing softened at small sizes via clamp()
-//  FIX-B9  Tower banner overlay is mode-aware (not always dark)
-//  FIX-U1  Huawei Red: #CF0A2C → #EE3A43 everywhere
-//  FIX-U3  All French text purged. No French strings anywhere.
-//          "Réclamations" → "Complaints", all ticker items English
-//  FIX-U5  localhost:8000 footer href removed
-//
-// INHERITED FIXES KEPT FROM PRIOR VERSION:
-//  BUG-6   Mode-aware split section image overlays
-//  BUG-7   Badge moved outside .img-wrap
-//  BUG-8   PFE Report href → /dashboard/about
-//  BUG-10  Testimonial active-pair opacity logic correct
-//  BUG-11  Module cards keyboard accessible (role, tabIndex, onKeyDown)
-//  BUG-12  Bouncing chevron scroll indicator
-//  BUG-13  GAP_COLOR visible in light + dark mode
-//  BUG-14  Counter interval cleared on unmount
-//  IMP-1   Sign In button in navbar
-//  IMP-3   Ticker animation 42s for readability
-//
-// DESIGN ENHANCEMENTS:
-//  - Huawei Red #EE3A43 as accent (corrected)
-//  - Stats section: number color changed from red to Huawei Blue
-//  - Navbar: tighter layout, correct brand spelling
-//  - Module cards: Huawei Blue icon bg on active instead of red
-//  - Photo banner: gradient uses Huawei Navy #001F3F
-//  - All English — EN/ZH toggle via FloatingControls / TranslateWidget
-// ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate }           from 'react-router-dom'
 import { useTranslation }              from 'react-i18next'
 import { Sun, Moon }                   from 'lucide-react'
 import { useTheme }                    from '../context/ThemeContext'
-import logoImg   from '../assets/images/logo_1.png'
+import logoImg   from '../assets/images/logo.png'
 import coverImg  from '../assets/images/cover.jpg'
 import serverImg from '../assets/images/server.png'
 import dashImg   from '../assets/images/dashboard.jpg'
@@ -193,12 +155,12 @@ const TICKER_ITEMS = [
   'KQI · KPI Correlation',
   'Spatio-Temporal Analysis',
   'ML Anomaly Detection',
-  'XGBoost Forecasting',
-  'SHAP Root Cause Analysis',
-  'K-Means Segmentation',
-  'NLP Classification',
+  'Random Forest Disengagement Scoring',   // ← remplace "XGBoost Forecasting"
+  'SHAP Churn Drivers',                    // ← remplace "SHAP Root Cause Analysis"
+  'Subscriber & Complaint Segmentation',   // ← remplace "K-Means Segmentation"
+  'Multilingual NLP Classification',       // ← précisé : AR/FR/EN
   '24 Governorates',
-  '50K+ Complaints',          // FIX-B4: was "50K+ Réclamations"
+  '25K+ Complaints Analyzed',              // ← FIX: 25,727 vérifié (NB03a)
   'Huawei NOC Intelligence',
 ]
 
@@ -630,7 +592,7 @@ export default function LandingPage() {
             { label: t('nav.map'),       path: '/dashboard/map'        },
             { label: t('nav.anomalies'), path: '/dashboard/anomalies'  },
             { label: t('nav.forecast'),  path: '/dashboard/forecast'   },
-            { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
+           // { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
             { label: t('nav.segments'),  path: '/dashboard/segments'   },
             { label: t('nav.nlp'),       path: '/dashboard/nlp'        },
           ].map(({ label, path }) => (
@@ -1283,7 +1245,7 @@ export default function LandingPage() {
                   { label: 'Map',        path: '/dashboard/map'        },
                   { label: 'Anomalies',  path: '/dashboard/anomalies'  },
                   { label: 'Forecast',   path: '/dashboard/forecast'   },
-                  { label: 'Root Cause', path: '/dashboard/root-cause' },
+                 // { label: 'Root Cause', path: '/dashboard/root-cause' },
                   { label: 'Segments',   path: '/dashboard/segments'   },
                   { label: 'NLP',        path: '/dashboard/nlp'        },
                 ].map(({ label, path }) => (

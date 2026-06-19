@@ -80,7 +80,7 @@ export const analyticsApi = {
   // Dataset 1 — complaint segmentation
   complaintSegmentProfiles: ()       => api.get('/api/analytics/segments/complaints/profiles'),
   complaintSegmentRegion:   ()       => api.get('/api/analytics/segments/complaints/region-distribution'),
-  rootCauseResults:         ()       => api.get('/api/analytics/root-cause/results'),
+//rootCauseResults:         ()       => api.get('/api/analytics/root-cause/results'),
 
   // ── 5G Coverage & Adoption (NB04 outputs) ────────────────────────
   // GET /api/coverage/5g
@@ -88,7 +88,7 @@ export const analyticsApi = {
   //            performance, coverage_gaps, engaged_churners }
   // Used by: Coverage5GSection.jsx (Forecasting page)
   coverage5g:               ()       => api.get('/api/coverage/5g'),
-  rootCause5g:              ()       => api.get('/api/analytics/root-cause/5g'),
+ // rootCause5g:              ()       => api.get('/api/analytics/root-cause/5g'),
 
   // ── Misc ──────────────────────────────────────────────────────────
   status:                   ()       => api.get('/api/analytics/status'),

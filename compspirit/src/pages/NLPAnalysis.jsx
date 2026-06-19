@@ -1,45 +1,4 @@
 // src/pages/NLPAnalysis.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — NLP Complaint Feed (v2, UI.jsx aligned)
-//
-// MIGRATION (vs previous version):
-//  NL-1  Duplicated HW / gapColor / SectionLabel / StatBlock /
-//        ChartPanel removed — imported from components/UI. Modal and
-//        Toast use useTranslation/useTheme internally (T/t/mode props
-//        dropped). nlp-pulse → noc-pulse; hover lifts via noc-stat /
-//        noc-panel classes from <NocBaseStyles/>.
-//  NL-2  SEVERITY DATA NOW USES THE ALARM LADDER:
-//        · Urgency: très urgent→critical, urgent→major, normal→normal
-//        · Sentiment: critique→critical, négatif→major, neutre→muted,
-//          positif→normal
-//        · Status: open→critical, in_progress→minor, resolved→normal
-//        One URGENCY/SENT/STATUS map drives toasts, modal, table
-//        chips, KPI tiles and charts — no per-surface drift.
-//  NL-3  LANGUAGE IS CATEGORICAL, NOT SEVERITY. Arabic was rendered
-//        in alarm red (and French cyan / English green) — wrong
-//        semantics. Languages now use neutral categorical hues:
-//        ar→blue, fr→purple, en→teal; table badges follow.
-//  NL-4  Red discipline: table accent, complaint-ID color, pagination
-//        active/hover, refresh button → blue (chrome/selection, not
-//        alarm). Complaint rows get an URGENCY-colored left edge —
-//        the table now scans by severity at a glance. Toast accent =
-//        urgency severity for complaints, blue for feedback. The hero
-//        h1 italic accent stays the page's one brand-red element.
-//        Delete stays red — destructive action is the convention.
-//  NL-5  catChart red-family ramp → blueRamp (counts are magnitude);
-//        typeChart complaint slice → ALARM.critical vs feedback blue.
-//  NL-6  ActionBtn ghost/default used hardcoded white-alpha — invisible
-//        text in light mode. Theme-aware now; variants renamed to
-//        semantic tokens (minor/normal/critical/criticalSolid/blue/
-//        ghost); hover via CSS class.
-//  NL-7  Polling fixed: the 5s auto-refresh no longer flips the
-//        global `loading` flag (silent background fetch) and skips
-//        ticks while the tab is hidden. alert() error popups →
-//        inline fetchError banner. Lucide ChevronLeft/Right replace
-//        inline pagination SVGs. ● glyph → dot span.
-//  NL-8  Typography floor ≥10px for data labels.
-// ─────────────────────────────────────────────────────────────────────
-
 import { Link, useLocation }            from 'react-router-dom'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }               from 'react-i18next'

@@ -11,7 +11,7 @@ import ComplaintMap      from './pages/ComplaintMap'
 import ComplaintForm     from './pages/ComplaintForm'
 import AnomalyFeed       from './pages/AnomalyFeed'
 import Forecasting       from './pages/Forecasting'
-import RootCauseAnalysis from './pages/RootCauseAnalysis'
+
 import UserSegments      from './pages/UserSegments'
 import NLPAnalysis       from './pages/NLPAnalysis'
 import NOCAssistant      from './pages/NOCAssistant'
@@ -97,7 +97,7 @@ export default function App() {
         {/* ── Public ──────────────────────────────────────────────────── */}
         <Route path="/"      element={<LandingPage />} />
         <Route path="/login" element={loginRedirect} />
-<Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
         {/* Public complaint form — no auth required */}
         <Route path="/form"      element={<ComplaintForm />} />
@@ -121,7 +121,6 @@ export default function App() {
           <Route path="map"        element={<ComplaintMap />} />
           <Route path="anomalies"  element={<AnomalyFeed />} />
           <Route path="forecast"   element={<Forecasting />} />
-          <Route path="root-cause" element={<RootCauseAnalysis />} />
           <Route path="segments"   element={<UserSegments />} />
           <Route path="nlp"        element={<NLPAnalysis />} />
           <Route path="about"      element={<NOCAssistant />} />

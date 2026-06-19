@@ -106,14 +106,22 @@ def _cap(risk: float) -> float:
 @router.get("/model-summary")        # alias: matches client.js churnModelSummary
 def summary():
     """Label definition + final model metrics + interpretation guardrails."""
-    final = _cache.get(FINAL_JSON, _load_json)
-    eda   = _cache.get(EDA_JSON, _load_json)
+    final  = _cache.get(FINAL_JSON, _load_json)
+    eda    = _cache.get(EDA_JSON, _load_json)
+    scores = _cache.get(SCORES_PARQ, _load_parquet)   # ← NEW: load full risk table
     if final is None:
         raise HTTPException(503, "disengagement_final.json missing - run NB06")
+
+    # FIX: true population average — computed over ALL 2,566 scored
+    # customers, not the top-N from /high-risk (which are by definition
+    # near DISPLAY_CAP and would always report a meaningless ~99%).
+    avg_risk = None
+    if scores is not None and "risk" in scores.columns and len(scores):
+        avg_risk = round(float(scores["risk"].clip(upper=DISPLAY_CAP).mean()), 4)
+
     return {
         "label_note"  : LABEL_NOTE,
         "selected_model": final.get("selected_model"),
-        # all three models' clean test metrics for the dashboard cards
         "all_models"  : final.get("test_metrics_clean", {}),
         "label"       : {
             "version"             : final.get("label_version"),
@@ -133,11 +141,12 @@ def summary():
                           .get(final.get("selected_model"), {})),
             "calibration": final.get("calibration"),
             "baseline_prevalence": final.get("baseline_prevalence"),
+            "avg_risk": avg_risk,                       # ← NEW field
+            "scored_population": int(len(scores)) if scores is not None else 0,
         },
         "guardrails"  : final.get("interpretation_guardrails", []),
         "generated_at": final.get("generated_at"),
     }
-
 
 @router.get("/high-risk")
 def high_risk(limit: int = Query(20, ge=1, le=500),
@@ -157,9 +166,10 @@ def high_risk(limit: int = Query(20, ge=1, le=500),
             "risk"       : _cap(r["risk"]),
             "risk_band"  : str(r["risk_band"]),
             "top_reasons": (str(r["top_reasons"]).split("; ")
-                            if "top_reasons" in df.columns
-                            and pd.notna(r.get("top_reasons")) else []),
-        })
+                             if "top_reasons" in df.columns
+                             and pd.notna(r.get("top_reasons")) else []),
+                
+        }) 
     return {"label_note": LABEL_NOTE, "count": len(rows),
             "scored_population": int(len(scores)), "customers": rows}
 

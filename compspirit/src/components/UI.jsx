@@ -1,29 +1,4 @@
 // src/components/UI.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Design System (v2, consolidated)
-// Huawei Brand: Red #EE3A43 · Blue #0093D5 · Dark Navy #001F3F
-//
-// CONSOLIDATION (v2):
-//  C-1  ONE design system. StatBlock / ChartPanel / SectionLabel /
-//       StatStrip / AlertBanner promoted from Overview.jsx into here.
-//       Old KpiCard / ChartCard / SectionHeader kept as deprecated
-//       thin wrappers — migrate pages, then delete.
-//  C-2  ALARM severity tokens exported from here. Single source of
-//       truth for every page. Severity rule enforced:
-//         HW.red  → brand chrome ONLY (wordmark, hero accent, admin ring)
-//         ALARM.* → any data that encodes a problem state
-//  C-3  All components call useTheme() internally. No more T prop
-//       drilling (removes the FIX-B8 class of bugs).
-//  C-4  gapColor() is a plain helper, not a fake hook.
-//  C-5  blueRamp() exported for rank-graded single-series bars —
-//       replaces the rainbow `distributed` palettes.
-//  C-6  <NocBaseStyles/> mounts keyframes + hover classes ONCE
-//       (place it in Layout.jsx, just inside the root div).
-//  C-7  EmptyState accepts Lucide components only (string-emoji
-//       fallback removed).
-//  C-8  Typography floor: data-bearing labels ≥ 10px. 9px reserved
-//       for pure chrome (eyebrows, section labels).
-// ─────────────────────────────────────────────────────────────────────
 
 import { useTheme } from '../context/ThemeContext'
 

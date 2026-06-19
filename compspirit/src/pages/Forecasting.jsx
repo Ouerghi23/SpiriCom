@@ -1,39 +1,4 @@
 // src/pages/Forecasting.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Forecasting & Churn Intelligence (v2)
-//
-// DATA SOURCES (KPI dataset — Dataset 2):
-//   /api/churn/model-summary · /api/churn/high-risk · /api/churn/shap
-//   /api/forecast/5g · /api/forecast/brand · /api/coverage/5g
-//
-// MIGRATION (vs previous version):
-//  FC-1  Duplicated HW / RISK / gapColor / SectionLabel / StatBlock /
-//        ChartPanel removed — imported from components/UI. No T prop
-//        drilling. fc-* keyframes/hover classes replaced by
-//        <NocBaseStyles/> classes (noc-stat / noc-panel).
-//  FC-2  RISK ladder mapped onto ALARM tokens — churn risk IS a
-//        severity scale: CRITICAL→critical, HIGH→major, MEDIUM→minor,
-//        LOW→normal. The same ladder drives the donut, the probability
-//        histogram deciles, RiskBar, and the table chips, so every
-//        surface agrees on what each color means.
-//  FC-3  Red discipline elsewhere: SHAP importance is magnitude →
-//        blueRamp (was red/amber by size); brand bars → blueRamp
-//        (was 12-color rainbow); group contribution → blue (a share
-//        is not an alarm); table hover → neutral; forecast line →
-//        blueLight dashed (a forecast is not an alarm); hero pill →
-//        blue identity chrome; "Churned" hero badge → ALARM.critical.
-//  FC-4  Live data vs training facts separated. Counts, churn rate,
-//        threshold, SHAP feature count, and subtitles now derive from
-//        modelSummary / shapResults. Numbers that are properties of a
-//        TRAINING RUN (MAPE/R² of NB02 models, churn-def quantiles)
-//        live in one TRAINING constant, clearly labeled "update on
-//        retrain" — not scattered through JSX pretending to be live.
-//  FC-5  ✓/✗ glyphs → Lucide Check/X. Typography floor ≥10px for
-//        data-bearing labels. Forecast markers stroke → T.bgCard.
-//  FC-6  Error banner → AlertBanner. isPrimary derives from
-//        best_model (was hardcoded to LR).
-
-// ─────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }  from 'react-i18next'
@@ -62,14 +27,6 @@ const RISK = {
   LOW:      { color: ALARM.normal,   label: 'LOW'      },
 }
 
-// ── FC-4: facts of the NB02/NB03 TRAINING RUNS — not live data. ──────
-// Update when models are retrained; everything else derives from the
-// API at runtime.
-// FC-7 (2026-06-12): synced with the validated pipeline.
-// Sources: disengagement_final.json (NB06 v2) + churn_eda_v6.json (NB03b).
-// The old 5G forecast MAPEs (XGB 1.49% / ARIMA 16.56% / Prophet 26.28%) were
-// computed on a series that is 91.8% median-imputation noise (traffic_5g) —
-// they are withdrawn until NB00 semantic imputation + NB02 v2.1 re-run.
 const TRAINING = {
   forecastModels: [
     { label: '5G Forecast',  value: 'PENDING',  color: ALARM.minor,
@@ -136,7 +93,7 @@ export default function Forecasting() {
   const [churnScores,   setChurnScores]   = useState([])
   const [shapResults,   setShapResults]   = useState(null)
   const [forecast5g,    setForecast5g]    = useState([])
-  const [brandForecast, setBrandForecast] = useState([])
+//  const [brandForecast, setBrandForecast] = useState([])
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState(null)
   const [refreshing,    setRefreshing]    = useState(false)
@@ -146,13 +103,14 @@ export default function Forecasting() {
       setError(null)
       background ? setRefreshing(true) : setLoading(true)
 
-      const [modelRes, scoresRes, shapRes, fg5gRes, brandRes] = await Promise.allSettled([
-        analyticsApi.churnModelSummary(),
-        analyticsApi.churnHighRisk(),
-        analyticsApi.churnShap(),
-        analyticsApi.forecast5g(),
-        analyticsApi.forecastBrand(),
-      ])
+// APRÈS — un appel réseau en moins toutes les 5 minutes
+// Doit être exactement ça (4 éléments, pas 5)
+const [modelRes, scoresRes, shapRes, fg5gRes] = await Promise.allSettled([
+  analyticsApi.churnModelSummary(),
+  analyticsApi.churnHighRisk(),
+  analyticsApi.churnShap(),
+  analyticsApi.forecast5g(),
+])
 
       // FC-8: adapt the v6 disengagement payloads to the component contract
       if (modelRes.status  === 'fulfilled') setModelSummary(modelRes.value.data)
@@ -174,7 +132,7 @@ export default function Forecasting() {
       }
       if (shapRes.status   === 'fulfilled') setShapResults(shapRes.value.data)
       if (fg5gRes.status   === 'fulfilled') setForecast5g(fg5gRes.value.data?.series || [])
-      if (brandRes.status  === 'fulfilled') setBrandForecast(brandRes.value.data?.brands || [])
+      //if (brandRes.status  === 'fulfilled') setBrandForecast(brandRes.value.data?.brands || [])
     } catch (err) {
       console.error('Forecasting fetch error:', err)
       setError(t('forecast.connectionError') || 'API connection failed')
@@ -281,11 +239,8 @@ export default function Forecasting() {
     })
   }, [churnScores])
 
-  const avgRiskScore = useMemo(() => {
-    if (churnScores.length === 0) return 0
-    return ((churnScores.reduce((s, c) => s + (c.churn_probability || 0), 0)
-      / churnScores.length) * 100).toFixed(1)
-  }, [churnScores])
+
+
 
   // ── Chart configs ─────────────────────────────────────────────────
   // Donut — FC-2: ALARM ladder
@@ -416,37 +371,12 @@ export default function Forecasting() {
     }
   }, [forecast5g, base, T, t])
 
-  // Brand bars — FC-3: rainbow → blueRamp (pre-sorted desc)
-  const brandChart = useMemo(() => {
-    if (brandForecast.length === 0) return null
-    const sorted = [...brandForecast]
-      .sort((a, b) => (b.forecast || b.traffic || 0) - (a.forecast || a.traffic || 0))
-      .slice(0, 12)
-    return {
-      series: [{ name: t('forecast.forecastTraffic') || 'Forecast Traffic',
-        data: sorted.map(b => b.forecast || b.traffic || 0) }],
-      options: {
-        ...base,
-        chart:  { ...base.chart, type: 'bar' },
-        colors: sorted.map((_, i) => blueRamp(i)),
-        plotOptions: { bar: { columnWidth: '65%', borderRadius: 0, distributed: true } },
-        xaxis: { categories: sorted.map(b => b.brand || b.name || ''),
-          labels: { rotate: -35, style: { fontSize: '10px', fontFamily: FONT.display,
-            colors: T.textMuted, fontWeight: 600 } },
-          axisBorder: { show: false }, axisTicks: { show: false } },
-        yaxis: { title: { text: t('forecast.trafficLog') || 'Traffic (log1p)',
-            style: { fontSize: '10px', color: T.textMuted } },
-          labels: { style: { fontSize: '10px', colors: T.textMuted },
-            formatter: v => v?.toFixed(1) } },
-        dataLabels: { enabled: false },
-        legend: { show: false },
-        grid: { borderColor: gridLine(T), strokeDashArray: 3 },
-        tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
-          y: { formatter: v => `${v?.toFixed(2)} (log1p)` } },
-      },
-    }
-  }, [brandForecast, base, T, t])
 
+// CORRIGÉ — convertit en pourcentage avant affichage, comme churnRatePct
+const avgRiskScore = useMemo(() => {
+  const raw = modelSummary?.model?.avg_risk ?? 0
+  return +(raw * 100).toFixed(1)
+}, [modelSummary])
   const kpiTiles = useMemo(() => [
     { label: t('forecast.totalCustomers') || 'Total Customers',
       value: totalCustomers.toLocaleString(), color: HW.blue, icon: Users,

@@ -8,7 +8,7 @@ import { useTheme }                                from '../context/ThemeContext
 import { Sun, Moon }                               from 'lucide-react'
 import FloatingControls                            from '../components/FloatingControls'
 import TranslateWidget                             from '../components/TranslateWidget'
-import logoImg                                     from '../assets/images/logo_1.png'
+import logoImg                                     from '../assets/images/logo.png'
 import axios                                       from 'axios'
 
 const API          = import.meta.env.VITE_API_URL || 'http://localhost:8000'

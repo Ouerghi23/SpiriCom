@@ -1,43 +1,4 @@
 // src/pages/Overview.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Overview Page (v2, migrated to UI.jsx)
-// DATA: complaints_clean.parquet + analysis_results.json (NB01)
-//
-// MIGRATION (vs previous version):
-//  O-1  ~200 lines of duplicated system code removed. HW / ALARM /
-//       gapColor / SectionLabel / StatBlock / ChartPanel / PulseBar /
-//       SLABanner / SystemHealthBanner now imported from components/UI.
-//       No more T prop drilling; keyframes + hover classes come from
-//       <NocBaseStyles/> in Layout (local <style> blocks deleted).
-//  O-2  Severity rules enforced (red = alarm only):
-//       · Donut "Open" slice → ALARM.critical (was brand red); slices
-//         reordered as a pipeline: Open → In Progress → Resolved → Closed
-//       · Weekly "today" bar → full-opacity blue with other weekdays
-//         dimmed (was red — today is not an alarm)
-//       · Monthly trend markers → blue (red markers were decoration)
-//       · Type / segment / region bars → blueRamp (rainbow `distributed`
-//         palettes removed; color no longer encodes nothing)
-//       · Hero "LIVE NETWORK" pill → ALARM.normal (live = healthy);
-//         redundant green "Live" badge on the right removed
-//  O-3  Hardcoded insights replaced with computed values:
-//       · Weekly strip (peak day / peak volume / weekend avg / delta)
-//       · Section subtitles (top type %, top segments %, monthly peak)
-//       · Z-score badge derived from SPIKE_SIGMA constant (badge said
-//         2σ while the threshold used 2.5σ)
-//       · Premium-segment share now divided by segment total (was
-//         divided by overall total — wrong denominator)
-//  O-4  monthlyData no longer filters `count > 300` (a quiet month
-//       would silently vanish). The last month is dropped only when
-//       date_max shows it is genuinely partial.
-//  O-5  "UPDATED" shows data fetch time (lastUpdated state), not
-//       render time.
-//  O-6  Spike scatter strokeColors → T.bgCard (was #fff — glowed in
-//       light mode). dataLabels use T.text.
-//  O-7  Typography floor ≥10px for data-bearing labels.
-//  O-8  Thresholds named: SLA_OPEN_THRESHOLD, UNRESOLVED_THRESHOLD,
-//       SPIKE_SIGMA — single place to tune, UI text derives from them.
-// ─────────────────────────────────────────────────────────────────────
-
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation }                   from 'react-i18next'
 import ReactApexChart                       from 'react-apexcharts'

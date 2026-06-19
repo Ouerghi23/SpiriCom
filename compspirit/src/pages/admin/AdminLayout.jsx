@@ -11,7 +11,7 @@ import {
   LogOut, Shield, ChevronRight,
   Sun, Moon, Languages,
 } from 'lucide-react'
-import logoImg from '../../assets/images/logo_1.png'
+import logoImg from '../../assets/images/logo.png'
 import NotificationBell from '../../components/NotificationBell'
 
 // Navigation items with translation keys

@@ -11,7 +11,7 @@ import { useTheme }  from '../context/ThemeContext'
 import { useTranslation } from 'react-i18next'
 import { Sun, Moon }  from 'lucide-react'
 import axios from 'axios'
-import logoImg from '../assets/images/logo_1.png'
+import logoImg from '../assets/images/logo.png'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 

@@ -79,46 +79,71 @@ export default function UserSegments() {
   const loadData = useCallback(async (tab) => {
     setLoading(true)
     setError(null)
-    try {
-      const isD1 = tab === 'd1'
-      const [profRes, distRes] = await Promise.all([
-        isD1 ? analyticsApi.complaintSegmentProfiles()
-             : analyticsApi.segmentProfiles(),
-        isD1 ? analyticsApi.complaintSegmentRegion()
-             : analyticsApi.segmentRegionDistribution(),
-      ])
-      const pd = profRes.data || profRes
-      const dd = distRes.data  || distRes
+      try {
+    const isD1 = tab === 'd1'
+    const [profRes, distRes] = await Promise.all([
+      isD1 ? analyticsApi.complaintSegmentProfiles()
+           : analyticsApi.segmentProfiles(),
+      isD1 ? analyticsApi.complaintSegmentRegion()
+           : analyticsApi.segmentRegionDistribution(),
+    ])
+    const pd = profRes.data || profRes
+    const dd = distRes.data  || distRes
 
-      setProfiles(pd.profiles || [])
+    const dist = dd.province_distribution || dd.distribution || pd.province_distribution || []
 
-      // US-F5: JSON key is province_distribution (not distribution)
-      setDistribution(
-        dd.province_distribution || dd.distribution ||
-        pd.province_distribution || []
-      )
+    // ── FIX: calcule les champs manquants depuis les données reçues ────
+    let profiles = pd.profiles || []
+     const computedTotal    = profiles.reduce((s, p) => s + (p.n_users || 0), 0)
+    const computedReliable = profiles.filter(p => (p.n_users || 0) >= 30).length
 
-      setSegMeta({
-        dataset:          pd.dataset          || '',
-        segmentColumn:    pd.segment_column   || 'sub_category',
-        // US-F4: D1 has n_segments, D2 has n_clusters
-        nSegments:        pd.n_clusters       ?? pd.n_segments ?? 0,
-        // US-F3: field is total_records (not total_complaints)
-        totalRecords:     pd.total_records    ?? pd.n_subscribers ?? 0,
-        silhouette:       pd.silhouette_score ?? null,
-        method:           pd.method           || (isD1 ? 'Natural segmentation' : 'KMeans'),
-        qosFeatures:      pd.qos_features     || [],
-        smallNSegments:   pd.small_n_segments || [],
-        smallNNote:       pd.small_n_note     || '',
-        reliableSegments: pd.n_reliable_segments ?? 0,
+    // Recalcule pct si absent ou 0 pour des segments qui ont des données
+    if (computedTotal > 0) {
+      profiles = profiles.map(p => ({
+        ...p,
+        pct: p.pct && p.pct > 0
+          ? p.pct
+          : +((p.n_users || 0) / computedTotal * 100).toFixed(1),
+      }))
+    }
+    if (dist.length > 0) {
+      profiles = profiles.map(p => {
+        if (p.top_province && p.top_province !== '—') return p
+        const label = p.cluster_label || `Cluster ${p.cluster_id ?? ''}`
+        let bestProvince = '—', bestPct = -1
+        for (const row of dist) {
+          const pct = parseFloat(row[label] || 0)
+          if (pct > bestPct) { bestPct = pct; bestProvince = row.region || '—' }
+        }
+        return {
+          ...p,
+          top_province:     bestProvince,
+          top_province_pct: bestPct > 0 ? +bestPct.toFixed(1) : null,
+        }
       })
-      setApiOnline(true)
-    } catch (err) {
-      console.error('Segments fetch error:', err)
-      setApiOnline(false)
-      setError('API offline — segmentation data unavailable')
-    } finally { setLoading(false) }
-  }, [])
+    }
+      // US-F5: JSON key is province_distribution (not distribution)
+     setProfiles(profiles)
+    setDistribution(dist)
+    setSegMeta({
+      dataset:          pd.dataset          || '',
+      segmentColumn:    pd.segment_column   || 'sub_category',
+      nSegments:        pd.n_clusters       ?? pd.n_segments    ?? profiles.length,
+      totalRecords:     pd.total_records    ?? pd.n_subscribers ?? computedTotal,
+      silhouette:       pd.silhouette_score ?? null,
+      method:           pd.method           || (isD1 ? 'Natural segmentation' : 'KMeans'),
+      qosFeatures:      pd.qos_features     || [],
+      smallNSegments:   pd.small_n_segments || [],
+      smallNNote:       pd.small_n_note     || '',
+      reliableSegments: pd.n_reliable_segments ?? computedReliable,
+    })
+    setApiOnline(true)
+  } catch (err) {
+    console.error('Segments fetch error:', err)
+    setApiOnline(false)
+    setError('API offline — segmentation data unavailable')
+  } finally { setLoading(false) }
+}, [])
 
   useEffect(() => { loadData(activeTab) }, [loadData, activeTab])
 
@@ -653,24 +678,6 @@ export default function UserSegments() {
           </ChartPanel>
         </GapGrid>
 
-        {/* ══ D2 ONLY: RADAR CHART ════════════════════════════════════ */}
-        {!isD1 && (
-          <>
-            <SectionLabel sub="Normalised QoS means · higher value = further above cluster average">
-              RADAR — QoS COMPARISON
-            </SectionLabel>
-            <ChartPanel
-              title="Cluster QoS Radar"
-              sub="Each axis normalised to [0, 1] relative to the maximum across clusters">
-              {radarChart ? (
-                <ReactApexChart options={radarChart.options}
-                  series={radarChart.series} type="radar" height={420}/>
-              ) : (
-                <EmptyState icon={Activity} title="Radar requires ≥ 3 QoS features"/>
-              )}
-            </ChartPanel>
-          </>
-        )}
 
         {/* ══ PROFILES TABLE ══════════════════════════════════════════ */}
         {profiles.length > 0 && (

@@ -12,7 +12,7 @@ import NotificationBell from './NotificationBell'
 
 
 import ShiftWidget                            from './ShiftWidget'
-import logoImg                                from '../assets/images/logo_1.png'
+import logoImg                                from '../assets/images/logo.png'
 
 // ── Huawei Brand Tokens ───────────────────────────────────────────────
 const HW = {
@@ -406,7 +406,7 @@ export default function Layout() {
                 { label: 'Map',         path: '/dashboard/map'        },
                 { label: 'Anomalies',   path: '/dashboard/anomalies'  },
                 { label: 'Forecast',    path: '/dashboard/forecast'   },
-                { label: 'Root Cause',  path: '/dashboard/root-cause' },
+               // { label: 'Root Cause',  path: '/dashboard/root-cause' },
                 { label: 'NLP',         path: '/dashboard/nlp'        },
               ].map(({ label, path }) => (
                 <Link key={label} to={path} className="footer-link">{label}</Link>

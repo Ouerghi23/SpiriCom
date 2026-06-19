@@ -72,7 +72,11 @@ except Exception as _exc:                            # pragma: no cover
         "notifications_api unavailable — notifications disabled: %s", _exc)
     def emit_notification(*args, **kwargs):
         return None
-
+try:
+    from src.api.customer_notifier import notify_customer
+except Exception as _e:
+    logger.warning("customer_notifier unavailable: %s", _e)
+    async def notify_customer(*a, **k): return {"notified": False}
 
 router = APIRouter(tags=["Complaints", "NLP", "Analytics"])
 _pipe = MultilingualNLPPipeline()
@@ -236,6 +240,15 @@ async def update_status(
     old_status = row.iloc[0].get("status")
 
     _db.update_status(complaint_id, body.status)
+    await notify_customer(
+        complaint_id = complaint_id,
+        msisdn       = row.iloc[0].get("msisdn"),
+        status       = body.status,
+        category     = row.iloc[0].get("category", "Réclamation"),
+        city         = row.iloc[0].get("city", "Tunisie"),
+    )
+
+    
 
     transition = (f"{STATUS_LABEL.get(old_status, old_status)} → "
                    f"{STATUS_LABEL.get(body.status, body.status)}")

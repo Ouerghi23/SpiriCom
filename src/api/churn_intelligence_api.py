@@ -102,9 +102,7 @@ def forecast_5g():
         },
     }
 
-
-# ── API-7: /api/forecast/brand — real brand data (old route fabricated
-#    'brands' by renaming risk_level) ──────────────────────────────────
+# ── API-7: /api/forecast/brand ────────────────────────────────────────
 @router.get("/api/forecast/brand")
 def forecast_brand():
     results = get_json(RESULTS_JSON) or {}
@@ -125,8 +123,7 @@ def forecast_brand():
             brand_rows = df[df[target_col].astype(str).str.lower().isin(known)]
             if not brand_rows.empty:
                 date_col  = _first_col(brand_rows, ["ds", "date"])
-                value_col = _first_col(brand_rows,
-                                       ["yhat", "forecast", "value"])
+                value_col = _first_col(brand_rows, ["yhat", "forecast", "value"])
                 agg = (brand_rows.groupby(target_col)[value_col]
                        .agg(forecast="mean", count="size").reset_index()
                        .rename(columns={target_col: "brand"}))
@@ -134,10 +131,18 @@ def forecast_brand():
                         "source": "forecasts.parquet",
                         "data_quality": DATA_QUALITY_NOTE}
 
-    raise HTTPException(
-        503, "no brand forecast artifacts found - run NB02 v2.1 "
-             "(the old endpoint fabricated brands from risk levels; "
-             "that behaviour was removed)")
+    # ── FIX: graceful empty instead of 503 ───────────────────────────
+    # Frontend BrandPerformance.jsx already handles brands:[] with its
+    # empty state card. Raising 503 here causes a console error and
+    # breaks the Forecasting page layout when NB02 hasn't run yet.
+    logger.warning("forecast_brand: no artifacts — returning empty (run NB02 v2.1)")
+    return {
+        "brands":       [],
+        "total_brands": 0,
+        "_missing":     True,
+        "_hint":        "Run NB02 v2.1 to generate brand forecast artifacts",
+        "data_quality": DATA_QUALITY_NOTE,
+    }
 
 
 # ── API-8: /api/forecast/session-flag — route existed in client.js
