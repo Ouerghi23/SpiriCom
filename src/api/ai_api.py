@@ -18,7 +18,7 @@ from fastapi import APIRouter, Body, HTTPException
 
 from .artifact_cache import get_json, get_parquet
 
-logger = logging.getLogger(__name__)
+logger    = logging.getLogger(__name__)
 ai_router = APIRouter(prefix="/api/ai", tags=["AI Assistant"])
 router    = ai_router  # alias kept for backwards-compat
 
@@ -97,6 +97,7 @@ def _wc(s: str) -> int:
 def _build_context() -> str:
     parts: list[str] = []
 
+    # ── 1. Disengagement label definition ────────────────────────────
     eda = get_json(Path("data/outputs/churn_eda_v6.json"))
     if eda:
         parts.append(
@@ -109,6 +110,7 @@ def _build_context() -> str:
             f"bytes, duration<={eda.get('thresholds', {}).get('dur_q20_seconds')} s."
         )
 
+    # ── 2. Model metrics + SHAP drivers ──────────────────────────────
     final = get_json(Path("data/outputs/disengagement_final.json"))
     if final:
         m       = (final.get("test_metrics_clean", {})
@@ -122,6 +124,7 @@ def _build_context() -> str:
             + ", ".join(f"{k} ({v:.2f})" for k, v in drivers) + "."
         )
 
+    # ── 3. Top-5 high-risk subscribers ───────────────────────────────
     risk = get_parquet(Path("models/disengagement_risk_scores_v2.parquet"))
     if risk is not None and len(risk):
         top  = risk.sort_values("risk", ascending=False).head(5)
@@ -134,6 +137,7 @@ def _build_context() -> str:
         )
         parts.append(f"TOP-5 HIGH-RISK SUBSCRIBERS (calibrated): {rows}.")
 
+    # ── 4. 5G coverage ───────────────────────────────────────────────
     cov = get_json(Path("data/outputs/coverage_5g.json"))
     if cov:
         k    = cov.get("kpi", {})
@@ -149,17 +153,80 @@ def _build_context() -> str:
             "Note: traffic_5g 91.8% imputed; 5G forecast pending NB00 fix."
         )
 
+    # ── 5. Complaint analytics ────────────────────────────────────────
     ana = get_json(Path("data/outputs/analysis_results.json"))
     if ana:
         tot = ana.get("total_complaints") or ana.get("n_complaints")
         if tot:
             parts.append(f"COMPLAINTS (NB01): {tot:,} total complaints analysed.")
 
+    # ── 6. NLP pipeline stats ─────────────────────────────────────────
+    try:
+        from src.nlp.complaint_db import ComplaintDB
+        _db = ComplaintDB()
+        _df = _db.to_dataframe(limit=5000)
+        if len(_df) > 0:
+            total_sub      = len(_df)
+            n_complaints   = int((_df["is_complaint"] == 1).sum()) if "is_complaint" in _df.columns else 0
+            n_feedback     = int((_df["is_complaint"] == 0).sum()) if "is_complaint" in _df.columns else 0
+            complaint_rate = round(n_complaints / max(total_sub, 1) * 100, 1)
+
+            lang_dist = ""
+            if "language" in _df.columns:
+                lc        = _df["language"].value_counts().head(3)
+                lang_dist = " Language breakdown: " + ", ".join(
+                    f"{l}={int(c)}" for l, c in lc.items()) + "."
+
+            urgent = ""
+            if "urgency" in _df.columns:
+                n_urgent = int((_df["urgency"] == "very_urgent").sum())
+                urgent   = f" {n_urgent} very urgent submissions."
+
+            parts.append(
+                f"NLP PIPELINE: {total_sub:,} total submissions — "
+                f"{n_complaints} complaints ({complaint_rate}%), "
+                f"{n_feedback} feedback."
+                f"{lang_dist}{urgent} "
+                f"Multilingual classifier: TF-IDF char n-gram + Logistic Regression, "
+                f"F1=0.976 (5-fold CV on 331 labelled complaints)."
+            )
+    except Exception:
+        pass  # NLP db unavailable — silent skip
+
+    # ── 7. Anomaly detection — with region breakdown ──────────────────
     an = get_parquet(Path("models/anomaly/anomaly_results.parquet"))
     if an is not None and "anomaly_flag" in getattr(an, "columns", []):
+        total_anom = int(an["anomaly_flag"].sum())
+        consensus  = int(an["anomaly_consensus"].sum()) if "anomaly_consensus" in an.columns else 0
+        anom_rate  = round(an["anomaly_flag"].mean() * 100, 1)
+
+        # Top 5 regions by anomaly day count
+        top_regions = ""
+        if "region" in an.columns:
+            top = (an[an["anomaly_flag"] == 1]
+                   .groupby("region")["anomaly_flag"].sum()
+                   .sort_values(ascending=False).head(5))
+            top_regions = " Top regions: " + ", ".join(
+                f"{r} ({int(c)} days)" for r, c in top.items()) + "."
+
+        # Top 3 consensus events
+        top_events = ""
+        if "anomaly_consensus" in an.columns and "combined_score" in an.columns:
+            ev_cols = [c for c in ["region", "date", "combined_score", "top_anomaly_driver"]
+                       if c in an.columns]
+            events  = (an[an["anomaly_consensus"] == 1][ev_cols]
+                       .sort_values("combined_score", ascending=False).head(3))
+            if len(events):
+                top_events = " Top consensus events: " + "; ".join(
+                    f"{row.get('region', '?')} {str(row.get('date', ''))[:10]} "
+                    f"score={row.get('combined_score', 0):.3f} "
+                    f"driver={row.get('top_anomaly_driver', '?')}"
+                    for _, row in events.iterrows()) + "."
+
         parts.append(
-            f"ANOMALIES: {int(an['anomaly_flag'].sum()):,} flagged "
-            f"({an['anomaly_flag'].mean() * 100:.1f}% of observations)."
+            f"ANOMALIES: {total_anom:,} flagged ({anom_rate}% of observations), "
+            f"{consensus} consensus high-confidence events."
+            f"{top_regions}{top_events}"
         )
 
     if not parts:

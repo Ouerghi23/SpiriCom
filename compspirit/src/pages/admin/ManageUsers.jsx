@@ -1077,7 +1077,96 @@ function WorkingHoursTab({ users, onUpdate, notify, T }) {
     </div>
   )
 }
+function HardDelConfirm({ user, onClose, onConfirm, T }) {
+  const [busy, setBusy] = useState(false)
+  const [confirmed, setConfirmed] = useState('')
+  const go = async () => { setBusy(true); await onConfirm(); setBusy(false) }
+  const match = confirmed.toLowerCase() === (user?.username || '').toLowerCase()
 
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 9200,
+      background: 'rgba(0,0,0,.85)', backdropFilter: 'blur(8px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: 24 }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: T.mode === 'dark'
+          ? 'linear-gradient(135deg, #1a0000, #2d0000)'
+          : '#fff',
+        border: '1px solid rgba(220,38,38,.5)',
+        borderRadius: 16, width: '100%', maxWidth: 400,
+        padding: '28px 26px', position: 'relative',
+        boxShadow: '0 24px 80px rgba(220,38,38,.3)',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0,
+          height: 2, background: ALARM.critical,
+          borderRadius: '16px 16px 0 0' }}/>
+
+        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%',
+            background: 'rgba(220,38,38,.15)',
+            border: '2px solid rgba(220,38,38,.5)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 14px' }}>
+            <Trash2 size={24} color={ALARM.critical}/>
+          </div>
+          <div style={{ fontFamily: FONT.display, fontSize: 20,
+            fontWeight: 900, color: T.text, marginBottom: 8 }}>
+            DELETE PERMANENTLY
+          </div>
+          <p style={{ fontSize: 12, color: T.textMuted, lineHeight: 1.7, margin: 0 }}>
+            This will <strong style={{ color: ALARM.critical }}>permanently remove</strong>{' '}
+            <strong>{user?.full_name || user?.username}</strong> and all their data.
+            This action <strong>cannot be undone</strong>.
+          </p>
+        </div>
+
+        {/* Confirmation input */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 10, fontWeight: 800, color: T.textDim,
+            letterSpacing: '1.5px', textTransform: 'uppercase',
+            display: 'block', marginBottom: 6 }}>
+            Type <strong style={{ color: ALARM.critical }}>{user?.username}</strong> to confirm
+          </label>
+          <input
+            type="text"
+            value={confirmed}
+            onChange={e => setConfirmed(e.target.value)}
+            placeholder={user?.username}
+            autoFocus
+            style={{ width: '100%', background: T.bgCardHover,
+              border: `1px solid ${match ? ALARM.critical : T.border}`,
+              borderRadius: 8, padding: '10px 12px', fontSize: 13,
+              color: T.text, fontFamily: 'monospace', outline: 'none',
+              boxSizing: 'border-box' }}/>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={onClose} style={{ flex: 1,
+            background: 'transparent', border: `1px solid ${T.border}`,
+            borderRadius: 8, color: T.textMuted, cursor: 'pointer',
+            padding: 10, fontSize: 12, fontWeight: 600, fontFamily: 'inherit' }}>
+            Cancel
+          </button>
+          <button onClick={go} disabled={busy || !match} style={{ flex: 1,
+            background: match
+              ? `linear-gradient(135deg, ${ALARM.critical}, #7f1d1d)`
+              : T.border,
+            border: 'none', borderRadius: 8, color: '#fff',
+            cursor: (busy || !match) ? 'not-allowed' : 'pointer',
+            padding: 10, fontSize: 12, fontWeight: 700, fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            gap: 7, opacity: match ? 1 : 0.5,
+            boxShadow: match ? '0 4px 16px rgba(220,38,38,.4)' : 'none',
+            transition: 'all .2s' }}>
+            {busy
+              ? <RefreshCw size={12} style={{ animation: 'noc-spin .8s linear infinite' }}/>
+              : <><Trash2 size={12}/> Delete Forever</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 /* ═══════════════════════════════════════════════════════════════
    MAIN PAGE
 ═══════════════════════════════════════════════════════════════ */
@@ -1093,6 +1182,8 @@ export default function ManageUsers() {
   const [roleFilter, setRoleFilter] = useState('All')
   const [modal,      setModal]      = useState(null)
   const [delUser,    setDelUser]    = useState(null)
+  const [hardDelUser, setHardDelUser] = useState(null)
+
   const [toast,      setToast]      = useState(null)
   const [activeTab,  setActiveTab]  = useState('engineers')
 
@@ -1140,15 +1231,34 @@ export default function ManageUsers() {
     notify(`${isCreate ? t('users.common.created') : t('users.common.updated')}: ${saved.username}`)
     setModal(null)
   }
-  const handleDelete = async () => {
+// APRÈS — deux handlers distincts
+  const handleDisable = async () => {
     try {
-      await axios.delete(`${BASE}/api/admin/users/${delUser.id}`,
-        { headers: hdr() })
+      const r = await axios.patch(
+        `${BASE}/api/admin/users/${delUser.id}`,
+        { active: false }, { headers: hdr() }
+      )
       setUsers(prev => prev.map(u =>
         u.id === delUser.id ? { ...u, active: false } : u))
       notify(`${t('users.common.disabled')}: ${delUser.username}`)
-    } catch (err) { notify(err.response?.data?.detail || t('users.common.deleteFailed'), false) }
+    } catch (err) {
+      notify(err.response?.data?.detail || t('users.common.deleteFailed'), false)
+    }
     setDelUser(null)
+  }
+
+  const handleHardDelete = async () => {
+    try {
+      await axios.delete(
+        `${BASE}/api/admin/users/${hardDelUser.id}`,
+        { headers: hdr() }
+      )
+      setUsers(prev => prev.filter(u => u.id !== hardDelUser.id))
+      notify(`Deleted permanently: ${hardDelUser.username}`)
+    } catch (err) {
+      notify(err.response?.data?.detail || 'Delete failed', false)
+    }
+    setHardDelUser(null)
   }
   const handleReactivate = async (user) => {
     try {
@@ -1204,8 +1314,12 @@ export default function ManageUsers() {
 
       {modal && <UserModal mode={modal.mode} user={modal.user} T={T}
         onClose={() => setModal(null)} onSave={handleSave}/>}
-      {delUser && <DelConfirm user={delUser} T={T}
-        onClose={() => setDelUser(null)} onConfirm={handleDelete}/>}
+        
+  
+{delUser && <DelConfirm user={delUser} T={T}
+    onClose={() => setDelUser(null)} onConfirm={handleDisable}/>}
+{hardDelUser && <HardDelConfirm user={hardDelUser} T={T}
+    onClose={() => setHardDelUser(null)} onConfirm={handleHardDelete}/>}
 
       {/* ── Page header ── */}
       <div style={{ marginBottom: 24 }}>
@@ -1543,50 +1657,94 @@ export default function ManageUsers() {
                           )}
                         </div>
                       </td>
-                      <td style={{ padding: '11px 14px' }}>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <button title={t('users.table.edit')} 
-                            aria-label={`${t('users.table.edit')} ${u.username}`}
-                            onClick={() => setModal({ mode: 'edit', user: u })}
-                            style={{ background: 'rgba(0,147,213,.1)',
-                              border: '1px solid rgba(0,147,213,.25)',
-                              borderRadius: 6, color: HW.blue,
-                              cursor: 'pointer', width: 28, height: 28,
-                              display: 'flex', alignItems: 'center',
-                              justifyContent: 'center',
-                              transition: 'all .15s' }}>
-                            <Edit2 size={11}/>
-                          </button>
-                          {u.active ? (
-                            <button title={t('users.table.disable')}
-                              aria-label={`${t('users.table.disable')} ${u.username}`}
-                              onClick={() => setDelUser(u)}
-                              style={{ background: 'rgba(220,38,38,.1)',
-                                border: '1px solid rgba(220,38,38,.25)',
-                                borderRadius: 6, color: ALARM.critical,
-                                cursor: 'pointer', width: 28, height: 28,
-                                display: 'flex', alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all .15s' }}>
-                              <Trash2 size={11}/>
-                            </button>
-                          ) : (
-                            <button title={t('users.table.reactivate')}
-                              aria-label={`${t('users.table.reactivate')} ${u.username}`}
-                              onClick={() => handleReactivate(u)}
-                              style={{ background: 'rgba(22,163,74,.1)',
-                                border: '1px solid rgba(22,163,74,.25)',
-                                borderRadius: 6, color: ALARM.normal,
-                                cursor: 'pointer', width: 28, height: 28,
-                                display: 'flex', alignItems: 'center',
-                                justifyContent: 'center',
-                                transition: 'all .15s' }}>
-                              <Check size={11}/>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
+                     <td style={{ padding: '11px 14px' }}>
+  <div style={{ display: 'flex', gap: 6 }}>
+    {/* Bouton Éditer */}
+    <button 
+      title={t('users.table.edit')} 
+      aria-label={`${t('users.table.edit')} ${u.username}`}
+      onClick={() => setModal({ mode: 'edit', user: u })}
+      style={{
+        background: 'rgba(0,147,213,.1)',
+        border: '1px solid rgba(0,147,213,.25)',
+        borderRadius: 6, 
+        color: HW.blue,
+        cursor: 'pointer', 
+        width: 28, 
+        height: 28,
+        display: 'flex', 
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all .15s'
+      }}
+    >
+      <Edit2 size={11}/>
+    </button>
+
+    {/* Bouton Désactiver / Réactiver */}
+    {u.active ? (
+      <button 
+        title="Disable account" 
+        onClick={() => setDelUser(u)}
+        style={{
+          background: 'rgba(202,138,4,.1)',
+          border: '1px solid rgba(202,138,4,.25)',
+          borderRadius: 6,
+          color: ALARM.minor,
+          cursor: 'pointer',
+          width: 28, 
+          height: 28,
+          display: 'flex', 
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <X size={11}/>
+      </button>
+    ) : (
+      <button 
+        title={t('users.table.reactivate')} 
+        onClick={() => handleReactivate(u)}
+        style={{
+          background: 'rgba(22,163,74,.1)',
+          border: '1px solid rgba(22,163,74,.25)',
+          borderRadius: 6,
+          color: ALARM.normal,
+          cursor: 'pointer',
+          width: 28, 
+          height: 28,
+          display: 'flex', 
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+      >
+        <Check size={11}/>
+      </button>
+    )}
+
+    {/* Bouton Supprimer définitivement */}
+    <button 
+      title="Delete permanently" 
+      onClick={() => setHardDelUser(u)}
+      style={{
+        background: 'rgba(220,38,38,.1)',
+        border: '1px solid rgba(220,38,38,.3)',
+        borderRadius: 6,
+        color: ALARM.critical,
+        cursor: 'pointer',
+        width: 28, 
+        height: 28,
+        display: 'flex', 
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all .15s'
+      }}
+    >
+      <Trash2 size={11}/>
+    </button>
+  </div>
+</td>
+</tr>
                   ))}
                 </tbody>
               </table>
