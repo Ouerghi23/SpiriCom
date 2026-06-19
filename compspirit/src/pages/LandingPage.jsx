@@ -136,9 +136,10 @@ const MODULES = [
   { icon: IconMap,           titleKey: 'landing.modGisTitle',  descKey: 'landing.modGisDesc',  tag: 'GIS',       path: '/dashboard/map'        },
   { icon: IconCpu,           titleKey: 'landing.modMlTitle',   descKey: 'landing.modMlDesc',   tag: 'ML',        path: '/dashboard'            },
   { icon: IconTrendingUp,    titleKey: 'landing.modAiTitle',   descKey: 'landing.modAiDesc',   tag: 'AI',        path: '/dashboard/forecast'   },
-  { icon: IconSearch,        titleKey: 'landing.modRcaTitle',  descKey: 'landing.modRcaDesc',  tag: 'Analytics', path: '/dashboard/root-cause' },
   { icon: IconUsers,         titleKey: 'landing.modUxTitle',   descKey: 'landing.modUxDesc',   tag: 'UX',        path: '/dashboard/segments'   },
   { icon: IconMessageSquare, titleKey: 'landing.modNlpTitle',  descKey: 'landing.modNlpDesc',  tag: 'NLP',       path: '/dashboard/nlp'        },
+   { icon: IconSearch,        titleKey: 'landing.modAiAssistantTitle',  descKey: 'landing.modAiAssistantDesc',  tag: 'LLM',   path: '/dashboard/about'     },
+
 ]
 
 const TESTIMONIALS = [

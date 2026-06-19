@@ -366,6 +366,15 @@
     "noForecast": "5G预测不可用",
     "noForecastDesc": "运行 NB02 · 暴露 /api/forecast/5g",
     "noHighRisk": "无高风险数据 — 确保 /api/churn/high-risk 返回 churn_scores.parquet",
+    "defBadgeV6":     "脱离用户定义 v6",
+"disengagedShare": "脱离用户占比",
+"kpiChurnSubV6":  "设计标签 v6 · 非实测流失",
+"riskSubV6":      "校准区间 · 严重 ≥75% · 高 ≥66% · 中 ≥33%",
+"defSectionV6":   "脱离用户定义 v6",
+"defSubV6":       "标签审计 03b · 无泄漏特征 NB04 · 校准模型 NB06",
+"thRiskV6":       "风险等级",
+"thProbV6":       "校准风险",
+"noHighRiskV6":   "无风险评分 — 运行 NB06 并注册 disengagement_api.py",
     "brand": {
       "kpi": {
         "brands": "品牌数",
@@ -805,22 +814,30 @@
     "statsKpi": "KPI会话数",
     "statsSites": "基站数",
     "statsGovernorates": "覆盖省份",
-    "modGisTitle": "时空热点",
-    "modGisDesc": "检测整个网络中的地理和时间投诉模式。",
-    "modMlTitle": "ML异常检测",
-    "modMlDesc": "使用孤立森林进行自动化网络健康监测和偏差检测。",
-    "modAiTitle": "预测分析",
-    "modAiDesc": "预测客户投诉峰值并提供可操作的运营提前时间。",
-    "modRcaTitle": "根因分析",
-    "modRcaDesc": "识别连接网络性能与客户体验的潜在原因。",
-    "modUxTitle": "客户分群",
-    "modUxDesc": "用户画像和K-Means聚类以实现个性化服务改进。",
-    "modNlpTitle": "NLP分类",
-    "modNlpDesc": "多语言文本分析和3种语言的客户投诉分类。",
-    "testi1": "SpiriCom 彻底改变了我们的投诉管理工作流程。曾经需要数小时手动关联的任务现在数秒内完成。",
-    "testi2": "预测模块非常出色。我们现在可以提前数天预测投诉高峰。",
-    "testi3": "根因分析非常有洞察力。它不仅识别异常 — 还清楚解释了驱动客户投诉的原因。",
-    "testi4": "在SpiriCom之前，我们完全处于被动模式。今天，我们完全实现了主动预测。"
+   "sixPillars": "六大支柱",
+
+"modGisTitle": "时空热点地图",
+"modGisDesc": "交互式地图可视化257个城市和24个省份的25,727条投诉，含解决率、服务筛选和严重性图层。",
+
+"modMlTitle": "多方法异常检测",
+"modMlDesc": "孤立森林结合Z-Score统计分析，从2,799条KPI记录中识别244个高置信度共识异常事件。",
+
+"modAiTitle": "脱离用户风险预测",
+"modAiDesc": "随机森林校准模型对2,566名用户进行脱离风险评分（PR-AUC 0.83），并提供每用户SHAP解释和5G采用预测。",
+
+"modUxTitle": "用户与投诉分群",
+"modUxDesc": "双分群管道：按子类别的自然投诉聚类（9种，25K+条）和基于QoS特征的KMeans用户画像（4,896名用户）。",
+
+"modNlpTitle": "多语言NLP分类",
+"modNlpDesc": "阿拉伯语、法语和英语投诉实时分类，TF-IDF字符n-gram + 校准逻辑回归，F1=0.976（331条标注投诉）。",
+
+"modAiAssistantTitle": "AI NOC 智能助手",
+"modAiAssistantDesc": "支持5种LLM提供商（Ollama、OpenAI、Groq、Anthropic、Gemini）的上下文助手，自动注入实时脱离评分、SHAP驱动因素和5G覆盖数据。",
+
+"testi1": "SpiriCom用单一仪表板取代了数小时的手动KPI关联工作。异常共识引擎每周为NOC团队节省大量调查时间。",
+"testi2": "脱离风险评分模块改变了运营方式。在用户流失前知道哪些用户处于风险中——并附每个案例的SHAP解释——正是运营商所需要的。",
+"testi3": "5G覆盖缺口告警具有直接可操作性。我们可以准确看到哪些省份5G采用率低且脱离率高，从而优先安排基础设施投资。",
+"testi4": "自动分类阿拉伯语、法语和英语投诉并评分紧急程度，让客服人员优先处理关键案例。多语言NLP管道已达到生产就绪水平。"
   },
   "admin": {
     "brand": {
