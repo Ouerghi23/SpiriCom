@@ -732,6 +732,12 @@ async def complaint_segment_profiles(refresh: bool = Query(False)):
                         pd.to_numeric(grp["priority"], errors="coerce").mean()), 2)
                 except Exception:
                     pass
+            if prov_col and prov_col in grp.columns:
+                    prov_vc = grp[prov_col].dropna().value_counts()
+                    if len(prov_vc) :
+                        profile["top_province"] = _clean_province(str(prov_vc.index[0]))
+                        profile["top_province_pct"] = round(float(prov_vc.iloc[0]) / len(grp) * 100, 1)
+                    
             profiles.append(profile)
 
         # ── Numeric KPI columns available across all profiles ────────
