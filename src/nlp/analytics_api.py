@@ -1302,6 +1302,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SpiriComp Analytics API", version="2.2.0", lifespan=lifespan)
+@app.get("/health", tags=["Monitoring"])
+async def health():
+    return {"status": "ok", "service": "spiricom-noc"}
 
 app.add_middleware(
     CORSMiddleware,
