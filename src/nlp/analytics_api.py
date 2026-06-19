@@ -640,66 +640,41 @@ async def anomaly_regions(refresh: bool = Query(False)):
 
 @router.get("/segments/profiles")
 async def segment_profiles(refresh: bool = Query(False)):
-    km = load("kmeans_users", refresh)
-    if km.empty or "kmeans_cluster" not in km.columns:
-        return {"profiles": [], "scatter": [], "n_clusters": 0}
-    num_cols = [c for c in km.select_dtypes(include=[np.number]).columns
-                if c not in ("kmeans_cluster", "pca_x", "pca_y", "id")]
-    profiles = []
-    for cid in sorted(km["kmeans_cluster"].unique()):
-        cdf = km[km["kmeans_cluster"] == cid]
-        p   = {"cluster_id": int(cid), "n_users": int(len(cdf)),
-               "pct": round(len(cdf) / len(km) * 100, 1)}
-        for col in num_cols[:10]:
-            p[col] = round(float(cdf[col].mean()), 3)
-        profiles.append(p)
-    pca_cols = [c for c in ["pca_x", "pca_y", "kmeans_cluster"] if c in km.columns]
-    scatter  = km[pca_cols].sample(min(2000, len(km)), random_state=42) if pca_cols else pd.DataFrame()
-    pca_var = silhouette = dbi = db_clusters = db_noise = None
-    pca_pkl = Path("models/clustering/pca.pkl")
-    if pca_pkl.exists():
-        try:
-            import joblib
-            pca_var = round(float(joblib.load(str(pca_pkl)).explained_variance_ratio_.sum() * 100), 1)
-        except Exception as exc:
-            logger.warning("pca.pkl: %s", exc)
-    feat_cols = [c for c in km.select_dtypes(include=[np.number]).columns
-                 if c not in ("kmeans_cluster", "pca_x", "pca_y")]
-    if feat_cols and km["kmeans_cluster"].nunique() > 1:
-        try:
-            from sklearn.metrics import silhouette_score, davies_bouldin_score
-            X, y = km[feat_cols].fillna(0).values, km["kmeans_cluster"].values
-            if len(X) > 5000:
-                idx = np.random.default_rng(42).choice(len(X), 5000, replace=False)
-                X, y = X[idx], y[idx]
-            silhouette = round(float(silhouette_score(X, y)), 3)
-            dbi        = round(float(davies_bouldin_score(X, y)), 3)
-        except Exception as exc:
-            logger.warning("silhouette/DBI: %s", exc)
-    db_path = Path("models/clustering/dbscan_users.parquet")
-    if db_path.exists():
-        try:
-            db_labels   = pd.read_parquet(str(db_path))["dbscan_cluster"].values
-            db_clusters = int(len(set(db_labels)) - (1 if -1 in db_labels else 0))
-            db_noise    = int((db_labels == -1).sum())
-        except Exception as exc:
-            logger.warning("dbscan: %s", exc)
-    return {"profiles": profiles, "scatter": safe_dict(scatter), "kpi_columns": num_cols[:6],
-            "n_clusters": len(profiles), "silhouette_score": silhouette, "davies_bouldin": dbi,
-            "pca_variance_pct": pca_var, "dbscan_clusters": db_clusters, "dbscan_noise": db_noise}
+    """Dataset 2 — reads kpi_segments.json produced by NB03c."""
+    kpi_path = Path("data/outputs/kpi_segments.json")
+    if not kpi_path.exists():
+        return {"profiles": [], "n_clusters": 0,
+                "message": "kpi_segments.json not found — run NB03c"}
 
+    with open(kpi_path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    return {
+        "profiles":          data.get("profiles", []),
+        "n_clusters":        data.get("n_clusters", 0),
+        "n_subscribers":     data.get("n_subscribers", 0),
+        "silhouette_score":  data.get("silhouette_score"),
+        "method":            data.get("method", "KMeans"),
+        "qos_features":      data.get("qos_features", []),
+        "cluster_labels":    data.get("cluster_labels", {}),
+        "dataset":           data.get("dataset", "Dataset 2 — churn_labelled_v6.parquet"),
+        "generated_at":      data.get("generated_at"),
+    }
 
 @router.get("/segments/region-distribution")
 async def segment_region_distribution(refresh: bool = Query(False)):
-    km = load("kmeans_users", refresh)
-    if km.empty or "kmeans_cluster" not in km.columns or "region" not in km.columns:
-        return {"distribution": []}
-    cross = (pd.crosstab(km["region"], km["kmeans_cluster"], normalize="index")
-             .mul(100).round(1).reset_index())
-    cross.columns = ["region"] + [f"cluster_{c}" for c in cross.columns[1:]]
-    return {"distribution": safe_dict(cross)}
+    """Dataset 2 — province distribution from kpi_segments.json (NB03c)."""
+    kpi_path = Path("data/outputs/kpi_segments.json")
+    if not kpi_path.exists():
+        return {"province_distribution": []}
 
+    with open(kpi_path, encoding="utf-8") as f:
+        data = json.load(f)
 
+    return {
+        "province_distribution": data.get("province_distribution", []),
+        "cluster_labels":        data.get("cluster_labels", {}),
+    }
 
 @router.get("/segments/complaints/profiles")
 async def complaint_segment_profiles(refresh: bool = Query(False)):

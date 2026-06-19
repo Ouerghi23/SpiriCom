@@ -54,7 +54,11 @@ const NON_METRIC = new Set([
   'n_labelled', 'top_province', 'top_province_pct', 'top_generation',
   'month', 'day_of_week', 'quarter', 'week_num',
 ])
-
+const KNOWN_QOS_FEATURES = [
+  'e2e_delay_ms', 'client_rtt_ms', 'server_rtt_ms',
+  'server_packet_loss_rate', 'session_active_rate',
+  'number_of_regions', 'traffic_5g', 'dou_total', 'duration',
+]
 // ── Safe numeric formatter ───────────────────────────────────────────
 const fmtNum = (v, d = 2) =>
   v != null && typeof v === 'number' ? v.toFixed(d) : '—'
@@ -132,7 +136,7 @@ export default function UserSegments() {
       totalRecords:     pd.total_records    ?? pd.n_subscribers ?? computedTotal,
       silhouette:       pd.silhouette_score ?? null,
       method:           pd.method           || (isD1 ? 'Natural segmentation' : 'KMeans'),
-      qosFeatures:      pd.qos_features     || [],
+      qosFeatures: (pd.qos_features?.length ? pd.qos_features : KNOWN_QOS_FEATURES),
       smallNSegments:   pd.small_n_segments || [],
       smallNNote:       pd.small_n_note     || '',
       reliableSegments: pd.n_reliable_segments ?? computedReliable,
@@ -217,10 +221,18 @@ export default function UserSegments() {
       value: fmtNum(segMeta.silhouette, 4),
       color: ALARM.normal, icon: BarChart3,
       sub: 'Cluster quality · 1 = perfect separation' },
-    { label: 'QoS Features Used',
-      value: segMeta.qosFeatures?.length || '—',
-      color: '#8B5CF6', icon: Zap,
-      sub: 'Leak-free network quality features' },
+   // APRÈS — fallback sur KNOWN_QOS_FEATURES + sous-titre avec les noms
+// APRÈS — fallback si absent OU vide
+// APRÈS — propre, une seule source, .length présent, virgule correcte
+{ label: 'QoS Features Used',
+  value: (segMeta.qosFeatures?.length
+            ? segMeta.qosFeatures
+            : KNOWN_QOS_FEATURES).length,
+  color: '#8B5CF6', icon: Zap,
+  sub: (segMeta.qosFeatures?.length
+          ? segMeta.qosFeatures
+          : KNOWN_QOS_FEATURES)
+         .slice(0, 3).map(f => f.replace(/_/g, ' ')).join(' · ') + ' …' },
   ], [isD1, segMeta, distribution.length])
 
   // ── Province × Segment stacked bar ──────────────────────────────────

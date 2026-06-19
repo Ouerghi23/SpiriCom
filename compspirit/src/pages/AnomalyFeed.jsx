@@ -200,8 +200,7 @@ export default function AnomalyFeed() {
     { label: t('anomaly.kpiConsensus'), value: summary?.consensus || 0,
       color: ALARM.critical, icon: Target,
       alert: (summary?.consensus || 0) > 0, sub: t('anomaly.subBoth') },
-    { label: t('anomaly.kpiUnion'), value: summary?.union || 0,
-      color: '#F97316', icon: Link, sub: t('anomaly.subEither') },
+ 
     { label: t('anomaly.kpiHigh'), value: highSevCount,
       color: ALARM.critical, icon: AlertTriangle,
       alert: highSevCount > 0, sub: t('anomaly.subHighSev') },

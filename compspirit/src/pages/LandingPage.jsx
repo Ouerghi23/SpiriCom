@@ -592,7 +592,6 @@ export default function LandingPage() {
             { label: t('nav.map'),       path: '/dashboard/map'        },
             { label: t('nav.anomalies'), path: '/dashboard/anomalies'  },
             { label: t('nav.forecast'),  path: '/dashboard/forecast'   },
-           // { label: t('nav.rootcause'), path: '/dashboard/root-cause' },
             { label: t('nav.segments'),  path: '/dashboard/segments'   },
             { label: t('nav.nlp'),       path: '/dashboard/nlp'        },
           ].map(({ label, path }) => (

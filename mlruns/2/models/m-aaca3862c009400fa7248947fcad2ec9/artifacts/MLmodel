@@ -1,0 +1,23 @@
+artifact_path: file:C:/Users/c50057188/Desktop/PFE_Ouerghi/mlruns/2/models/m-aaca3862c009400fa7248947fcad2ec9/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.pkl
+    predict_fn: predict
+    python_version: 3.13.9
+  sklearn:
+    code: null
+    pickled_model: model.pkl
+    serialization_format: cloudpickle
+    sklearn_version: 1.8.0
+    skops_trusted_types: null
+mlflow_version: 3.12.0
+model_id: m-aaca3862c009400fa7248947fcad2ec9
+model_size_bytes: 236783
+model_uuid: m-aaca3862c009400fa7248947fcad2ec9
+prompts: null
+run_id: 1733b2db48fa44548ea2a72ce56dd058
+utc_time_created: '2026-06-19 03:07:27.025645'
