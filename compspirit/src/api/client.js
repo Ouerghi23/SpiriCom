@@ -285,6 +285,7 @@ export const nlpApi = {
   // Delete complaint
   deleteComplaint: (id) =>
     api.delete(`/api/complaints/${id}`),
+  
 }
 
 // ============================================================================

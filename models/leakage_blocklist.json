@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-19T19:28:25.110928",
+  "generated_at": "2026-06-20T12:36:42.500826",
   "reason": "churn v6 label is a deterministic function of dou_total/duration; all volume and duration features leak the label (NB03-1)",
   "blocked_features": [
     "c1_low_usage",
@@ -67,6 +67,6 @@
     "dou_q20_bytes": 1856088.0,
     "dur_q20_seconds": 82.0
   },
-  "amended_at": "2026-06-19T19:30:08.884231",
+  "amended_at": "2026-06-20T12:41:31.043011",
   "amendment": "NB06-1: user_class = dominant-traffic-mix class, label leak"
 }

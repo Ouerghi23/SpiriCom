@@ -610,27 +610,7 @@ export default function LandingPage() {
             {mode === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
           </button>
 
-          {/* Sign In */}
-          <Link to="/login" style={{
-            background:  'transparent',
-            color:       MUTED,
-            border:      `1px solid ${BORDER}`,
-            padding:     '8px 20px',
-            fontSize:    11,
-            fontWeight:  700,
-            letterSpacing: .8,
-            textTransform: 'uppercase',
-            textDecoration: 'none',
-            display:     'inline-flex',
-            alignItems:  'center',
-            transition:  'all .2s',
-            whiteSpace:  'nowrap',
-            borderRadius: 2,
-          }}
-            onMouseOver={e => { e.currentTarget.style.borderColor = RED; e.currentTarget.style.color = RED; }}
-            onMouseOut={e  => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = MUTED; }}>
-            Sign In
-          </Link>
+        
 
           {/* Launch Dashboard */}
           <button className="btn-primary" style={{ padding: '9px 22px', fontSize: 11 }}

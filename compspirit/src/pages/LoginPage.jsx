@@ -1,6 +1,7 @@
 ﻿// src/pages/LoginPage.jsx
 
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+
 import { Link, useNavigate }                       from 'react-router-dom'
 import { useAuth }                                 from '../hooks/useAuth.jsx'
 import { useTranslation }                          from 'react-i18next'
@@ -15,17 +16,9 @@ const API          = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const MAX_ATTEMPTS = 5
 const LOCKOUT_MS   = 15 * 60 * 1000  // 15 minutes
 
-// ── FIX-5: Centralised token storage helper ───────────────────────────────
-function storeSession(tokenData, persistent = false) {
-  const store = persistent ? localStorage : sessionStorage
-  store.setItem('spiricomp_token', tokenData.access_token ?? tokenData.token ?? '')
-  const user = tokenData.user ?? {
-    username:  tokenData.username,
-    full_name: tokenData.full_name,
-    role:      tokenData.role,
-  }
-  store.setItem('spiricomp_user', JSON.stringify(user))
-}
+// NOTE: storeSession() supprimé — la session est désormais écrite UNIQUEMENT
+// via applySession() du contexte Auth (useAuth), pour que le state React
+// (token/user) soit mis à jour dans l'onglet courant après register/guest.
 
 // ── Static data — module-level, never recreated ───────────────────────
 const DEMO = [
@@ -106,6 +99,13 @@ function NocInput({ left:L, right, value, onChange, type='text',
   placeholder, autoComplete, autoFocus, required, extraBorder,
   mode, BORDER, TEXT, RED, DIM }) {
   const [focus, setFocus] = useState(false)
+  const inputRef = useRef(null)            // ← ajoute
+
+  useEffect(() => {
+    if (autoFocus && inputRef.current) {
+      inputRef.current.focus()             // ← focus une seule fois au mount
+    }
+  }, [])  
   const inputBg     = mode==='dark' ? (focus?'#060609':'#04050A') : (focus?'#FFFFFF':'#F5F7FF')
   const inputBorder = extraBorder || (focus ? 'rgba(207,10,44,.65)' : BORDER)
   return (
@@ -117,10 +117,10 @@ function NocInput({ left:L, right, value, onChange, type='text',
           <L size={14}/>
         </div>
       )}
-      <input type={type} value={value} onChange={onChange}
+      <input ref={inputRef} type={type} value={value} onChange={onChange}
         onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
         placeholder={placeholder} autoComplete={autoComplete}
-        autoFocus={autoFocus} required={required}
+         required={required}
         style={{
           width:'100%', padding:L?'14px 14px 14px 44px':'14px',
           paddingRight:right?'46px':'14px', background:inputBg,
@@ -152,7 +152,7 @@ function TInput({ theme, ...rest }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════
 export default function LoginPage() {
-  const { login, loading:signInLoad, error:signInErr } = useAuth()
+  const { login, applySession, loading:signInLoad, error:signInErr } = useAuth()
   const navigate              = useNavigate()
   const { t }                 = useTranslation()
   const { mode, toggleTheme } = useTheme()
@@ -225,24 +225,34 @@ export default function LoginPage() {
     return '/dashboard'
   }
 
-  const handleSignIn = useCallback(async e => {
+  const handleSignIn = useCallback(async (e) => {
     e.preventDefault()
-    if (lockedUntilRef.current && Date.now() < lockedUntilRef.current) return
 
-    const ok = await login(siUser.trim(), siPass, remember)
-    if (ok) {
-      setAttempts(0)
-      navigate(roleDestination())
-    } else {
+    if (lockedUntil && Date.now() < lockedUntil) return
+    if (!siUser.trim() || !siPass)               return
+
+    try {
+      const ok = await login(siUser.trim(), siPass, remember)
+
+      if (ok) {
+        setAttempts(0)
+        setLockedUntil(null)
+        navigate(roleDestination())
+      } else {
+        setAttempts(prev => {
+          const next = prev + 1
+          if (next >= MAX_ATTEMPTS) setLockedUntil(Date.now() + LOCKOUT_MS)
+          return next
+        })
+      }
+    } catch (error) {
       setAttempts(prev => {
         const next = prev + 1
-        if (next >= MAX_ATTEMPTS) {
-          setLockedUntil(Date.now() + LOCKOUT_MS)
-        }
+        if (next >= MAX_ATTEMPTS) setLockedUntil(Date.now() + LOCKOUT_MS)
         return next
       })
     }
-  }, [siUser, siPass, remember, login, navigate])
+  }, [siUser, siPass, remember, login, navigate, lockedUntil])
 
   const handleSignUp = async e => {
     e.preventDefault()
@@ -261,7 +271,7 @@ export default function LoginPage() {
         password:  suPass,
         email:     suEmail.trim() || undefined,
       })
-      storeSession(res.data, remember)
+      applySession(res.data, remember)
       setSuOk(true)
       setTimeout(() => navigate(roleDestination()), 2000)
     } catch (err) {
@@ -272,10 +282,10 @@ export default function LoginPage() {
   const handleGuest = useCallback(async () => {
     try {
       const res = await axios.post(`${API}/api/auth/guest`)
-      storeSession(res.data, false)
+      applySession(res.data, false)
       navigate(roleDestination())
     } catch { alert(t('login.guestUnavailable')) }
-  }, [navigate, t])
+  }, [navigate, t, applySession])
 
   const handleForgotPassword = async e => {
     e.preventDefault()
@@ -285,13 +295,12 @@ export default function LoginPage() {
       await axios.post(`${API}/api/auth/forgot-password`, { email: fpEmail.trim() })
       setFpSent(true)
     } catch (err) {
-     
-  const raw = err.response?.data?.detail
-  const msg = Array.isArray(raw)
-    ? (raw[0]?.msg || t('forgot.connectionError'))   // erreur Pydantic 422
-    : (typeof raw === 'string' ? raw                 // erreur applicative
-    : t('forgot.connectionError'))                   // fallback
-  setFpErr(msg)
+      const raw = err.response?.data?.detail
+      const msg = Array.isArray(raw)
+        ? (raw[0]?.msg || t('forgot.connectionError'))   // erreur Pydantic 422
+        : (typeof raw === 'string' ? raw                 // erreur applicative
+        : t('forgot.connectionError'))                   // fallback
+      setFpErr(msg)
     } finally { setFpLoad(false) }
   }
 
@@ -314,14 +323,14 @@ export default function LoginPage() {
   const confMismatch = suConf.length > 0 && suPass !== suConf
 
   // ── Inline components ──────────────────────────────────────────────────
-  const FieldLabel = ({ children }) => (
+  const FieldLabel = ({ children ,dim}) => (
     <label style={{ display:'block', fontSize:9.5, fontWeight:700,
       color:DIM, letterSpacing:2.4, textTransform:'uppercase', marginBottom:8 }}>
       {children}
     </label>
   )
 
-  const AlertBar = ({ msg, ok }) => !msg ? null : (
+  const AlertBar = ({ msg, ok , red, redl}) => !msg ? null : (
     <div style={{ display:'flex', alignItems:'center', gap:9, marginBottom:14,
       background:ok?'rgba(34,197,94,.06)':'rgba(207,10,44,.06)',
       border:`1px solid ${ok?'rgba(34,197,94,.22)':'rgba(207,10,44,.22)'}`,

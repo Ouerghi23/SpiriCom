@@ -243,7 +243,7 @@ def _call_ollama(cfg, system, messages) -> str:
         "stream":   False,
         "options":  {"temperature": cfg["temperature"],
                      "num_predict": cfg["max_tokens"]},
-    }, timeout=120)
+    }, timeout=120, verify=False,)
     r.raise_for_status()
     return r.json()["message"]["content"]
 
@@ -258,6 +258,7 @@ def _call_openai_style(base_url, key, cfg, system, messages) -> str:
             "max_tokens":  cfg["max_tokens"],
             "temperature": cfg["temperature"],
         }, timeout=90,
+        verify=False,  # avoid SSL issues with Groq's OpenAI-compatible endpoint
     )
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"]
@@ -275,7 +276,7 @@ def _call_anthropic(key, cfg, system, messages) -> str:
             "messages":    messages,
             "max_tokens":  cfg["max_tokens"],
             "temperature": cfg["temperature"],
-        }, timeout=90,
+        }, timeout=90,verify=False,
     )
     r.raise_for_status()
     return "".join(b.get("text", "") for b in r.json().get("content", []))
@@ -295,7 +296,7 @@ def _call_gemini(key, cfg, system, messages) -> str:
             "contents":           contents,
             "generationConfig":   {"temperature":     cfg["temperature"],
                                    "maxOutputTokens": cfg["max_tokens"]},
-        }, timeout=90,
+        }, timeout=90,verify=False,
     )
     r.raise_for_status()
     return r.json()["candidates"][0]["content"]["parts"][0]["text"]

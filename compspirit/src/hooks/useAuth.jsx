@@ -53,6 +53,21 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
+  // ── applySession ──────────────────────────────────────────────────
+  // Applique un token DÉJÀ obtenu (register, guest) au state du contexte
+  // ET au storage. Sans ça, signup/guest n'écrivaient que dans le storage
+  // et le state (token/user) restait null dans l'onglet courant — le
+  // listener `storage` ne se déclenche que pour les AUTRES onglets.
+  const applySession = useCallback((tokenData, persistent = false) => {
+    writeSession(tokenData, persistent)
+    setToken(tokenData.access_token || '')
+    setUser({
+      username:  tokenData.username,
+      full_name: tokenData.full_name || tokenData.username,
+      role:      (tokenData.role || 'engineer').toLowerCase(),
+    })
+  }, [])
+
   // ── login ─────────────────────────────────────────────────────────
   const login = useCallback(async (username, password, remember = false) => {
     setLoading(true)
@@ -66,15 +81,7 @@ export function AuthProvider({ children }) {
 
       const res = await axios.post(`${API}/api/auth/login`, form)
 
-      writeSession(res.data, remember)
-
-      const u = {
-        username:  res.data.username,
-        full_name: res.data.full_name || res.data.username,
-        role:      (res.data.role || 'engineer').toLowerCase(),
-      }
-      setToken(res.data.access_token)
-      setUser(u)
+      applySession(res.data, remember)
       return true
     } catch (err) {
       setError(err.response?.data?.detail || 'Login failed')
@@ -82,7 +89,7 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [applySession])
 
   // ── logout ────────────────────────────────────────────────────────
   const logout = useCallback(() => {
@@ -92,7 +99,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ token, user, login, logout, loading, error }}>
+    <AuthContext.Provider value={{ token, user, login, applySession, logout, loading, error }}>
       {children}
     </AuthContext.Provider>
   )
@@ -121,13 +128,16 @@ export function setupAxiosAuth() {
   })
 
   axios.interceptors.response.use(
-    res => res,
-    err => {
-      if (err.response?.status === 401) {
+    response => response,
+    error => {
+      if (
+        error.response?.status === 401 &&
+        !error.config?.url?.includes('/api/auth/login')
+      ) {
         clearSession()
         window.location.href = '/login'
       }
-      return Promise.reject(err)
+      return Promise.reject(error)
     }
   )
 }

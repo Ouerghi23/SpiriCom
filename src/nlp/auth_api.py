@@ -24,7 +24,6 @@ import psutil
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-import mailtrap as mt
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from dotenv import load_dotenv
@@ -174,6 +173,9 @@ def init_db() -> None:
                 ("admin",        "Admin SpiriComp",   "admin",    "spiricomp2026"),
                 ("noc_engineer", "NOC Engineer",       "engineer", "noc123"),
                 ("huawei_cn",    "Huawei CN Engineer", "engineer", "huawei2026"),
+                ("viewer_demo",  "Huawei Supervisor",  "viewer",   "viewer2026"),
+
+                
             ]
             for uname, fname, role, raw in seeds:
                 conn.execute(
@@ -221,18 +223,39 @@ def current_user(token: str = Depends(oauth2_scheme)) -> dict:
             raise exc
     except JWTError:
         raise exc
+
+    # ── Guest / viewer token — pas de ligne en DB ─────────────────────
+    if data.get("role") == "viewer" and username == "guest":
+        return {
+            "id":        0,
+            "username":  "guest",
+            "full_name": "Guest User",
+            "role":      "viewer",
+            "active":    1,
+        }
+    # ─────────────────────────────────────────────────────────────────
+
     user = get_user(username)
     if not user:
         raise exc
     return user
-
 
 def require_admin(user: dict = Depends(current_user)) -> dict:
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
-
+def require_engineer(user: dict = Depends(current_user)) -> dict:
+    """
+    Allow access for NOC engineers AND admins.
+    Blocks viewers (read-only accounts for Huawei supervisors, auditors).
+    """
+    if user["role"] not in ("admin", "engineer"):
+        raise HTTPException(
+            status_code=403,
+            detail="Engineer or Admin access required — Viewer accounts are read-only."
+        )
+    return user
 # ── Column migration helpers ──────────────────────────────────────────────────
 def _ensure_email_column(conn: sqlite3.Connection) -> None:
     cols = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -631,7 +654,7 @@ async def list_users():
 
 # ── BUG-4 FIX: paramètre renommé `caller` ───────────────────────────────────
 @router.patch("/shift/checkin")
-def self_checkin(caller: dict = Depends(current_user)):
+def self_checkin(caller: dict = Depends(require_engineer)):
     """Engineer checks themselves in."""
     me      = caller["username"]
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -659,7 +682,7 @@ def self_checkin(caller: dict = Depends(current_user)):
 
 
 @router.patch("/shift/checkout")
-def self_checkout(caller: dict = Depends(current_user)):
+def self_checkout(caller: dict = Depends(require_engineer)):
     """Engineer checks themselves out and accumulates elapsed hours."""
     me  = caller["username"]
     now = datetime.now(timezone.utc)
