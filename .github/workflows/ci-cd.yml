@@ -1,3 +1,17 @@
+# .github/workflows/ci-cd.yml
+# SpiriCom NOC Platform — CI/CD Pipeline
+# ─────────────────────────────────────────────────────────────────────
+# Job graph:
+#
+#   lint-and-test ──┬── docker-build   (GHCR images, main only)
+#                   └── deploy-backend (Render hook, main only)
+#                            │
+#                        health-check  (waits for Render ~2 min)
+#
+# Secrets required (Settings → Secrets → Actions):
+#   RENDER_DEPLOY_HOOK  — Render deploy hook URL
+#   RENDER_URL          — e.g. https://spiricom-backend.onrender.com
+
 name: SpiriCom CI/CD
 
 on:
@@ -6,27 +20,52 @@ on:
   pull_request:
     branches: [main]
 
+# ─────────────────────────────────────────────────────────────────────
+# Job 1 — Lint + Build (every push / PR)
+# ─────────────────────────────────────────────────────────────────────
 jobs:
   lint-and-test:
+    name: 🔍 Lint & Build
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      # ── Python ───────────────────────────────────────────────────
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # WARN-1 fix: cache pip dependencies
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-
 
       - name: Install backend deps
         run: pip install -r requirements.txt
 
       - name: Lint backend (flake8)
-        run: pip install flake8 && flake8 src/ --max-line-length=120 --extend-ignore=E203 || true
+        run: |
+          pip install flake8
+          flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 || true
 
-      - name: Set up Node
+      # ── Node ─────────────────────────────────────────────────────
+      - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+
+      # WARN-1 fix: cache npm dependencies
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: compspirit/node_modules
+          key: npm-${{ hashFiles('compspirit/package-lock.json') }}
+          restore-keys: npm-
 
       - name: Install frontend deps
         run: cd compspirit && npm ci
@@ -34,10 +73,15 @@ jobs:
       - name: Build frontend
         run: cd compspirit && npm run build
 
+# ─────────────────────────────────────────────────────────────────────
+# Job 2 — Docker images → GHCR (main only)
+# ─────────────────────────────────────────────────────────────────────
   docker-build:
+    name: 🐳 Docker Build & Push
     needs: lint-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -62,35 +106,51 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}/frontend:latest
 
-  # ── NEW: déclenche le déploiement Render ─────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# Job 3 — Trigger Render deploy (main only)
+# BUG-1 fix: depends on lint-and-test only (Render deploys from source,
+#            not from the GHCR image — parallel to docker-build is correct)
+# BUG-3 fix: env: block removed (secret used directly in run command)
+# ─────────────────────────────────────────────────────────────────────
   deploy-backend:
+    name: 🚀 Deploy to Render
     needs: lint-and-test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+
     steps:
-      - name: Trigger Render deploy
+      - name: Trigger Render deploy hook
         run: |
           curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
             --fail \
             --silent \
             --show-error
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          echo "✅ Render deploy triggered"
 
-  # ── NEW: vérifie que le backend est vivant après déploiement ──────
+# ─────────────────────────────────────────────────────────────────────
+# Job 4 — Health check after Render wakes up
+# BUG-2 fix: sleep 120 (Render free tier cold start = 2-5 min)
+#            retry 6 times × 20s = 120s extra headroom = 4 min total
+# ─────────────────────────────────────────────────────────────────────
   health-check:
+    name: 🏥 Health Check
     needs: deploy-backend
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Wait for Render to wake up
-        run: sleep 30
 
-      - name: Health check
+    steps:
+      # Render free tier cold start takes 2-5 min — wait before first probe
+      - name: Wait for Render cold start
         run: |
-          curl -f "${{ secrets.RENDER_URL }}/health" \
-            --retry 5 \
-            --retry-delay 10 \
-            --retry-connrefused
-        env:
-          RENDER_URL: ${{ secrets.RENDER_URL }}
+          echo "⏳ Waiting 120s for Render to deploy…"
+          sleep 120
+
+      - name: Health check — /health endpoint
+        run: |
+          curl --fail \
+            --retry 6 \
+            --retry-delay 20 \
+            --retry-connrefused \
+            --max-time 15 \
+            "${{ secrets.RENDER_URL }}/health"
+          echo "✅ Backend is live"
