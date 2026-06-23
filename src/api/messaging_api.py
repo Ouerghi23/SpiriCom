@@ -84,7 +84,7 @@ ensure_messages_table()
 
 # ── Auth import ───────────────────────────────────────────────────────
 try:
-    from src.api.auth_api import current_user
+    from src.nlp.auth_api import current_user
 except ImportError:
     try:
         from src.nlp.auth_api import current_user
@@ -216,8 +216,7 @@ def send_message(
     # FIX-5: clean restrictions
     if role == "viewer":
         raise HTTPException(403, "Viewers cannot send messages")
-    if role == "engineer" and isBroadcast(body.to_user):
-        raise HTTPException(403, "Only admins can send broadcast messages")
+
     # engineer can message any named user; admin can send to anyone
 
     with get_conn() as conn:

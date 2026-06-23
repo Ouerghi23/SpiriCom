@@ -54,13 +54,17 @@ const ADMIN_RECIPIENTS = [
   { value: 'huawei_cn',     label: 'huawei_cn'                  },
   { value: 'viewer_demo',   label: 'viewer_demo'                },
   { value: '__sep__',       label: '──────────', disabled: true },
-  { value: 'all_engineers', label: '📢 Broadcast — engineers'   },
-  { value: 'all',           label: '📢 Broadcast — everyone'    },
+  { value: 'all_engineers', label: ' Broadcast — engineers'   },
+  { value: 'all',           label: ' Broadcast — everyone'    },
 ]
 
 const ENGINEER_RECIPIENTS = [
   { value: 'admin',        label: 'admin'        },
   { value: 'noc_engineer', label: 'noc_engineer' },
+  { value: 'huawei_cn',    label: 'huawei_cn'    },
+  { value: '__sep__',       label: '──────────', disabled: true },
+  { value: 'all_engineers', label: ' Broadcast — engineers'   },
+  { value: 'all',           label: ' Broadcast — everyone'    },
 ]
 
 // ── Priority config ────────────────────────────────────────────────────
@@ -251,17 +255,22 @@ export default function MessagingWidget() {
   }
 
   // ── Translate ──────────────────────────────────────────────────────
-  const translateMsg = async msg => {
-    if (translating) return
-    setTranslating(msg.id)
-    try {
-      const r = await axios.post(`${BASE}/api/messages/${msg.id}/translate`,
-        { target_lang: 'zh' }, { headers: hdr() })
-      setTranslations(prev => ({ ...prev, [msg.id]: r.data.translated }))
-    } catch {
-      setTranslations(prev => ({ ...prev, [msg.id]: '⚠ Translation unavailable' }))
-    } finally { setTranslating(null) }
-  }
+const translateMsg = async msg => {
+  if (translating) return
+  setTranslating(msg.id)
+
+  // Si le message vient du collègue chinois → traduire en français
+  // Sinon → traduire en chinois pour huawei_cn
+  const targetLang = msg.from_user === 'noc_engineer' ? 'en' : 'zh'
+
+  try {
+    const r = await axios.post(`${BASE}/api/messages/${msg.id}/translate`,
+      { target_lang: targetLang }, { headers: hdr() })
+    setTranslations(prev => ({ ...prev, [msg.id]: r.data.translated }))
+  } catch {
+    setTranslations(prev => ({ ...prev, [msg.id]: '⚠ Translation unavailable' }))
+  } finally { setTranslating(null) }
+}
 
   // ══════════════════════════════════════════════════════════════════
   return (
@@ -416,7 +425,7 @@ export default function MessagingWidget() {
                       {msg.msg_type === 'broadcast' && (
                         <span style={{ fontSize:9, fontWeight:700,
                           color:HW.blue, letterSpacing:'0.5px' }}>
-                          📢 broadcast
+                           broadcast
                         </span>
                       )}
                       {sev && (
@@ -553,7 +562,7 @@ export default function MessagingWidget() {
                             fontSize:11, color:T.textMuted }}>
                             <div style={{ fontSize:9, fontWeight:800, letterSpacing:1,
                               color:HW.blue, marginBottom:3, textTransform:'uppercase' }}>
-                              🇨🇳 Chinese
+                         {msg.from_user === 'noc_engineer' ? '🇫🇷 Français' : '🇨🇳 Chinese'}
                             </div>
                             {isXlating
                               ? <span style={{ fontStyle:'italic' }}>Translating…</span>
@@ -643,7 +652,7 @@ export default function MessagingWidget() {
             </div>
 
             {/* FIX-2: Broadcast warning — separate row, admin only */}
-            {isAdmin && isBroadcast(toUser) && (
+            {isBroadcast(toUser) && (
               <div style={{ display:'flex', alignItems:'center', gap:8,
                 padding:'5px 10px', marginBottom:8,
                 background:sevDim(ALARM.warning,'10'),

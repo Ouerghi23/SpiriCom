@@ -1,25 +1,5 @@
 """
 src/nlp/nlp_api.py
-FIX-CITY: if NLP doesn't detect a city from text, use user-entered city as fallback
-
-v2 — notification fixes (NLP-1..6):
-  NLP-1  emit_notification now imported from notifications_api (the
-         in-app SQLite/SSE bell), not notification_service (the
-         external ntfy/CallMeBot push module from a different system).
-         The old import would raise ImportError at startup and take
-         down this whole router.
-  NLP-2  c.category did not exist on ComplaintSubmit (AttributeError)
-         -> use nlp['category'] from the analysis result.
-  NLP-3  Notification moved AFTER a successful _db.insert(), using the
-         FIX-CITY-resolved city instead of the raw form input.
-  NLP-4  is_complaint splits the event into 'new_complaint' vs
-         'new_feedback' (both spec'd as separate engineer triggers).
-  NLP-5  PUT /status now emits 'complaint_update' to engineers
-         (status-change trigger from the spec).
-  NLP-6  Severity derived from nlp['urgency_level'] via URGENCY_SEVERITY
-         instead of a hardcoded 'minor', matching the ALARM ladder.
-
-All other code identical.
 """
 from __future__ import annotations
 import logging
@@ -30,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, Depends
+from fastapi import APIRouter, HTTPException, Query, Request, Depends, logger
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 

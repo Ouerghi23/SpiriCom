@@ -1,6 +1,6 @@
 // src/hooks/useRole.jsx
-import { useMemo }  from 'react'
-import { useAuth }  from './useAuth.jsx'
+import { useMemo } from 'react'
+import { useAuth } from './useAuth.jsx'
 
 const TOKEN_KEY = 'spiricomp_token'
 
@@ -18,27 +18,28 @@ function readRoleFromToken() {
 }
 
 export function useRole() {
-  // ← useAuth is the single source of truth (reactive React state)
   const { user: authUser } = useAuth()
 
   return useMemo(() => {
-    // authUser is reactive — updates immediately on login/logout
-    // readRoleFromToken is a fallback for components outside AuthProvider
     const role = (
       authUser?.role ??
       readRoleFromToken() ??
       'viewer'
     ).toLowerCase()
 
+    // isGuest MUST be inside useMemo — needs role + authUser
+    const isGuest = role === 'viewer' && authUser?.username === 'guest'
+
     return {
       role,
       isAdmin:    role === 'admin',
       isEngineer: role === 'engineer',
       isViewer:   role === 'viewer',
+      isGuest,                          // ← anonymous guest (1h token, not in DB)
       canEdit:    role === 'admin' || role === 'engineer',
       canAdmin:   role === 'admin',
       username:   authUser?.username  ?? '',
       fullName:   authUser?.full_name ?? '',
     }
-  }, [authUser])  // ← re-computes whenever auth state changes
+  }, [authUser])
 }

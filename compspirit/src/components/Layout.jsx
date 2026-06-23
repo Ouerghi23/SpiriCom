@@ -1,4 +1,6 @@
 // src/components/Layout.jsx
+// SpiriCom NOC — Main layout with guest overlay
+
 import { useState, useEffect }                from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import { useTranslation }                     from 'react-i18next'
@@ -46,16 +48,15 @@ function ViewerBanner() {
 export default function Layout() {
   const [scrolled, setScrolled] = useState(false)
 
-  // ── ALL hooks declared once, in order ────────────────────────────
+  // ── All hooks in order ────────────────────────────────────────────
   const { user, logout } = useAuth()
   const { t }            = useTranslation()
   const navigate         = useNavigate()
   const { theme: T }     = useTheme()
-  const { isViewer }     = useRole()
+  const { isViewer, isGuest } = useRole()
 
-  // isAdmin derived from reactive useAuth state (not useRole)
+  // isAdmin from reactive useAuth state
   const isAdmin = user?.role?.toLowerCase() === 'admin'
-  // ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 40)
@@ -146,7 +147,7 @@ export default function Layout() {
         @media (max-width: 900px)  { .nav-center        { display: none !important; } }
       `}</style>
 
-      {/* ══ NAVBAR ══════════════════════════════════════════════════════ */}
+      {/* ══ NAVBAR — always clickable (zIndex 1000, above overlay 999) ══ */}
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
         height: 60, padding: '0 24px',
@@ -211,12 +212,12 @@ export default function Layout() {
         {/* Right side */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
 
-          {/* ShiftWidget — engineers only, not admin, not viewer */}
+          {/* ShiftWidget — engineers only */}
           {!isAdmin && !isViewer && T && (
             <ShiftWidget user={user} T={T}/>
           )}
 
-          {/* NotificationBell — not for viewer */}
+          {/* NotificationBell — not for viewer/guest */}
           {!isViewer && (
             <NotificationBell role={isAdmin ? 'admin' : 'engineer'} />
           )}
@@ -269,8 +270,76 @@ export default function Layout() {
       )}
 
       {/* ══ PAGE CONTENT ════════════════════════════════════════════════ */}
-      <main style={{ paddingTop: isViewer ? 0 : 60, transition:'background .25s' }}>
+      <main style={{
+        paddingTop: isViewer ? 0 : 60,
+        transition: 'background .25s',
+        position: 'relative',   // ← needed for overlay positioning
+      }}>
         <Outlet/>
+
+        {/* ── Guest overlay — blocks all clicks in main, navbar stays free ── */}
+        {isGuest && (
+          <>
+            {/* Transparent blocker — zIndex 999 (under navbar 1000) */}
+            <div
+              onClick={() => navigate('/login')}
+              style={{
+                position:   'fixed',
+                inset:      0,
+                top:        60,      // start below navbar
+                zIndex:     999,
+                cursor:     'not-allowed',
+                background: 'transparent',
+              }}
+            />
+
+            {/* Bottom CTA banner */}
+            <div style={{
+              position:       'fixed',
+              bottom:         0,
+              left:           0,
+              right:          0,
+              zIndex:         1001,   // above navbar so it's always visible
+              background:     'rgba(0,0,0,.88)',
+              backdropFilter: 'blur(12px)',
+              borderTop:      `1px solid rgba(255,255,255,.08)`,
+              padding:        '14px 32px',
+              display:        'flex',
+              alignItems:     'center',
+              justifyContent: 'space-between',
+              gap:            16,
+            }}>
+              <div>
+                <div style={{ fontSize:13, fontWeight:700, color:'#fff', marginBottom:3 }}>
+                  Read-only mode — Guest access
+                </div>
+                <div style={{ fontSize:11, color:'rgba(255,255,255,.45)' }}>
+                  You can browse dashboards but cannot interact.
+                  Log in for full NOC access.
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/login')}
+                style={{
+                  padding:       '10px 28px',
+                  background:    HW.blue,
+                  border:        'none',
+                  color:         '#fff',
+                  fontSize:      12,
+                  fontWeight:    800,
+                  cursor:        'pointer',
+                  letterSpacing: '.5px',
+                  flexShrink:    0,
+                  transition:    'background .2s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = HW.blueLight}
+                onMouseLeave={e => e.currentTarget.style.background = HW.blue}
+              >
+                Login →
+              </button>
+            </div>
+          </>
+        )}
       </main>
 
       {/* ══ FOOTER ══════════════════════════════════════════════════════ */}
@@ -368,7 +437,7 @@ export default function Layout() {
         </div>
       </footer>
 
-      {/* Floating overlays — hidden for viewer */}
+      {/* ── Floating overlays — hidden for viewer/guest ── */}
       {!isViewer && <MessagingWidget/>}
       {!isViewer && <AIChatBubble/>}
       <FloatingControls/>

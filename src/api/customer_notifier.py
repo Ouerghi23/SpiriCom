@@ -1,20 +1,7 @@
 # src/nlp/customer_notifier.py
-# ─────────────────────────────────────────────────────────────────────
-# SpiriCom — Customer Telegram notifier (v2)
-#
-# v2 fixes:
-#  TG-1  verify=False — Huawei corporate proxy uses self-signed SSL cert
-#         which blocks httpx from reaching api.telegram.org (same issue
-#         as Groq, same fix).
-#  TG-2  parse_mode switched from Markdown to HTML — Markdown breaks
-#         silently if category/city contain *, _, `, [ characters.
-#  TG-3  Professional Ooredoo-branded message with logo link, site URL,
-#         support number, and NOC footer.
-#  TG-4  segment parameter added to message.
-#  TG-5  Better error logging with HTTP status + response body.
-# ─────────────────────────────────────────────────────────────────────
+# SpiriCom — Customer Telegram notifier (v3)
+# v3: clean SMS-style message — no emojis, professional telecom format
 
-import asyncio
 import logging
 import os
 from datetime import datetime, timezone
@@ -26,20 +13,20 @@ logger = logging.getLogger("customer_notifier")
 
 STATUS_FR = {
     "open":        "Ouverte",
-    "in_progress": "En cours de traitement ⚙️",
-    "resolved":    "Résolue ✅",
-    "closed":      "Clôturée 🔒",
+    "in_progress": "En cours de traitement",
+    "resolved":    "Resolue",
+    "closed":      "Cloturee",
 }
 
 SEGMENT_LABEL = {
-    "enterprise":  "Entreprise 🏢",
-    "simple_user": "Particulier 👤",
-    "highenduser": "High-End User ⭐",
-    "hv":          "HV Client 💎",
+    "enterprise":  "Entreprise",
+    "simple_user": "Particulier",
+    "highenduser": "High-End",
+    "hv":          "Grand Compte",
 }
 
 
-def _build_html_message(
+def _build_sms_message(
     complaint_id: str,
     msisdn:       Optional[str],
     status:       str,
@@ -47,52 +34,34 @@ def _build_html_message(
     city:         str,
     segment:      Optional[str] = None,
 ) -> str:
-    """
-    Build a professional HTML-formatted Telegram message with Ooredoo branding.
-    HTML parse_mode is more robust than Markdown — no risk of formatting breaks
-    from special characters in category/city names.
-    """
-    label       = STATUS_FR.get(status, status)
-    date_str    = datetime.now(timezone.utc).strftime("%d/%m/%Y à %H:%M UTC")
-    msisdn_disp = msisdn or "—"
-    seg_label   = SEGMENT_LABEL.get((segment or "").lower(), segment or "Particulier")
-
-    # Emoji indicator per status
-    status_emoji = {
-        "open":        "🔵",
-        "in_progress": "🟡",
-        "resolved":    "🟢",
-        "closed":      "⚫",
-    }.get(status, "🔵")
+    label     = STATUS_FR.get(status, status.upper())
+    date_str  = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    seg_label = SEGMENT_LABEL.get((segment or "").lower(), "Particulier")
 
     return (
-        # Header — Ooredoo branding
-        f'🔴 <b>Ooredoo Tunisia — SpiriCom NOC</b>\n'
-        f'━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
+        f"<b>OOREDOO TUNISIA</b>\n"
+        f"<b>Service Client — SpiriCom NOC</b>\n"
+        f"────────────────────────\n\n"
 
-        # Title
-        f'📋 <b>Mise à jour de votre ticket</b>\n\n'
+        f"Mise a jour de votre dossier\n\n"
 
-        # Ticket details
-        f'🎫 <b>Ticket :</b>  <code>{complaint_id}</code>\n'
-        f'📱 <b>MSISDN :</b>  <code>{msisdn_disp}</code>\n'
-        f'📍 <b>Ville :</b>   {city}\n'
-        f'🏷 <b>Catégorie :</b> {category}\n'
-        f'👤 <b>Segment :</b>  {seg_label}\n\n'
+        f"<b>Reference</b>  : <code>{complaint_id}</code>\n"
+        f"<b>MSISDN</b>     : <code>{msisdn or 'Non renseigne'}</code>\n"
+        f"<b>Ville</b>      : {city}\n"
+        f"<b>Categorie</b>  : {category}\n"
+        f"<b>Segment</b>    : {seg_label}\n\n"
 
-        # Status (prominent)
-        f'━━━━━━━━━━━━━━━━━━━━━━━━\n'
-        f'{status_emoji} <b>Statut :</b>  <b>{label}</b>\n'
-        f'🕐 <b>Date :</b>    {date_str}\n'
-        f'━━━━━━━━━━━━━━━━━━━━━━━━\n\n'
+        f"────────────────────────\n"
+        f"<b>STATUT : {label.upper()}</b>\n"
+        f"<b>Date   : {date_str}</b>\n"
+        f"────────────────────────\n\n"
 
-        # Ooredoo links & support
-        f'🌐 <a href="https://www.ooredoo.tn/Personal/fr/">ooredoo.tn</a>  '
-        
+        f"Pour toute assistance :\n"
+        f"  Site    : <a href=\"https://www.ooredoo.tn/Personal/fr/\">ooredoo.tn</a>\n"
+        f"  Hotline : 1234 (appel gratuit)\n\n"
 
-        # Footer
-        f'<i>SpiriCom NOC Intelligence\n'
-        f'Huawei Technologies Tunisia · PFE 2026</i>'
+        f"<i>Ooredoo Tunisia — Service Client\n"
+        f"Ce message est genere automatiquement.</i>"
     )
 
 
@@ -100,16 +69,11 @@ async def notify_customer(
     complaint_id: str,
     msisdn:       Optional[str],
     status:       str,
-    category:     str = "Réclamation",
+    category:     str = "Reclamation",
     city:         str = "Tunisie",
-    segment:      Optional[str] = None,   # TG-4: new parameter
+    segment:      Optional[str] = None,
     **_kwargs,
 ) -> dict:
-    """
-    Send a Telegram notification to the NOC channel when a complaint
-    status changes to in_progress, resolved or closed.
-    """
-    # Only notify on actionable transitions
     if status not in ("in_progress", "resolved", "closed"):
         return {"notified": False, "reason": "status_not_actionable"}
 
@@ -117,13 +81,10 @@ async def notify_customer(
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
 
     if not token or not chat_id:
-        logger.warning(
-            "Telegram not configured — "
-            "set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env"
-        )
+        logger.warning("Telegram not configured — set TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID")
         return {"notified": False, "channel": "telegram", "reason": "not_configured"}
 
-    html_text = _build_html_message(
+    html_text = _build_sms_message(
         complaint_id=complaint_id,
         msisdn=msisdn,
         status=status,
@@ -133,38 +94,28 @@ async def notify_customer(
     )
 
     try:
-        # TG-1: verify=False — corporate Huawei proxy uses self-signed cert
         async with httpx.AsyncClient(timeout=10, verify=False) as client:
             r = await client.post(
                 f"https://api.telegram.org/bot{token}/sendMessage",
                 json={
                     "chat_id":                  chat_id,
                     "text":                     html_text,
-                    "parse_mode":               "HTML",         # TG-2
+                    "parse_mode":               "HTML",
                     "disable_web_page_preview": True,
                 },
             )
 
-        # TG-5: log full response on failure
         if r.status_code == 200:
-            logger.info(
-                "Telegram ✅ → %s [%s] complaint=%s",
-                msisdn, status, complaint_id
-            )
+            logger.info("Telegram OK → %s [%s] complaint=%s", msisdn, status, complaint_id)
             return {"notified": True, "channel": "telegram"}
         else:
-            logger.error(
-                "Telegram ❌ HTTP %s: %s", r.status_code, r.text[:300]
-            )
-            return {
-                "notified": False,
-                "channel":  "telegram",
-                "error":    f"HTTP {r.status_code}: {r.text[:200]}",
-            }
+            logger.error("Telegram HTTP %s: %s", r.status_code, r.text[:300])
+            return {"notified": False, "channel": "telegram",
+                    "error": f"HTTP {r.status_code}: {r.text[:200]}"}
 
     except httpx.ConnectError as exc:
-        logger.error("Telegram ConnectError (proxy/SSL?): %s", exc)
+        logger.error("Telegram ConnectError: %s", exc)
         return {"notified": False, "channel": "telegram", "error": str(exc)}
     except Exception as exc:
-        logger.error("Telegram unexpected error: %s", exc)
+        logger.error("Telegram error: %s", exc)
         return {"notified": False, "channel": "telegram", "error": str(exc)}

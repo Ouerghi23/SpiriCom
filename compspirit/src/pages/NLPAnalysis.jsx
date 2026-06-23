@@ -412,7 +412,7 @@ function ComplaintModal({ complaint: c, onClose, onStatusUpdate, onDelete,
           {/* Actions */}
           <div style={{ display: 'flex', gap: 8, paddingTop: 8,
             borderTop: `1px solid ${T.border}`, flexWrap: 'wrap' }}>
-            {c.status !== 'in_progress' && c.status !== 'resolved' && (
+            {isComplaint === true && c.status !== 'in_progress' && c.status !== 'resolved' && (
               <ActionBtn onClick={() => onStatusUpdate(c.complaint_id, 'in_progress',
                 c.msisdn, c.nlp_category)} disabled={isActioning}
                 variant="minor" small={false}>
@@ -1191,14 +1191,14 @@ export default function NLPAnalysis() {
                       <td style={{ padding: '9px 12px' }}
                         onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap' }}>
-                          {c.status !== 'in_progress' && c.status !== 'resolved' && (
+                          {c.is_complaint === true && c.status !== 'in_progress' && c.status !== 'resolved' && (
                             <ActionBtn onClick={() => handleStatusUpdate(
                               c.complaint_id, 'in_progress', c.msisdn,
                               c.nlp_category)} disabled={isActioning} variant="minor">
                               {t('nlp.enCours')}
                             </ActionBtn>
                           )}
-                          {c.status !== 'resolved' && (
+                          {c.is_complaint === true && c.status !== 'resolved' && (
                             <ActionBtn onClick={() => handleStatusUpdate(
                               c.complaint_id, 'resolved', c.msisdn,
                               c.nlp_category)} disabled={isActioning} variant="normal">
