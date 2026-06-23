@@ -1,9 +1,9 @@
 ﻿"""
-src/api/analytics_api.py
+src/nlp/analytics_api.py
 =========================
 SpiriComp — FastAPI analytics backend (main entry point).
 Run from project root:
-    uvicorn src.api.analytics_api:app --reload --port 8000
+    uvicorn src.nlp.analytics_api:app --reload --port 8000
 """
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from src.api import ai_api 
 logger = logging.getLogger("analytics_api")
+logging.basicConfig(level=logging.INFO)
 
 # ── Data paths ────────────────────────────────────────────────────────
 DATA   = Path("data/processed")
@@ -1297,7 +1298,7 @@ app.add_middleware(
 
 @app.middleware("http")
 async def audit_request_middleware(request: Request, call_next):
-    from starlette.middleware.base import _StreamingResponse  # noqa: F401
+    
     response = await call_next(request)
     method   = request.method
     path     = request.url.path

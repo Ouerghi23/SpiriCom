@@ -58,10 +58,10 @@ def _build_sms_message(
 
         f"Pour toute assistance :\n"
         f"  Site    : <a href=\"https://www.ooredoo.tn/Personal/fr/\">ooredoo.tn</a>\n"
-        f"  Hotline : 1234 (appel gratuit)\n\n"
+        
 
-        f"<i>Ooredoo Tunisia — Service Client\n"
-        f"Ce message est genere automatiquement.</i>"
+        f"<i>Ooredoo Tunisia — DIMA M3AK\n"
+        
     )
 
 

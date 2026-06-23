@@ -1,0 +1,198 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fe61d006-0ebe-4250-a1b9-785504ab86f5",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [-4192, 832],
+      "id": "4a9112b2-d32e-4b40-922c-784b78ee95e7",
+      "name": "Webhook",
+      "webhookId": "c85d8622-58ea-49b7-8565-f1bd48a57f97"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "5b10586e-04fd-43c2-8ea5-06bf817dc7b3",
+              "leftValue": "={{ $json.urgency }}",
+              "rightValue": "très urgent",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "b275f28d-2596-4f27-b368-4c918b4484bd",
+              "leftValue": "={{ $json.urgency }}",
+              "rightValue": "urgent",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-3968, 832],
+      "id": "eb26c483-7bc4-40c3-8431-b40ad819c54b",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "6461505079",
+        "message": "=🚨 PLAINTE URGENTE — Action requise\n────────────────────────\n📋 Ref       : {{ $json.complaint_id }}\n📍 Zone      : {{ $json.city }}\n🏷 Catégorie : {{ $json.category }}\n📱 Client    : {{ $json.msisdn }}\n💬 {{ $json.text }}\n────────────────────────\nConfirmer votre action :",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "✅ Je prends en charge",
+            "disapproveLabel": "🔺 Escalader NOC"
+          }
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-3744, 832],
+      "id": "7d96834b-6770-416b-b607-5061c7028695",
+      "name": "Send message and wait for response",
+      "webhookId": "b933a9b4-f559-4d6a-8356-33ad7c7cdaf6",
+      "credentials": {
+        "telegramApi": {
+          "id": "Jj68GBphZm0ho2zi",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "action-pris",
+                    "leftValue": "={{ $json.approved }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Pris en charge"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
+                "conditions": [
+                  {
+                    "id": "action-escalade",
+                    "leftValue": "={{ $json.approved }}",
+                    "rightValue": false,
+                    "operator": { "type": "boolean", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Escalader NOC"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [-3520, 832],
+      "id": "af9bce3f-4c80-42ff-b8ec-b6ef40256c97",
+      "name": "Switch1"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://e4ca-196-234-5-10.ngrok-free.app/api/complaints/{{ $('Webhook').item.json.complaint_id }}/status",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"status\": \"in_progress\"}",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-3296, 736],
+      "id": "a3f6864f-3153-4b58-ad5c-321e0d706c76",
+      "name": "HTTP Request — in_progress"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://e4ca-196-234-5-10.ngrok-free.app/api/messages",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"to_user\": \"admin\", \"content\": \"ESCALADE TERRAIN — {{ $('Webhook').item.json.complaint_id }} zone {{ $('Webhook').item.json.city }} — ingénieur ne peut pas intervenir\", \"priority\": \"urgent\", \"msg_type\": \"direct\"}",
+        "options": { "allowUnauthorizedCerts": true }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-3296, 928],
+      "id": "4a23b250-7616-4234-91f0-c3ee3d0ba00b",
+      "name": "HTTP Request — escalade NOC"
+    },
+    {
+      "parameters": {
+        "chatId": "6461505079",
+        "text": "=✅ Enregistré\n────────────────────────\nRef    : {{ $('Webhook').item.json.complaint_id }}\nStatut : En cours de traitement\nClient : sera notifié automatiquement\n────────────────────────\nMerci pour votre intervention.",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [-3072, 832],
+      "id": "8e1ea0bb-b96a-47b3-9882-1de432c6013d",
+      "name": "Telegram — Confirmation ingénieur",
+      "credentials": {
+        "telegramApi": {
+          "id": "Jj68GBphZm0ho2zi",
+          "name": "Telegram account 2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "If", "type": "main", "index": 0 }]]
+    },
+    "If": {
+      "main": [[{ "node": "Send message and wait for response", "type": "main", "index": 0 }]]
+    },
+    "Send message and wait for response": {
+      "main": [[{ "node": "Switch1", "type": "main", "index": 0 }]]
+    },
+    "Switch1": {
+      "main": [
+        [{ "node": "HTTP Request — in_progress",  "type": "main", "index": 0 }],
+        [{ "node": "HTTP Request — escalade NOC", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Request — in_progress": {
+      "main": [[{ "node": "Telegram — Confirmation ingénieur", "type": "main", "index": 0 }]]
+    },
+    "HTTP Request — escalade NOC": {
+      "main": [[{ "node": "Telegram — Confirmation ingénieur", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2a1303f435da1c49b1249fce0dfcda5032d8d6b975f3f3be4ab5f63c7bedd917"
+  }
+}

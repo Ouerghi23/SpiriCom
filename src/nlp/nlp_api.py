@@ -3,6 +3,8 @@ src/nlp/nlp_api.py
 """
 from __future__ import annotations
 import logging
+import os
+import httpx
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -10,25 +12,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Request, Depends, logger
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from src.nlp.multilingual_nlp_pipeline import MultilingualNLPPipeline
 from src.nlp.complaint_db import ComplaintDB
-# NLP-7: SECURITY — update_status/delete_complaint were unauthenticated;
-# any caller could mutate or delete complaints.
-# NLP-7b: import is DEFENSIVE but still fails CLOSED — a module-level
-# import failure here must not take down the WHOLE complaints router
-# (submit/analyze/stats/list/get would 404 too, which is a much bigger
-# blast radius than the 2 endpoints that actually need auth). If
-# auth_api can't be imported, current_user becomes a dependency that
-# always raises 503 — so update_status/delete_complaint are disabled
-# (not silently open), while every other endpoint keeps working.
+
+# FIX-1: logger doit venir de logging, PAS de fastapi
+logger = logging.getLogger("nlp_api")
+
+# ── n8n webhook helper ────────────────────────────────────────────────
+# FIX-2: une seule définition (était définie deux fois)
+async def _trigger_n8n(record: dict, nlp: dict) -> None:
+    """Appelle n8n uniquement pour les plaintes très urgentes."""
+    webhook_url = os.getenv("N8N_WEBHOOK_URL", "")
+    if not webhook_url:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=5, verify=False) as client:
+            await client.post(webhook_url, json={
+                "event":        "urgent_complaint",
+                "complaint_id": record["complaint_id"],
+                "urgency":      nlp.get("urgency_level"),
+                "category":     nlp.get("category"),
+                "city":         record.get("city") or "Inconnue",
+                "msisdn":       record.get("msisdn") or "—",
+                "text":         record.get("text_original", "")[:200],
+                "sentiment":    nlp.get("sentiment"),
+                "segment":      record.get("segment"),
+                "language":     nlp.get("language"),
+            })
+        logger.info("n8n triggered → %s", record["complaint_id"])
+    except Exception as exc:
+        logger.warning("n8n webhook failed (non-fatal): %s", exc)
+
+# ── Auth import — fail-closed ─────────────────────────────────────────
+# FIX-3: fallbacks au niveau MODULE (pas à l'intérieur d'une fonction)
 try:
     from src.nlp.auth_api import current_user, log_action, client_ip
-except Exception as _exc:                            # pragma: no cover
-    logging.getLogger("nlp_api").error(
+except Exception as _exc:
+    logger.error(
         "auth_api unavailable — complaint status/delete endpoints "
         "disabled (fail-closed): %s", _exc)
 
@@ -41,55 +65,51 @@ except Exception as _exc:                            # pragma: no cover
     def client_ip(*args, **kwargs):
         return "unknown"
 
-# NLP-1: in-app notification bell (SQLite + SSE), not notification_service
-# (that module is the external ntfy/CallMeBot push integration).
-# NLP-1b: import is DEFENSIVE — a missing/broken notification system
-# must never take down the complaints router (submit/list/status).
+# ── Notification imports — defensive ─────────────────────────────────
 try:
     from src.api.notification_service import emit_notification
-except Exception as _exc:                            # pragma: no cover
-    logging.getLogger("nlp_api").warning(
-        "notifications_api unavailable — notifications disabled: %s", _exc)
+except Exception as _exc:
+    logger.warning("notifications_api unavailable: %s", _exc)
     def emit_notification(*args, **kwargs):
         return None
+
 try:
     from src.api.customer_notifier import notify_customer
 except Exception as _e:
     logger.warning("customer_notifier unavailable: %s", _e)
     async def notify_customer(*a, **k): return {"notified": False}
 
+# ── Router + pipeline ─────────────────────────────────────────────────
 router = APIRouter(tags=["Complaints", "NLP", "Analytics"])
-_pipe = MultilingualNLPPipeline()
-_db   = ComplaintDB()
+_pipe  = MultilingualNLPPipeline()
+_db    = ComplaintDB()
 
-# NLP-6: urgency_level (from the NLP pipeline) -> notification severity,
-# matching the ALARM ladder used across the dashboard.
 URGENCY_SEVERITY = {
     "très urgent": "critical",
-    "urgent":       "major",
-    "normal":       "minor",
+    "urgent":      "major",
+    "normal":      "minor",
 }
 
-# NLP-8: display labels for the 4-state workflow (notification bodies only;
-# the stored `status` value is unchanged — 'open' on the wire = "Pending").
-STATUS_LABEL = {"open": "Pending", "in_progress": "In Progress",
-               "resolved": "Resolved", "closed": "Closed"}
+STATUS_LABEL = {
+    "open":        "Pending",
+    "in_progress": "In Progress",
+    "resolved":    "Resolved",
+    "closed":      "Closed",
+}
 
-
+# ── Pydantic models ───────────────────────────────────────────────────
 class ComplaintSubmit(BaseModel):
-    text:    str           = Field(..., min_length=5, max_length=3000)
-    msisdn:  Optional[str] = None
-    city:    Optional[str] = None
-    segment: Optional[str] = None
-    channel: Optional[str] = "web"
+    text:     str           = Field(..., min_length=5, max_length=3000)
+    msisdn:   Optional[str] = None
+    city:     Optional[str] = None
+    segment:  Optional[str] = None
+    sub_type: Optional[str] = None   # 'question' | 'complaint' | 'feedback' | None
+    channel:  Optional[str] = "web"
 
 class StatusUpdate(BaseModel):
-    # NLP-8: 4-state workflow — Pending=open, In Progress, Resolved, Closed.
-    # 'open' is kept as the wire value for backward compatibility; only the
-    # display label (STATUS_LABEL below) says "Pending".
     status: str = Field(..., pattern="^(open|in_progress|resolved|closed)$")
 
-
+# ── Routes ────────────────────────────────────────────────────────────
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def root():
     return """<html><body style="font-family:Arial;max-width:500px;margin:40px auto">
@@ -114,53 +134,72 @@ async def submit_complaint(c: ComplaintSubmit):
         "msisdn":        c.msisdn,
         "city_input":    c.city,
         "segment":       c.segment,
+        "sub_type":      c.sub_type,
         "channel":       c.channel or "web",
         "text_original": c.text,
         **nlp,
     }
 
-    # ── FIX-CITY ──────────────────────────────────────────────────────
-    # If the NLP pipeline didn't detect a city from the message text,
-    # fall back to the city the user typed in the form field.
-    # Without this, nlp_city is always empty when text doesn't mention
-    # a Tunisian city name explicitly.
+    # FIX-CITY: fallback to form city if NLP didn't detect one
     if not record.get("city") and c.city:
         record["city"] = c.city
-    # ──────────────────────────────────────────────────────────────────
+
+    # Override NLP classification when user explicitly chose a type
+    if c.sub_type == "question":
+        record["is_complaint"]  = False
+        record["nlp_category"]  = record.get("nlp_category") or "Question"
+        record["urgency_level"] = "normal"
+    elif c.sub_type == "complaint":
+        record["is_complaint"] = True
+    elif c.sub_type == "feedback":
+        record["is_complaint"] = False
 
     _db.insert(record)
+    logger.info("NLP keys: %s", list(nlp.keys()))
+    logger.info("urgency_level = %r", nlp.get("urgency_level"))
+    logger.info("nlp_urgency_level = %r", nlp.get("nlp_urgency_level"))
+    logger.info("N8N_WEBHOOK_URL = %r", os.getenv("N8N_WEBHOOK_URL")) 
+    urgency = nlp.get("urgency_level") or nlp.get("nlp_urgency_level") or ""
 
-    # ── NLP-1/2/3/4/6: notify AFTER a successful insert ────────────────
-    is_complaint = nlp.get("is_complaint")
+
+    # ── n8n dispatch — très urgent seulement ──────────────────────
+    if urgency in ("très urgent", "urgent"):
+        await _trigger_n8n(record, {**nlp, "urgency_level": urgency})
+        
+    # ──────────────────────────────────────────────────────────────
+
+    is_complaint = record.get("is_complaint")
     notif_type   = "new_complaint" if is_complaint else "new_feedback"
-    title        = (f"New complaint #{cid}" if is_complaint
-                    else f"New feedback #{cid}")
+    title        = f"New complaint #{cid}" if is_complaint else f"New feedback #{cid}"
     city         = record.get("city") or "Unknown city"
     severity     = URGENCY_SEVERITY.get(nlp.get("urgency_level"), "minor")
+
     emit_notification(
         "engineer", notif_type, title,
         f"From {city} · {nlp.get('category', 'Uncategorized')}",
         severity, {"url": "/complaint-map", "id": cid},
     )
-    # ────────────────────────────────────────────────────────────────────
 
-    resp_hours = {"très urgent": 2, "urgent": 8, "normal": 24}.get(nlp["urgency_level"], 24)
-    lang_label = {"ar": "العربية", "fr": "Français", "en": "English"}.get(nlp["language"], nlp["language"])
+    resp_hours = {"très urgent": 2, "urgent": 8, "normal": 24}.get(
+        record.get("urgency_level", "normal"), 24)
+    lang_label = {"ar": "العربية", "fr": "Français", "en": "English"}.get(
+        nlp["language"], nlp["language"])
 
     return {
         "complaint_id":             cid,
-        "is_complaint":             nlp.get("is_complaint"),
+        "is_complaint":             record.get("is_complaint"),
+        "sub_type":                 c.sub_type,
         "language_detected":        lang_label,
-        "category":                 nlp["category"],
+        "category":                 record.get("nlp_category"),
         "sentiment":                nlp["sentiment"],
-        "urgency_level":            nlp["urgency_level"],
+        "urgency_level":            record.get("urgency_level"),
         "urgency_score":            nlp["urgency_score"],
-        "city_detected":            record.get("city"),   # ← returns user city if NLP found nothing
+        "city_detected":            record.get("city"),
         "estimated_response_hours": resp_hours,
         "message": (
-            f"{'Réclamation' if nlp.get('is_complaint') else 'Feedback'} "
+            f"{'Réclamation' if record.get('is_complaint') else 'Message'} "
             f"enregistré (ID: {cid}). "
-            f"{'Délai: ' + str(resp_hours) + 'h.' if nlp.get('is_complaint') else 'Merci.'}"
+            f"{'Délai: ' + str(resp_hours) + 'h.' if record.get('is_complaint') else 'Merci.'}"
         ),
     }
 
@@ -177,10 +216,10 @@ async def get_stats():
 
 @router.get("/api/complaints", tags=["Complaints"])
 async def list_complaints(
-    language:     Optional[str]  = Query(None, examples=["ar"]),
-    urgency:      Optional[str]  = Query(None, examples=["urgent"]),
-    sentiment:    Optional[str]  = Query(None, examples=["critique"]),
-    status:       Optional[str]  = Query(None, examples=["open"]),
+    language:     Optional[str]  = Query(None),
+    urgency:      Optional[str]  = Query(None),
+    sentiment:    Optional[str]  = Query(None),
+    status:       Optional[str]  = Query(None),
     is_complaint: Optional[bool] = Query(None),
     limit:        int             = Query(100, le=500),
 ):
@@ -207,12 +246,8 @@ async def update_status(
     complaint_id: str,
     body: StatusUpdate,
     request: Request,
-    # NLP-7: SECURITY — this endpoint was unauthenticated. Any logged-in
-    # NOC user (engineer/admin) is now required as the audit actor.
     caller: dict = Depends(current_user),
 ):
-    # NLP-10: 404 if the complaint doesn't exist (was a silent no-op
-    # before). Also captures the OLD status for the transition log.
     df  = _db.to_dataframe(limit=10000)
     row = df[df["complaint_id"] == complaint_id]
     if row.empty:
@@ -220,6 +255,7 @@ async def update_status(
     old_status = row.iloc[0].get("status")
 
     _db.update_status(complaint_id, body.status)
+
     await notify_customer(
         complaint_id = complaint_id,
         msisdn       = row.iloc[0].get("msisdn"),
@@ -228,24 +264,15 @@ async def update_status(
         city         = row.iloc[0].get("city", "Tunisie"),
     )
 
-    
-
     transition = (f"{STATUS_LABEL.get(old_status, old_status)} → "
-                   f"{STATUS_LABEL.get(body.status, body.status)}")
+                  f"{STATUS_LABEL.get(body.status, body.status)}")
 
-    # NLP-9: explicit audit trail entry — action name matches
-    # AccessLogs.jsx's ACTION_META/uniqueActions exactly
-    # (update_complaint_status -> Edit2 / purple). No frontend change
-    # needed. See NLP-9-FLAG re: analytics_api's audit middleware.
     log_action(
         actor=caller["username"], action="update_complaint_status",
         target_user=complaint_id, ip=client_ip(request), status="success",
         detail=transition,
     )
 
-    # NLP-5/11: status-change trigger from the spec, with old→new
-    # transition in the notification body. 'resolved'/'closed' are good
-    # news -> normal (green); other transitions -> info (blue).
     severity = "normal" if body.status in ("resolved", "closed") else "info"
     emit_notification(
         "engineer", "complaint_update",
@@ -261,18 +288,14 @@ async def update_status(
 async def delete_complaint(
     complaint_id: str,
     request: Request,
-    # NLP-7: SECURITY — this endpoint was unauthenticated. Deletion now
-    # requires a logged-in NOC user, recorded as the audit actor.
     caller: dict = Depends(current_user),
 ):
-    # NLP-10: fetch context BEFORE deleting — both for a useful audit
-    # detail and to 404 cleanly if the complaint is already gone.
     df  = _db.to_dataframe(limit=10000)
     row = df[df["complaint_id"] == complaint_id]
     if row.empty:
         raise HTTPException(404, f"Complaint {complaint_id} not found")
     category = row.iloc[0].get("category") or "Uncategorized"
-    city     = row.iloc[0].get("city") or "Unknown city"
+    city     = row.iloc[0].get("city")     or "Unknown city"
 
     with _db._conn() as conn:
         cursor = conn.execute(
@@ -281,16 +304,12 @@ async def delete_complaint(
         if cursor.rowcount == 0:
             raise HTTPException(404, f"Complaint {complaint_id} not found")
 
-    # NLP-9: explicit audit trail entry — matches AccessLogs.jsx's
-    # delete_complaint ACTION_META (Trash2 / critical). See NLP-9-FLAG.
     log_action(
         actor=caller["username"], action="delete_complaint",
         target_user=complaint_id, ip=client_ip(request), status="success",
         detail=f"{category} · {city}",
     )
 
-    # NLP-11: surface deletions to engineers too (spec: "new update in
-    # complaint data ... etc." covers removal, not just status change).
     emit_notification(
         "engineer", "complaint_update",
         f"Complaint #{complaint_id} deleted",
