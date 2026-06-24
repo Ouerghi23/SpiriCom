@@ -61,7 +61,7 @@ def _build_sms_message(
         
 
         f"<i>Ooredoo Tunisia — DIMA M3AK\n"
-        
+        f"</i>"
     )
 
 

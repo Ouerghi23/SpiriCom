@@ -8,8 +8,8 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
-      "position": [-4192, 832],
-      "id": "4a9112b2-d32e-4b40-922c-784b78ee95e7",
+      "position": [-5456, 1024],
+      "id": "6ad7ab0a-3f09-4268-8fe5-3da7abfd70b7",
       "name": "Webhook",
       "webhookId": "c85d8622-58ea-49b7-8565-f1bd48a57f97"
     },
@@ -24,13 +24,13 @@
           "conditions": [
             {
               "id": "5b10586e-04fd-43c2-8ea5-06bf817dc7b3",
-              "leftValue": "={{ $json.urgency }}",
+              "leftValue": "={{ $json.body.urgency }}",
               "rightValue": "très urgent",
               "operator": { "type": "string", "operation": "equals" }
             },
             {
               "id": "b275f28d-2596-4f27-b368-4c918b4484bd",
-              "leftValue": "={{ $json.urgency }}",
+              "leftValue": "={{ $json.body.urgency }}",
               "rightValue": "urgent",
               "operator": { "type": "string", "operation": "equals" }
             }
@@ -41,15 +41,15 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.3,
-      "position": [-3968, 832],
-      "id": "eb26c483-7bc4-40c3-8431-b40ad819c54b",
+      "position": [-5232, 1024],
+      "id": "efa0b060-9022-4579-aa8f-fdd01a4192ce",
       "name": "If"
     },
     {
       "parameters": {
         "operation": "sendAndWait",
         "chatId": "6461505079",
-        "message": "=🚨 PLAINTE URGENTE — Action requise\n────────────────────────\n📋 Ref       : {{ $json.complaint_id }}\n📍 Zone      : {{ $json.city }}\n🏷 Catégorie : {{ $json.category }}\n📱 Client    : {{ $json.msisdn }}\n💬 {{ $json.text }}\n────────────────────────\nConfirmer votre action :",
+        "message": "=🚨 PLAINTE URGENTE — Action requise\n────────────────────────\n📋 Ref       : {{ $('Webhook').item.json.body.complaint_id }}\n📍 Zone      : {{ $('Webhook').item.json.body.city }}\n🏷 Catégorie : {{ $('Webhook').item.json.body.category }}\n📱 Client    : {{ $('Webhook').item.json.body.msisdn }}\n💬 {{ $('Webhook').item.json.body.text }}\n────────────────────────\nConfirmer votre action :",
         "approvalOptions": {
           "values": {
             "approvalType": "double",
@@ -61,8 +61,8 @@
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [-3744, 832],
-      "id": "7d96834b-6770-416b-b607-5061c7028695",
+      "position": [-5008, 1024],
+      "id": "933aef1a-d5e6-4ab4-8bec-f1b3aafaffa5",
       "name": "Send message and wait for response",
       "webhookId": "b933a9b4-f559-4d6a-8356-33ad7c7cdaf6",
       "credentials": {
@@ -74,54 +74,38 @@
     },
     {
       "parameters": {
-        "rules": {
-          "values": [
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
             {
-              "conditions": {
-                "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
-                "conditions": [
-                  {
-                    "id": "action-pris",
-                    "leftValue": "={{ $json.approved }}",
-                    "rightValue": true,
-                    "operator": { "type": "boolean", "operation": "equals" }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Pris en charge"
-            },
-            {
-              "conditions": {
-                "options": { "caseSensitive": false, "typeValidation": "loose", "version": 3 },
-                "conditions": [
-                  {
-                    "id": "action-escalade",
-                    "leftValue": "={{ $json.approved }}",
-                    "rightValue": false,
-                    "operator": { "type": "boolean", "operation": "equals" }
-                  }
-                ],
-                "combinator": "and"
-              },
-              "renameOutput": true,
-              "outputKey": "Escalader NOC"
+              "id": "approved-check",
+              "leftValue": "={{ $json.approved }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
             }
-          ]
+          ],
+          "combinator": "and"
         },
         "options": {}
       },
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.4,
-      "position": [-3520, 832],
-      "id": "af9bce3f-4c80-42ff-b8ec-b6ef40256c97",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-4784, 1024],
+      "id": "67561c8e-8aac-411b-bd64-4ec1f5d9aacf",
       "name": "Switch1"
     },
     {
       "parameters": {
         "method": "PUT",
-        "url": "=https://e4ca-196-234-5-10.ngrok-free.app/api/complaints/{{ $('Webhook').item.json.complaint_id }}/status",
+        "url": "=https://e4ca-196-234-5-10.ngrok-free.app/api/complaints/{{ $('Webhook').item.json.body.complaint_id }}/n8n-status",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "{\"status\": \"in_progress\"}",
@@ -129,8 +113,8 @@
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [-3296, 736],
-      "id": "a3f6864f-3153-4b58-ad5c-321e0d706c76",
+      "position": [-4560, 928],
+      "id": "95b367cc-2253-4489-b22b-2de4b1859cde",
       "name": "HTTP Request — in_progress"
     },
     {
@@ -139,25 +123,25 @@
         "url": "https://e4ca-196-234-5-10.ngrok-free.app/api/messages",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\"to_user\": \"admin\", \"content\": \"ESCALADE TERRAIN — {{ $('Webhook').item.json.complaint_id }} zone {{ $('Webhook').item.json.city }} — ingénieur ne peut pas intervenir\", \"priority\": \"urgent\", \"msg_type\": \"direct\"}",
+        "jsonBody": "={\"to_user\": \"admin\", \"content\": \"ESCALADE TERRAIN — {{ $('Webhook').item.json.body.complaint_id }} zone {{ $('Webhook').item.json.body.city }} — ingénieur ne peut pas intervenir\", \"priority\": \"urgent\", \"msg_type\": \"direct\"}",
         "options": { "allowUnauthorizedCerts": true }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.4,
-      "position": [-3296, 928],
-      "id": "4a23b250-7616-4234-91f0-c3ee3d0ba00b",
+      "position": [-4560, 1120],
+      "id": "855ea1ef-3afb-4b0a-a6c3-70bc1f0b131c",
       "name": "HTTP Request — escalade NOC"
     },
     {
       "parameters": {
         "chatId": "6461505079",
-        "text": "=✅ Enregistré\n────────────────────────\nRef    : {{ $('Webhook').item.json.complaint_id }}\nStatut : En cours de traitement\nClient : sera notifié automatiquement\n────────────────────────\nMerci pour votre intervention.",
+        "text": "=✅ Enregistré\n────────────────────────\nRef    : {{ $('Webhook').item.json.body.complaint_id }}\nStatut : En cours de traitement\nClient : sera notifié automatiquement\n────────────────────────\nMerci pour votre intervention.",
         "additionalFields": {}
       },
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [-3072, 832],
-      "id": "8e1ea0bb-b96a-47b3-9882-1de432c6013d",
+      "position": [-4336, 1024],
+      "id": "39bf22a0-1555-43d7-ac93-08866bf8ad1b",
       "name": "Telegram — Confirmation ingénieur",
       "credentials": {
         "telegramApi": {

@@ -1,36 +1,4 @@
 // src/components/BrandPerformance.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Brand Performance Section  v4
-// Feeds from: GET /api/brand/performance
-// Requires:   npm install simple-icons
-//
-// MIGRATION (vs v3):
-//  BP-1  REAL BRAND ICONS. Avatars render official monochrome brand
-//        marks from simple-icons (Huawei, Samsung, Apple, Xiaomi,
-//        OPPO, vivo, OnePlus, Nokia, Motorola, Sony, Honor, LG, HTC).
-//        Brands without a mark in the library (Realme, Tecno, Itel,
-//        ZTE, Infinix, Alcatel, Wiko) fall back to the monogram tile.
-//        The 🍎 emoji is gone.
-//  BP-2  Local HW tokens / SectionLabel removed — imported from
-//        components/UI. No T/GAP props: useTheme() + gapColor()
-//        internally (update the call site in Forecasting.jsx to
-//        <BrandPerformanceSection/>).
-//  BP-3  Churn severity → ALARM ladder via one churnSeverity() used
-//        by both the row value and the DualBar (was raw red/amber/
-//        green that drifted from the system). 5G accent → blueLight.
-//        Summary-KPI colors → tokens.
-//  BP-4  Rank bug fixed: rank was computed AFTER Huawei was pinned,
-//        so Huawei always displayed #1 regardless of its real rank.
-//        Ranks now come from the pure sort order; pinning only
-//        affects display position.
-//  BP-5  Huawei avatar gradient used the legacy #CF0A2C — now HW.red.
-//        Sponsor styling kept (brand chrome is the legitimate red).
-//  BP-6  Show-more hover via CSS class (no inline mouseEnter
-//        mutation). "Churn ▸ 5G" glyph → "Churn / 5G".
-//        Typography floor: 7/8px labels → 9/10px.
-//  BP-7  i18n integration — all hardcoded strings replaced with
-//        translation keys from forecast.brand namespace.
-// ─────────────────────────────────────────────────────────────────────
 
 import { useState, useMemo, useEffect } from 'react'
 import { useTranslation }               from 'react-i18next'

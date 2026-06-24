@@ -19,13 +19,10 @@ from pydantic import BaseModel, Field
 from src.nlp.multilingual_nlp_pipeline import MultilingualNLPPipeline
 from src.nlp.complaint_db import ComplaintDB
 
-# FIX-1: logger doit venir de logging, PAS de fastapi
 logger = logging.getLogger("nlp_api")
 
 # ── n8n webhook helper ────────────────────────────────────────────────
-# FIX-2: une seule définition (était définie deux fois)
 async def _trigger_n8n(record: dict, nlp: dict) -> None:
-    """Appelle n8n uniquement pour les plaintes très urgentes."""
     webhook_url = os.getenv("N8N_WEBHOOK_URL", "")
     if not webhook_url:
         return
@@ -48,13 +45,10 @@ async def _trigger_n8n(record: dict, nlp: dict) -> None:
         logger.warning("n8n webhook failed (non-fatal): %s", exc)
 
 # ── Auth import — fail-closed ─────────────────────────────────────────
-# FIX-3: fallbacks au niveau MODULE (pas à l'intérieur d'une fonction)
 try:
     from src.nlp.auth_api import current_user, log_action, client_ip
 except Exception as _exc:
-    logger.error(
-        "auth_api unavailable — complaint status/delete endpoints "
-        "disabled (fail-closed): %s", _exc)
+    logger.error("auth_api unavailable: %s", _exc)
 
     def current_user():
         raise HTTPException(503, "Authentication service unavailable")
@@ -65,7 +59,7 @@ except Exception as _exc:
     def client_ip(*args, **kwargs):
         return "unknown"
 
-# ── Notification imports — defensive ─────────────────────────────────
+# ── Notification imports ──────────────────────────────────────────────
 try:
     from src.api.notification_service import emit_notification
 except Exception as _exc:
@@ -103,7 +97,7 @@ class ComplaintSubmit(BaseModel):
     msisdn:   Optional[str] = None
     city:     Optional[str] = None
     segment:  Optional[str] = None
-    sub_type: Optional[str] = None   # 'question' | 'complaint' | 'feedback' | None
+    sub_type: Optional[str] = None
     channel:  Optional[str] = "web"
 
 class StatusUpdate(BaseModel):
@@ -140,11 +134,9 @@ async def submit_complaint(c: ComplaintSubmit):
         **nlp,
     }
 
-    # FIX-CITY: fallback to form city if NLP didn't detect one
     if not record.get("city") and c.city:
         record["city"] = c.city
 
-    # Override NLP classification when user explicitly chose a type
     if c.sub_type == "question":
         record["is_complaint"]  = False
         record["nlp_category"]  = record.get("nlp_category") or "Question"
@@ -155,18 +147,10 @@ async def submit_complaint(c: ComplaintSubmit):
         record["is_complaint"] = False
 
     _db.insert(record)
-    logger.info("NLP keys: %s", list(nlp.keys()))
-    logger.info("urgency_level = %r", nlp.get("urgency_level"))
-    logger.info("nlp_urgency_level = %r", nlp.get("nlp_urgency_level"))
-    logger.info("N8N_WEBHOOK_URL = %r", os.getenv("N8N_WEBHOOK_URL")) 
+
     urgency = nlp.get("urgency_level") or nlp.get("nlp_urgency_level") or ""
-
-
-    # ── n8n dispatch — très urgent seulement ──────────────────────
     if urgency in ("très urgent", "urgent"):
         await _trigger_n8n(record, {**nlp, "urgency_level": urgency})
-        
-    # ──────────────────────────────────────────────────────────────
 
     is_complaint = record.get("is_complaint")
     notif_type   = "new_complaint" if is_complaint else "new_feedback"
@@ -283,6 +267,14 @@ async def update_status(
 
     return {"complaint_id": complaint_id, "status": body.status}
 
+@router.put("/api/complaints/{complaint_id}/n8n-status", tags=["Complaints"])
+async def n8n_update_status(complaint_id: str, body: StatusUpdate):
+    df  = _db.to_dataframe(limit=10000)
+    row = df[df["complaint_id"] == complaint_id]
+    if row.empty:
+        raise HTTPException(404, "Not found")
+    _db.update_status(complaint_id, body.status)
+    return {"complaint_id": complaint_id, "status": body.status}
 
 @router.delete("/api/complaints/{complaint_id}", tags=["Complaints"])
 async def delete_complaint(
