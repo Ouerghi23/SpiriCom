@@ -294,7 +294,7 @@ export default function UserSegments() {
               <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
                 textTransform: 'uppercase',
                 color: apiOnline ? ALARM.normal : ALARM.critical }}>
-                {apiOnline ? 'LIVE' : 'OFFLINE'}
+                {apiOnline ? 'LIVE SEGMENTS' : 'OFFLINE'}
               </span>
             </div>
             <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>

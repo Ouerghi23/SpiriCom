@@ -125,25 +125,45 @@ export default function AccessLogs() {
   }, [logs, search])
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+const exportCSV = () => {
+  // Header = 1 tableau, pas 7 strings séparées
+  const headers = [
+    t('logs.csv.timestamp'),
+    t('logs.csv.user'),
+    t('logs.csv.action'),
+    t('logs.csv.target'),
+    t('logs.csv.ip'),
+    t('logs.csv.status'),
+    t('logs.csv.detail'),
+  ]
 
-  const exportCSV = () => {
-    const rows = [
-      t('logs.csv.timestamp'),
-      t('logs.csv.user'),
-      t('logs.csv.action'),
-      t('logs.csv.target'),
-      t('logs.csv.ip'),
-      t('logs.csv.status'),
-      t('logs.csv.detail')
-    ]
-    logs.forEach(l => rows.push([l.timestamp, l.user, l.action,
-      l.target, l.ip, l.status, l.detail || '']))
-    const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-    const a   = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-    a.download = `access_logs_page${page}.csv`; a.click()
-  }
+  const rows = [
+    headers,
+    ...logs.map(l => [
+      l.timestamp || '',
+      l.user      || '',
+      l.action    || '',
+      l.target    || '',
+      l.ip        || '',
+      l.status    || '',
+      l.detail    || '',
+    ])
+  ]
 
+  // \ufeff = BOM pour Excel UTF-8 (évite les problèmes d'accents)
+  const csv = '\ufeff' + rows
+    .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n')
+
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(
+    new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  )
+  a.download = `access_logs_page${page}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
   // Safe formatting helpers
   const formatTotal = (num) => num?.toLocaleString() || '0'
   const formatPageOf = (current, total) => `Page ${current} / ${total}`
