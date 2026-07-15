@@ -3,137 +3,206 @@
 
 name: SpiriCom CI/CD
 
-
 permissions:
   contents: read
   packages: write
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
   pull_request:
-    branches: [main]
+    branches:
+      - main
+
 
 jobs:
 
-  # ─────────────────────────────────────────────────────────────────────
-  # Job 1 — Lint + Build
-  # ─────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
+  # Job 1 — Backend Lint + Frontend Build
+  # ─────────────────────────────────────────────────────────────
   lint-and-test:
     name: 🔍 Lint & Build
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
 
-      # ── Python ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ── Python Backend ───────────────────────────────────────
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
-      - name: Cache pip
+
+      - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: pip-
+          restore-keys: |
+            pip-
 
-      - name: Install backend deps
-        run: pip install -r requirements.txt
 
-      - name: Lint backend (flake8)
+      - name: Install backend dependencies
+        run: |
+          pip install -r requirements.txt
+
+
+      - name: Lint backend
         run: |
           pip install flake8
-          flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 || true
+          flake8 src/ \
+            --max-line-length=120 \
+            --extend-ignore=E203,W503 || true
 
 
-      # ── Node ───────────────────────────────────────────────────────
+
+      # ── React Frontend ───────────────────────────────────────
+
       - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: "24"
           cache: npm
           cache-dependency-path: compspirit/package-lock.json
 
-      - name: Install frontend deps
-        run: cd compspirit && npm ci
+
+      - name: Install frontend dependencies
+        working-directory: compspirit
+        run: |
+          npm ci
+
 
       - name: Build frontend
-        run: cd compspirit && npm run build
+        working-directory: compspirit
+        run: |
+          npm run build
 
 
-  # ─────────────────────────────────────────────────────────────────────
-  # Job 2 — Docker images → GHCR
-  # ─────────────────────────────────────────────────────────────────────
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 2 — Docker Images → GitHub Container Registry
+  # ─────────────────────────────────────────────────────────────
   docker-build:
     name: 🐳 Docker Build & Push
     needs: lint-and-test
     runs-on: ubuntu-latest
+
     if: github.ref == 'refs/heads/main'
 
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Log in to GHCR
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      - name: Set lowercase image name
+        run: |
+          echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+
+
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push backend image
+
+
+      # Backend image
+
+      - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository }}/backend:latest
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME }}/backend:latest
 
-      - name: Build & push frontend image
+
+
+      # Frontend image
+
+      - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
           context: ./compspirit
           push: true
-          tags: ghcr.io/${{ github.repository }}/frontend:latest
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME }}/frontend:latest
 
 
-  # ─────────────────────────────────────────────────────────────────────
+
+
+  # ─────────────────────────────────────────────────────────────
   # Job 3 — Deploy Backend to Render
-  # ─────────────────────────────────────────────────────────────────────
+  # ─────────────────────────────────────────────────────────────
   deploy-backend:
     name: 🚀 Deploy to Render
     needs: lint-and-test
     runs-on: ubuntu-latest
+
     if: github.ref == 'refs/heads/main'
 
+
     steps:
-      - name: Trigger Render deploy hook
+
+      - name: Trigger Render deployment
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+
         run: |
-          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK }}" \
+
+          if [ -z "$RENDER_DEPLOY_HOOK" ]; then
+            echo "❌ Missing RENDER_DEPLOY_HOOK secret"
+            exit 1
+          fi
+
+
+          curl -X POST "$RENDER_DEPLOY_HOOK" \
             --fail \
             --silent \
             --show-error
 
-          echo "✅ Render deploy triggered"
+
+          echo "✅ Render deployment triggered"
 
 
-  # ─────────────────────────────────────────────────────────────────────
-  # Job 4 — Health Check
-  # ─────────────────────────────────────────────────────────────────────
+
+
+  # ─────────────────────────────────────────────────────────────
+  # Job 4 — Health Checks
+  # ─────────────────────────────────────────────────────────────
   health-check:
     name: 🏥 Health Check
     needs: deploy-backend
     runs-on: ubuntu-latest
+
     if: github.ref == 'refs/heads/main'
+
 
     steps:
 
-      - name: Wait for Render cold start
-        run: sleep 120
+
+      - name: Wait for Render startup
+        run: |
+          echo "Waiting for Render cold start..."
+          sleep 120
+
 
 
       - name: Backend health check
         run: |
+
           curl --fail \
             --retry 6 \
             --retry-delay 20 \
@@ -141,13 +210,17 @@ jobs:
             --max-time 15 \
             "https://spiricom-backend.onrender.com/health"
 
+
           echo "✅ Backend is live"
+
 
 
       - name: Frontend health check
         run: |
+
           curl --fail \
             --max-time 15 \
-            "https://TON_APP.vercel.app"
+            "https://compspirit.vercel.app/"
+
 
           echo "✅ Frontend is live"
