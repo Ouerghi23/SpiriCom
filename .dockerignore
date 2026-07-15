@@ -1,8 +1,11 @@
-# .dockerignore
-data/processed/*.parquet
-data/nlp/*.db
-models/*.joblib
-.env
-node_modules/
+data/
+models/
+*.csv
+*.xlsx
+*.parquet
+*.pkl
+*.joblib
 __pycache__/
-*.pyc
+.git/
+venv/
+.env
