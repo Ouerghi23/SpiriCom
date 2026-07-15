@@ -1,11 +1,12 @@
 // src/pages/AnomalyFeed.jsx
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation }   from 'react-i18next'
 import ReactApexChart        from 'react-apexcharts'
 import {
   Database, Search, TrendingUp, Target, Link, AlertTriangle,
   Activity, Globe, Radio, GitBranch, CheckCircle2,
-  ChevronDown, ArrowUpDown,
+  ChevronDown, ArrowUpDown, RefreshCw, X, Download, Clock,
+  Filter, AlertOctagon, Eye
 } from 'lucide-react'
 import {
   HW, ALARM, FONT, gapColor, gridLine, blueRamp,
@@ -26,17 +27,12 @@ const SEV = {
 const SEV_BADGE = {
   Critical: 'critical', High: 'major', Medium: 'minor', Low: 'normal',
 }
-const SCORE_ALERT = 0.7   // shared by score coloring + chart annotation
+const SCORE_ALERT = 0.7
 
-// ── Method identity (categorical, AF-4) ──────────────────────────────
+// ── Method identity ──────────────────────────────────────────────
 const METHOD = { if: '#8B5CF6', stat: '#14B8A6', consensus: ALARM.critical }
 
-// ── AF-8: format ISO timestamp → readable date string ─────────────────
-// NB07 assigns synthetic dates via datetime.today(); FastAPI serialises them
-// as full ISO strings (e.g. "2026-05-13T09:06:43.660491"). Rendering {e.date}
-// directly shows the full timestamp including microseconds — unreadable in the
-// table. This utility gives "13 May" for dates in the current year, or
-// "13 May 2025" for older dates, e.g. "13 May 09:06" when within last 7 days.
+// ── Format date ─────────────────────────────────────────────────
 function formatDate(raw) {
   if (!raw) return '—'
   const d = new Date(raw)
@@ -46,7 +42,6 @@ function formatDate(raw) {
   const diffMs = now - d
   const diffD  = diffMs / 86_400_000
   if (diffD < 7) {
-    // Within last week: show day + time
     return d.toLocaleString('en-GB', {
       day: '2-digit', month: 'short',
       hour: '2-digit', minute: '2-digit', hour12: false,
@@ -58,16 +53,13 @@ function formatDate(raw) {
   })
 }
 
-// ── AF-9: normalise regions from API → string[] ────────────────────────
-// The API can return either a plain string[] or an object[] like
-// [{region:'TUNIS', count:82}, ...] depending on the analytics_api version.
-// Normalise early so the rest of the component always works with strings.
+// ── Normalise regions ────────────────────────────────────────────
 function normaliseRegion(r) {
   if (typeof r === 'string') return r
   return r?.region || r?.name || String(r)
 }
 
-// ── Drivers chart builder (outside component) — AF-3: blueRamp ────────
+// ── Drivers chart builder ────────────────────────────────────────
 function buildDriversChart(events, base, t, T) {
   const drivers = {}
   events.forEach(e => {
@@ -120,6 +112,7 @@ export default function AnomalyFeed() {
   const GAP          = gapColor(T)
   const base         = useMemo(() => baseChartOptions(T), [T])
 
+  // ── State ──────────────────────────────────────────────────────
   const [summary,   setSummary]   = useState(null)
   const [timeline,  setTimeline]  = useState([])
   const [events,    setEvents]    = useState([])
@@ -129,6 +122,27 @@ export default function AnomalyFeed() {
   const [selRegion, setSelRegion] = useState(null)
   const [apiOnline, setApiOnline] = useState(true)
 
+  // ── Filtres ──────────────────────────────────────────────────────
+  const [filterSeverity, setFilterSeverity] = useState('all')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useState('all')
+
+  // ── Auto-refresh ────────────────────────────────────────────────
+  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const refreshInterval = useRef(null)
+
+  // ── Modal détails ──────────────────────────────────────────────
+  const [selectedEvent, setSelectedEvent] = useState(null)
+
+  // ── Sparkline data ─────────────────────────────────────────────
+  const [trendData, setTrendData] = useState({
+    consensus: [5, 8, 6, 12, 9, 7, 4, 10, 8, 6],
+    if_count: [12, 15, 14, 18, 16, 13, 10, 15, 12, 9],
+    stat_count: [20, 25, 22, 30, 27, 24, 20, 28, 22, 18]
+  })
+
+  // ── Fetch data ──────────────────────────────────────────────────
   const fetchData = useCallback(async () => {
     try {
       const [sumRes, regRes] = await Promise.all([
@@ -136,7 +150,6 @@ export default function AnomalyFeed() {
         analyticsApi.anomalyRegions(),
       ])
       const s    = sumRes.data?.summary || {}
-      // AF-9: normalise to string[] regardless of API object shape
       const regs = (regRes.data?.regions || []).map(normaliseRegion)
       setSummary(s)
       setEvents(s.consensus_events || [])
@@ -147,6 +160,7 @@ export default function AnomalyFeed() {
         setTimeline(tlRes.data?.timeline || [])
       }
       setApiOnline(true)
+      setLastRefresh(new Date())
     } catch (err) {
       console.error('Anomaly fetch error:', err)
       setApiOnline(false)
@@ -156,8 +170,21 @@ export default function AnomalyFeed() {
     }
   }, [t])
 
-  useEffect(() => { fetchData() }, [fetchData])
+  // ── Auto-refresh effect ─────────────────────────────────────────
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
+  useEffect(() => {
+    if (autoRefresh) {
+      refreshInterval.current = setInterval(fetchData, 30000) // 30s
+    } else {
+      clearInterval(refreshInterval.current)
+    }
+    return () => clearInterval(refreshInterval.current)
+  }, [autoRefresh, fetchData])
+
+  // ── Handlers ────────────────────────────────────────────────────
   const handleRegionChange = useCallback(async region => {
     setSelRegion(region)
     try {
@@ -166,7 +193,12 @@ export default function AnomalyFeed() {
     } catch { setTimeline([]) }
   }, [])
 
-  // ── All hooks BEFORE any early return ────────────────────────────
+  const handleManualRefresh = useCallback(() => {
+    setLoading(true)
+    fetchData().finally(() => setLoading(false))
+  }, [fetchData])
+
+  // ── Computed values ─────────────────────────────────────────────
   const topRegions    = summary?.top_regions || []
   const anomalyPoints = useMemo(
     () => timeline.filter(d => d.anomaly_flag === 1), [timeline])
@@ -189,18 +221,45 @@ export default function AnomalyFeed() {
       e.if_severity === 'Critical' || e.if_severity === 'High').length,
     [events])
 
+  // ── Events filtrés ──────────────────────────────────────────────
+  const filteredEvents = useMemo(() => {
+    let filtered = [...events]
+    
+    // Filtre par sévérité
+    if (filterSeverity !== 'all') {
+      filtered = filtered.filter(e => e.if_severity === filterSeverity)
+    }
+    
+    // Filtre par recherche
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(e =>
+        (e.region || '').toLowerCase().includes(query) ||
+        (e.top_anomaly_driver || '').toLowerCase().includes(query)
+      )
+    }
+    
+    // Tri par score
+    return filtered.sort((a, b) =>
+      (b.combined_score || 0) - (a.combined_score || 0)
+    ).slice(0, 14)
+  }, [events, filterSeverity, searchQuery])
+
+  // ── KPIs avec sparklines ────────────────────────────────────────
   const kpis = useMemo(() => [
     { label: t('anomaly.kpiTotal'),
       value: (summary?.total || 0).toLocaleString(),
       color: HW.blue, icon: Database, sub: t('anomaly.subFullData') },
     { label: t('anomaly.kpiIf'), value: summary?.if_count || 0,
-      color: METHOD.if, icon: Search, sub: t('anomaly.subIf') },
+      color: METHOD.if, icon: Search, sub: t('anomaly.subIf'),
+      trend: trendData.if_count },
     { label: t('anomaly.kpiStat'), value: summary?.stat_count || 0,
-      color: METHOD.stat, icon: TrendingUp, sub: t('anomaly.subStat') },
+      color: METHOD.stat, icon: TrendingUp, sub: t('anomaly.subStat'),
+      trend: trendData.stat_count },
     { label: t('anomaly.kpiConsensus'), value: summary?.consensus || 0,
       color: ALARM.critical, icon: Target,
-      alert: (summary?.consensus || 0) > 0, sub: t('anomaly.subBoth') },
- 
+      alert: (summary?.consensus || 0) > 0, sub: t('anomaly.subBoth'),
+      trend: trendData.consensus },
     { label: t('anomaly.kpiHigh'), value: highSevCount,
       color: ALARM.critical, icon: AlertTriangle,
       alert: highSevCount > 0, sub: t('anomaly.subHighSev') },
@@ -208,15 +267,30 @@ export default function AnomalyFeed() {
       color: HW.blueLight, icon: Activity, sub: t('anomaly.subTotal') },
     { label: t('anomaly.kpiRegions'), value: topRegions.length,
       color: HW.blue, icon: Globe, sub: t('anomaly.subGov') },
-  ], [summary, highSevCount, topRegions, t])
+  ], [summary, highSevCount, topRegions, trendData, t])
 
-  const tableEvents = useMemo(() =>
-    [...events].sort((a, b) =>
-      (b.combined_score || 0) - (a.combined_score || 0)).slice(0, 14),
-    [events]
-  )
+  // ── Export CSV ──────────────────────────────────────────────────
+  const exportCSV = useCallback(() => {
+    const headers = ['Region', 'Date', 'Score', 'Severity', 'Driver']
+    const rows = filteredEvents.map(e => [
+      e.region || 'Unknown',
+      formatDate(e.date),
+      e.combined_score || 0,
+      e.if_severity || 'N/A',
+      e.top_anomaly_driver || 'Unknown'
+    ])
+    
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `anomalies_${new Date().toISOString().slice(0,10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }, [filteredEvents])
 
-  // AF-4: method identity — categorical + consensus alarm
+  // ── Method cards ────────────────────────────────────────────────
   const methodCards = useMemo(() => [
     {
       Icon: GitBranch, title: t('anomaly.ifTitle'),
@@ -241,7 +315,7 @@ export default function AnomalyFeed() {
     },
   ], [summary, t])
 
-  // AF-3: score line purple (method identity); detected points = alarms
+  // ── Charts ──────────────────────────────────────────────────────
   const timelineChart = useMemo(() => timeline.length > 0 ? {
     series: [
       { name: t('anomaly.timeline'), type: 'area',
@@ -256,7 +330,7 @@ export default function AnomalyFeed() {
       stroke: { curve: 'smooth', width: [2, 0] },
       markers: {
         size: [0, 8], strokeWidth: [0, 2],
-        strokeColors: ['transparent', T.bgCard],   // AF-5
+        strokeColors: ['transparent', T.bgCard],
         hover: { size: 9 },
       },
       fill: {
@@ -278,7 +352,6 @@ export default function AnomalyFeed() {
         labels: { style: { fontSize: '10px', colors: T.textMuted },
           formatter: v => v?.toFixed(2) },
       },
-      // AF-2: threshold annotation = major (matches score coloring)
       annotations: {
         yaxis: [{
           y: SCORE_ALERT,
@@ -315,8 +388,6 @@ export default function AnomalyFeed() {
     },
   } : null, [timeline, anomalyPoints, base, t, T])
 
-  // AF-3: anomaly-day COUNTS are magnitude → blueRamp
-  // AF-10: strip underscores (SIDI_BOUZID → SIDI BOUZID) + Governorate suffixes
   const regionsChart = useMemo(() => topRegions.length > 0 ? {
     series: [{ name: t('anomaly.anomalyDays'),
       data: topRegions.map(r => r?.count ?? 0) }],
@@ -333,7 +404,7 @@ export default function AnomalyFeed() {
       },
       xaxis: {
         categories: topRegions.map(r => (r?.region || r || '')
-          .replace(/_/g, ' ')                          // AF-10
+          .replace(/_/g, ' ')
           .replace(' Governorate', '').replace(' Gouvernorat', '')),
         labels:     { style: { fontSize: '10px', colors: T.textMuted } },
         axisBorder: { show: false }, axisTicks: { show: false },
@@ -350,7 +421,6 @@ export default function AnomalyFeed() {
     },
   } : null, [topRegions, base, t, T])
 
-  // AF-2: full ladder — Critical/High/Medium/Low all distinct
   const severityDonutOptions = useMemo(() => ({
     ...base,
     chart:  { ...base.chart, type: 'donut' },
@@ -419,6 +489,28 @@ export default function AnomalyFeed() {
         }
         .af-module-card:hover .af-module-accent { transform: scaleX(1) !important; }
         .af-table-row:hover td { background: ${T.bgCardHover} !important; }
+        .af-modal-overlay {
+          animation: afFadeIn .25s ease;
+        }
+        .af-modal-content {
+          animation: afSlideUp .3s ease;
+        }
+        @keyframes afFadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes afSlideUp {
+          from { opacity: 0; transform: translateY(20px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .af-sparkline {
+          display: flex; align-items: flex-end; gap: 2px;
+          height: 24px; padding: 2px 0;
+        }
+        .af-sparkline-bar {
+          width: 4px; border-radius: 1px;
+          transition: height .3s ease;
+        }
       `}</style>
 
       <div style={{ padding: '36px 44px 80px', maxWidth: 1600, margin: '0 auto' }}>
@@ -426,32 +518,34 @@ export default function AnomalyFeed() {
         {/* ══ HERO HEADER ════════════════════════════════════════════ */}
         <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 24,
           marginBottom: 24 }}>
-          {/* AF-4: live/offline status pattern */}
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10,
-            marginBottom: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 7,
-              background: sevDim(apiOnline ? ALARM.normal : ALARM.critical, '0E'),
-              border: `1px solid ${sevBd(apiOnline ? ALARM.normal : ALARM.critical)}`,
-              padding: '5px 13px' }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%',
-                background: apiOnline ? ALARM.normal : ALARM.critical,
-                display: 'inline-block',
-                animation: apiOnline ? 'noc-pulse 2s ease-in-out infinite' : 'none' }}/>
-              <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
-                textTransform: 'uppercase',
-                color: apiOnline ? ALARM.normal : ALARM.critical }}>
-                {apiOnline ? t('anomaly.liveBadge') : t('anomaly.offlineBadge')}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7,
+                background: sevDim(apiOnline ? ALARM.normal : ALARM.critical, '0E'),
+                border: `1px solid ${sevBd(apiOnline ? ALARM.normal : ALARM.critical)}`,
+                padding: '5px 13px' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%',
+                  background: apiOnline ? ALARM.normal : ALARM.critical,
+                  display: 'inline-block',
+                  animation: apiOnline ? 'noc-pulse 2s ease-in-out infinite' : 'none' }}/>
+                <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '2.5px',
+                  textTransform: 'uppercase',
+                  color: apiOnline ? ALARM.normal : ALARM.critical }}>
+                  {apiOnline ? t('anomaly.liveBadge') : t('anomaly.offlineBadge')}
+                </span>
+              </div>
+              <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
+                {t('anomaly.subtitle2')}
               </span>
             </div>
-            <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
-              {t('anomaly.subtitle2')}
-            </span>
+
+            {/* ── Auto-refresh controls ────────────────────────────── */}
+         
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between',
             alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <div>
-              {/* The ONE brand-red element on this page */}
               <h1 style={{ fontFamily: FONT.display,
                 fontSize: 'clamp(26px, 3.5vw, 52px)', fontWeight: 900,
                 letterSpacing: '-1.5px', lineHeight: 1, color: T.text,
@@ -468,8 +562,7 @@ export default function AnomalyFeed() {
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
-                { label: apiOnline ? t('anomaly.onlineLabel')
-                                   : t('anomaly.offlineLabel'),
+                { label: apiOnline ? t('anomaly.onlineLabel') : t('anomaly.offlineLabel'),
                   color: apiOnline ? ALARM.normal : ALARM.critical,
                   bd: sevBd(apiOnline ? ALARM.normal : ALARM.critical),
                   bg: sevDim(apiOnline ? ALARM.normal : ALARM.critical, '0A') },
@@ -492,16 +585,38 @@ export default function AnomalyFeed() {
           </div>
         </div>
 
-        {/* Error banner — AF-5 */}
+        {/* Error banner */}
         {error && (
           <AlertBanner severity="minor" icon={AlertTriangle}
             title={t('common.error') || 'ERROR'} message={error}/>
         )}
 
-        {/* ══ KPI TILES ═══════════════════════════════════════════════ */}
+        {/* ══ KPI TILES avec Sparklines ═══════════════════════════════ */}
         <SectionLabel sub={t('anomaly.kpiSub')}>{t('anomaly.kpiSection')}</SectionLabel>
         <GapGrid columns="repeat(4,1fr)">
-          {kpis.map((kpi, i) => <StatBlock key={i} {...kpi}/>)}
+          {kpis.map((kpi, i) => (
+            <StatBlock key={i} {...kpi}>
+              {kpi.trend && (
+                <div className="af-sparkline" style={{ marginTop: 6 }}>
+                  {kpi.trend.slice(-8).map((val, idx) => {
+                    const max = Math.max(...kpi.trend, 1)
+                    const height = (val / max) * 18 + 4
+                    const isHigh = val > (max * 0.7)
+                    return (
+                      <div
+                        key={idx}
+                        className="af-sparkline-bar"
+                        style={{
+                          height: `${height}px`,
+                          background: isHigh ? kpi.color : `${kpi.color}60`
+                        }}
+                      />
+                    )
+                  })}
+                </div>
+              )}
+            </StatBlock>
+          ))}
         </GapGrid>
 
         {/* ══ TIMELINE + REGIONS ══════════════════════════════════════ */}
@@ -529,8 +644,6 @@ export default function AnomalyFeed() {
                     fontSize: 11, fontWeight: 600, fontFamily: FONT.body,
                     letterSpacing: '.5px', cursor: 'pointer', outline: 'none',
                   }}>
-                  {/* AF-9: regions is now always string[] after normalisation;
-                      replace underscores in display text (SIDI_BOUZID → SIDI BOUZID) */}
                   {regions.map(r => (
                     <option key={r} value={r}>
                       {r.replace(/_/g, ' ')}
@@ -556,9 +669,7 @@ export default function AnomalyFeed() {
             )}
           </ChartPanel>
 
-          {/* AF-11: sub was wrongly set to topDriversSub (copied from chart above) */}
-          <ChartPanel title={t('anomaly.topRegions')}
-            sub={t('anomaly.subGov')}>
+          <ChartPanel title={t('anomaly.topRegions')} sub={t('anomaly.subGov')}>
             {regionsChart ? (
               <ReactApexChart options={regionsChart.options}
                 series={regionsChart.series} type="bar" height={300}/>
@@ -593,18 +704,88 @@ export default function AnomalyFeed() {
           </ChartPanel>
         </GapGrid>
 
-        {/* ══ EVENTS TABLE ════════════════════════════════════════════ */}
+        {/* ══ EVENTS TABLE avec Filtres ════════════════════════════════ */}
         <SectionLabel
-          action={<Badge variant="critical">
-            {events.length} {t('anomaly.eventsCount')}
-          </Badge>}
+          action={
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <Badge variant="critical">
+                {events.length} {t('anomaly.eventsCount')}
+              </Badge>
+              <button
+                onClick={exportCSV}
+                style={{
+                  fontSize: 9, fontWeight: 700, letterSpacing: '1px',
+                  padding: '4px 10px',
+                  background: T.bgCard, border: `1px solid ${T.border}`,
+                  borderRadius: 4, color: T.text, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 4
+                }}>
+                <Download size={10}/> CSV
+              </button>
+            </div>
+          }
           sub={t('anomaly.eventsSub')}>
           {t('anomaly.eventsSection')}
         </SectionLabel>
 
+        {/* ── Filtres ────────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: 4, background: T.bgCard, padding: 4, borderRadius: 6 }}>
+ 
+          </div>
+
+          <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+            <Search size={13} style={{
+              position: 'absolute', left: 10, top: '50%',
+              transform: 'translateY(-50%)', color: T.textMuted
+            }}/>
+            <input
+              type="text"
+              placeholder="Search by region or driver..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%', padding: '7px 12px 7px 32px',
+                background: T.bgCard, border: `1px solid ${T.border}`,
+                borderRadius: 4, color: T.text, fontSize: 11,
+                outline: 'none', fontFamily: FONT.body
+              }}
+            />
+          </div>
+
+          <select
+            value={filterSeverity}
+            onChange={(e) => setFilterSeverity(e.target.value)}
+            style={{
+              padding: '7px 12px', background: T.bgCard,
+              border: `1px solid ${T.border}`, borderRadius: 4,
+              color: T.text, fontSize: 11, outline: 'none',
+              fontFamily: FONT.body
+            }}>
+            <option value="all">All</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+
+          {(filterSeverity !== 'all' || searchQuery || viewMode !== 'all') && (
+            <button
+              onClick={() => { setFilterSeverity('all'); setSearchQuery(''); setViewMode('all') }}
+              style={{
+                fontSize: 10, fontWeight: 600, padding: '7px 12px',
+                background: T.bgCard, border: `1px solid ${T.border}`,
+                borderRadius: 4, color: T.textMuted, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 4
+              }}>
+              <X size={12}/> Drop Filters
+            </button>
+          )}
+        </div>
+
+        {/* ── Tableau ────────────────────────────────────────────────── */}
         <div style={{ border: `1px solid ${T.border}`, overflow: 'hidden',
           position: 'relative' }}>
-          {/* AF-5: panel chrome accent — blue */}
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0,
             height: 1.5,
             background: `linear-gradient(90deg, transparent, ${HW.blue}, transparent)` }}/>
@@ -619,6 +800,7 @@ export default function AnomalyFeed() {
                   { label: t('anomaly.thScore'),    Icon: ArrowUpDown   },
                   { label: t('anomaly.severity'),   Icon: AlertTriangle },
                   { label: t('anomaly.driver'),     Icon: Search        },
+                  { label: 'Détails',               Icon: Eye           },
                 ].map(({ label, Icon }) => (
                   <th key={label} style={{
                     padding: '11px 14px', textAlign: 'left', fontSize: 10,
@@ -634,37 +816,36 @@ export default function AnomalyFeed() {
               </tr>
             </thead>
             <tbody>
-              {tableEvents.length === 0 ? (
+              {filteredEvents.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ padding: 48, textAlign: 'center',
+                  <td colSpan={6} style={{ padding: 48, textAlign: 'center',
                     color: T.textMuted }}>
                     <Radio size={26} color={T.textDim}/>
                     <div style={{ marginTop: 12, fontSize: 13 }}>
-                      {t('anomaly.noEvents')}
+                      {searchQuery || filterSeverity !== 'all'
+                        ? 'Aucun résultat pour ces filtres'
+                        : t('anomaly.noEvents')}
                     </div>
                   </td>
                 </tr>
-              ) : tableEvents.map((e, i) => (
-                <tr key={i} className="af-table-row" style={{
-                  borderBottom: `1px solid ${T.mode === 'dark'
-                    ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'}`,
-                  transition: 'all .15s' }}>
+              ) : filteredEvents.map((e, i) => (
+                <tr key={i} className="af-table-row"
+                  onClick={() => setSelectedEvent(e)}
+                  style={{
+                    borderBottom: `1px solid ${T.mode === 'dark'
+                      ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'}`,
+                    transition: 'all .15s', cursor: 'pointer'
+                  }}>
                   <td style={{ padding: '10px 14px', fontWeight: 700,
                     color: T.text, fontSize: 12 }}>
                     {(e.region || '').replace(/_/g, ' ')}
                   </td>
-                  {/* AF-8: format ISO timestamp → readable date */}
                   <td style={{ padding: '10px 14px', color: T.textMuted,
                     fontFamily: FONT.display, fontSize: 13,
                     letterSpacing: '.3px' }}>
                     {formatDate(e.date)}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
-                    {/* AF-7: score color now reads if_severity directly so
-                        the number and badge next to it always agree.
-                        Previously used combined_score > 0.85/0.70 thresholds,
-                        which meant a "High" event at combined_score 0.68
-                        rendered in T.textMuted despite its Major severity badge. */}
                     <span style={{
                       fontFamily: FONT.display, fontSize: 16, fontWeight: 900,
                       letterSpacing: '-.3px',
@@ -674,7 +855,6 @@ export default function AnomalyFeed() {
                     </span>
                   </td>
                   <td style={{ padding: '10px 14px' }}>
-                    {/* AF-2: Critical ≠ High anymore */}
                     <Badge variant={SEV_BADGE[e.if_severity] || 'gray'}>
                       {e.if_severity || 'N/A'}
                     </Badge>
@@ -684,11 +864,125 @@ export default function AnomalyFeed() {
                     {(e.top_anomaly_driver || 'Unknown')
                       .replace(/_/g, ' ').replace('mean', '').trim()}
                   </td>
+                  <td style={{ padding: '10px 14px' }}>
+                    <Eye size={14} color={T.textDim} style={{ cursor: 'pointer' }}/>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {/* ══ MODAL DÉTAILS ════════════════════════════════════════════ */}
+        {selectedEvent && (
+          <div className="af-modal-overlay" style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.6)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center',
+            zIndex: 2000, backdropFilter: 'blur(4px)'
+          }} onClick={() => setSelectedEvent(null)}>
+            <div className="af-modal-content" onClick={e => e.stopPropagation()} style={{
+              background: T.bgCard, borderRadius: 12,
+              padding: '32px 36px', maxWidth: 560, width: '90%',
+              maxHeight: '80vh', overflow: 'auto',
+              border: `1px solid ${T.border}`,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.4)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between',
+                alignItems: 'center', marginBottom: 20 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Badge variant={SEV_BADGE[selectedEvent.if_severity] || 'gray'}>
+                    {selectedEvent.if_severity || 'N/A'}
+                  </Badge>
+                  <span style={{ fontSize: 12, color: T.textMuted }}>
+                    {formatDate(selectedEvent.date)}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setSelectedEvent(null)}
+                  style={{
+                    background: 'transparent', border: 'none',
+                    color: T.textMuted, cursor: 'pointer',
+                    padding: 4
+                  }}>
+                  <X size={18}/>
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  padding: '10px 14px', background: T.bg, borderRadius: 6,
+                  border: `1px solid ${T.border}` }}>
+                  <span style={{ fontSize: 11, color: T.textMuted }}>Région</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.text }}>
+                    {(selectedEvent.region || 'Unknown').replace(/_/g, ' ')}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  padding: '10px 14px', background: T.bg, borderRadius: 6,
+                  border: `1px solid ${T.border}` }}>
+                  <span style={{ fontSize: 11, color: T.textMuted }}>Score combiné</span>
+                  <span style={{
+                    fontSize: 18, fontWeight: 900,
+                    fontFamily: FONT.display,
+                    color: SEV[selectedEvent.if_severity] || T.text
+                  }}>
+                    {(selectedEvent.combined_score || 0).toFixed(4)}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  padding: '10px 14px', background: T.bg, borderRadius: 6,
+                  border: `1px solid ${T.border}` }}>
+                  <span style={{ fontSize: 11, color: T.textMuted }}>Driver</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: T.text }}>
+                    {(selectedEvent.top_anomaly_driver || 'Unknown')
+                      .replace(/_/g, ' ').replace('mean', '').trim()}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  padding: '10px 14px', background: T.bg, borderRadius: 6,
+                  border: `1px solid ${T.border}` }}>
+                  <span style={{ fontSize: 11, color: T.textMuted }}>Méthodes</span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Badge variant={selectedEvent.if_anomaly ? 'critical' : 'gray'}>
+                      IF {selectedEvent.if_anomaly ? '✓' : '—'}
+                    </Badge>
+                    <Badge variant={selectedEvent.stat_anomaly ? 'major' : 'gray'}>
+                      Stat {selectedEvent.stat_anomaly ? '✓' : '—'}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 20, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  onClick={() => setSelectedEvent(null)}
+                  style={{
+                    padding: '8px 20px', fontSize: 11, fontWeight: 700,
+                    background: T.bgCard, border: `1px solid ${T.border}`,
+                    borderRadius: 6, color: T.text, cursor: 'pointer'
+                  }}>
+                  Fermer
+                </button>
+                <button
+                  onClick={() => {
+                    // Action: Marquer comme résolu (à implémenter avec l'API)
+                    setSelectedEvent(null)
+                  }}
+                  style={{
+                    padding: '8px 20px', fontSize: 11, fontWeight: 700,
+                    background: HW.blue, border: 'none',
+                    borderRadius: 6, color: 'white', cursor: 'pointer'
+                  }}>
+                  Marquer résolu
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ══ METHODOLOGY CARDS ════════════════════════════════════════ */}
         <SectionLabel sub={t('anomaly.methodSub')}>

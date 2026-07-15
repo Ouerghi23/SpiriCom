@@ -4,7 +4,7 @@
 import { useState, useEffect }                from 'react'
 import { NavLink, Link, Outlet, useNavigate } from 'react-router-dom'
 import { useTranslation }                     from 'react-i18next'
-import { LogOut, Radio }                      from 'lucide-react'
+import { LogOut, Radio, Lock }                from 'lucide-react'
 import { useAuth }                            from '../hooks/useAuth.jsx'
 import { useTheme }                           from '../context/ThemeContext'
 import { useRole }                            from '../hooks/useRole'
@@ -14,17 +14,11 @@ import MessagingWidget                        from './MessagingWidget'
 import NotificationBell                       from './NotificationBell'
 import ShiftWidget                            from './ShiftWidget'
 import logoImg                                from '../assets/images/logo.png'
-
-const HW = {
-  red:       '#EE3A43',
-  redHover:  '#D42F38',
-  redGlow:   'rgba(238,58,67,.18)',
-  blue:      '#0093D5',
-  blueGlow:  'rgba(0,147,213,.22)',
-  blueLight: '#00C3FF',
-  navy:      '#001F3F',
-  navyMid:   '#0C2D4E',
-}
+// FIX: import the shared token object instead of redefining it locally —
+// this file previously had its own `const HW = {...}` that duplicated
+// UI.jsx's HW object field-for-field. No visible bug today, but any
+// future edit to UI.jsx's HW would silently NOT apply here.
+import { HW } from './UI'
 
 function ViewerBanner() {
   return (
@@ -35,7 +29,9 @@ function ViewerBanner() {
       borderBottom: '1px solid rgba(107,114,128,.15)',
       fontSize: 11, color: '#6B7280',
     }}>
-      <span style={{ fontSize: 13 }}>🔒</span>
+      {/* FIX: was a raw 🔒 emoji, violates UI.jsx's own C-7 rule
+          ("icon must be a Lucide component — no emoji strings") */}
+      <Lock size={13} color="#9CA3AF"/>
       <span>
         <strong style={{ color: '#9CA3AF' }}>Read-only access</strong>
         {' '}— You can view all dashboards.
@@ -55,7 +51,6 @@ export default function Layout() {
   const { theme: T }     = useTheme()
   const { isViewer, isGuest } = useRole()
 
-  // isAdmin from reactive useAuth state
   const isAdmin = user?.role?.toLowerCase() === 'admin'
 
   useEffect(() => {
@@ -147,7 +142,7 @@ export default function Layout() {
         @media (max-width: 900px)  { .nav-center        { display: none !important; } }
       `}</style>
 
-      {/* ══ NAVBAR — always clickable (zIndex 1000, above overlay 999) ══ */}
+      {/* ══ NAVBAR ══ */}
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000,
         height: 60, padding: '0 24px',
@@ -163,7 +158,6 @@ export default function Layout() {
         transition: 'all .3s ease',
       }}>
 
-        {/* Logo */}
         <Link to="/" style={{ display:'flex', alignItems:'center', gap:10,
           textDecoration:'none', flexShrink:0 }}>
           <div style={{
@@ -194,7 +188,6 @@ export default function Layout() {
           </div>
         </Link>
 
-        {/* Nav links */}
         <div className="nav-center" style={{
           flex:1, display:'flex', justifyContent:'center',
           alignItems:'center', gap:18, overflow:'hidden', minWidth:0,
@@ -209,22 +202,18 @@ export default function Layout() {
           ))}
         </div>
 
-        {/* Right side */}
         <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
 
-          {/* ShiftWidget — engineers only */}
           {!isAdmin && !isViewer && T && (
             <ShiftWidget user={user} T={T}/>
           )}
 
-          {/* NotificationBell — not for viewer/guest */}
           {!isViewer && (
             <NotificationBell role={isAdmin ? 'admin' : 'engineer'} />
           )}
 
           <div style={{ width:1, height:22, background:T.border, flexShrink:0 }}/>
 
-          {/* Avatar + name */}
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div style={{
               width:30, height:30, borderRadius:'50%',
@@ -248,8 +237,11 @@ export default function Layout() {
                 fontSize:9, marginTop:3, letterSpacing:'.6px',
                 textTransform:'uppercase', fontWeight:600,
                 color: isViewer ? '#6B7280' : isAdmin ? HW.red : T.textDim,
+                display: 'flex', alignItems: 'center', gap: 4,
               }}>
-                {isViewer ? '🔒 viewer' : (user?.role || 'engineer')}
+                {/* FIX: was `🔒 viewer` — raw emoji, same C-7 violation */}
+                {isViewer && <Lock size={9} color="#6B7280"/>}
+                {isViewer ? 'viewer' : (user?.role || 'engineer')}
               </div>
             </div>
           </div>
@@ -262,44 +254,39 @@ export default function Layout() {
         </div>
       </nav>
 
-      {/* ══ VIEWER BANNER ═══════════════════════════════════════════════ */}
       {isViewer && (
         <div style={{ paddingTop: 60 }}>
           <ViewerBanner />
         </div>
       )}
 
-      {/* ══ PAGE CONTENT ════════════════════════════════════════════════ */}
       <main style={{
         paddingTop: isViewer ? 0 : 60,
         transition: 'background .25s',
-        position: 'relative',   // ← needed for overlay positioning
+        position: 'relative',
       }}>
         <Outlet/>
 
-        {/* ── Guest overlay — blocks all clicks in main, navbar stays free ── */}
         {isGuest && (
           <>
-            {/* Transparent blocker — zIndex 999 (under navbar 1000) */}
             <div
               onClick={() => navigate('/login')}
               style={{
                 position:   'fixed',
                 inset:      0,
-                top:        60,      // start below navbar
+                top:        60,
                 zIndex:     999,
                 cursor:     'not-allowed',
                 background: 'transparent',
               }}
             />
 
-            {/* Bottom CTA banner */}
             <div style={{
               position:       'fixed',
               bottom:         0,
               left:           0,
               right:          0,
-              zIndex:         1001,   // above navbar so it's always visible
+              zIndex:         1001,
               background:     'rgba(0,0,0,.88)',
               backdropFilter: 'blur(12px)',
               borderTop:      `1px solid rgba(255,255,255,.08)`,
@@ -342,7 +329,7 @@ export default function Layout() {
         )}
       </main>
 
-      {/* ══ FOOTER ══════════════════════════════════════════════════════ */}
+      {/* ══ FOOTER ══ */}
       <footer style={{
         background:T.footerBg, borderTop:`1px solid ${T.border}`,
         padding:'40px 48px 28px', marginTop:80, transition:'background .25s',
@@ -392,12 +379,15 @@ export default function Layout() {
               Platform
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {/* FIX: added Segments (was missing — nav has 6 items,
+                  footer only listed 5) */}
               {[
-                { label:'Overview',  path:'/dashboard'           },
-                { label:'Map',       path:'/dashboard/map'       },
-                { label:'Anomalies', path:'/dashboard/anomalies' },
-                { label:'Forecast',  path:'/dashboard/forecast'  },
-                { label:'NLP',       path:'/dashboard/nlp'       },
+                { label:'Overview',    path:'/dashboard'           },
+                { label:'Map',         path:'/dashboard/map'       },
+                { label:'Anomalies',   path:'/dashboard/anomalies' },
+                { label:'Forecast',    path:'/dashboard/forecast'  },
+                { label:'Segments',    path:'/dashboard/segments'  },
+                { label:'NLP',         path:'/dashboard/nlp'       },
               ].map(({ label, path }) => (
                 <Link key={label} to={path} className="footer-link">{label}</Link>
               ))}
@@ -411,8 +401,13 @@ export default function Layout() {
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               <a href="/api/docs" className="footer-link">API Docs</a>
-              <Link to="/dashboard/about" className="footer-link">Architecture</Link>
-              <Link to="/dashboard/about" className="footer-link">PFE Report</Link>
+              {/* FIX: both links used to point to the same
+                  /dashboard/about route. Architecture now points to a
+                  dedicated anchor/section; adjust the target route once
+                  you decide whether these are two pages or two sections
+                  of one page. */}
+              <Link to="/dashboard/about#architecture" className="footer-link">Architecture</Link>
+              <Link to="/dashboard/about#pfe-report" className="footer-link">PFE Report</Link>
               <a href="https://github.com/Ouerghi23" target="_blank" rel="noreferrer"
                 className="footer-link">GitHub</a>
             </div>
@@ -437,7 +432,6 @@ export default function Layout() {
         </div>
       </footer>
 
-      {/* ── Floating overlays — hidden for viewer/guest ── */}
       {!isViewer && <MessagingWidget/>}
       {!isViewer && <AIChatBubble/>}
       <FloatingControls/>

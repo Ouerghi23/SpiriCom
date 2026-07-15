@@ -29,6 +29,7 @@ jobs:
           pip install --upgrade pip
           pip install \
               "pandas>=2.0.0" \
+              "mlflow>=2.7.0" \
               "numpy>=1.24.0" \
               "pyarrow>=14.0.0" \
               "scikit-learn>=1.3.0" \
@@ -193,18 +194,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: npm
           cache-dependency-path: compspirit/package-lock.json
 
-      - name: Clean install and fix dependencies
+      - name: Install dependencies
         working-directory: ./compspirit
         run: |
-          # Remove everything for clean install
-          rm -rf node_modules package-lock.json
+          
           
           # Install with legacy peer deps
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
           
           # Force install missing dependencies
           npm install --save-dev \

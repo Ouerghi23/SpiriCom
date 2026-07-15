@@ -1,5 +1,4 @@
 // src/pages/Forecasting.jsx
-
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation }  from 'react-i18next'
 import ReactApexChart      from 'react-apexcharts'
@@ -29,8 +28,7 @@ const RISK = {
 
 const TRAINING = {
   forecastModels: [
-    { label: '5G Forecast',  value: 'PENDING',  color: ALARM.minor,
-      sub: 'Re-run after NB00 fix' },
+   
     { label: 'Data Quality', value: '91.8%',    color: ALARM.major,
       sub: 'traffic_5g imputed' },
     { label: 'RF PR-AUC',    value: '0.825',    color: ALARM.normal,

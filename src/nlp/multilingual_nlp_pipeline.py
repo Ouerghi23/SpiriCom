@@ -3,21 +3,6 @@ multilingual_nlp_pipeline.py  —  src/nlp/
 ==========================================
 Multilingual NLP pipeline for Ooredoo complaint analysis.
 Supports Arabic, French, and English without translation.
-
-FIXES:
-  FIX-1  Accent normalization
-  FIX-2  French verb forms in lexicons
-  FIX-3  "!" preserved in preprocessing
-  FIX-4  sklearn path uses Path(__file__)
-  FIX-5  Classifier check at top of _is_complaint
-  FIX-6  detect_language: count Arabic CHARACTERS not word matches
-  FIX-7  _category: word boundary (\b) for single-word keywords
-  FIX-8  Removed stray `from matplotlib import text` import
-  FIX-9  _sentiment: word boundary for single-word FR/EN keywords
-         "lent" was substring-matching inside "excellent"
-  FIX-10 AR_COMPLAINT_SIGNALS: added "مقطوع" covers مقطوعة/مقطوعه
-  FIX-11 ENGLISH_WORDS: added "thank","thanks","improved","great","good"
-         to break FR/EN tie when both score 1
 """
 
 from __future__ import annotations
@@ -30,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# ── FIX-4 ─────────────────────────────────────────────────────────────────────
+
 _CLASSIFIER_PATH = Path(__file__).resolve().parents[2] / "models" / "nlp" / "classifier.pkl"
 _trained_clf: object = None
 
@@ -43,9 +28,6 @@ def _load_trained_classifier():
     return _trained_clf
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ACCENT NORMALIZATION (FIX-1)
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _strip_accents(s: str) -> str:
     return (
@@ -70,7 +52,7 @@ FRENCH_WORDS = {
     "reseau","internet","appel","connexion","coupure","lent","probleme",
     "depuis","jours","impossible","mauvais","bonjour","merci",
     "debit","facture","client","panne","signal","appels",
-    # NOTE: "service" removed — appears in both FR and EN
+    # "service" removed — appears in both FR and EN
 }
 
 # FIX-11: added unambiguous English words to break FR/EN ties
@@ -375,7 +357,6 @@ FR_NON_COMPLAINT_SIGNALS = [
     "souhait","suggestion","comment passer","comment recharger",
 ]
 
-# FIX-10: added "مقطوع" — covers مقطوعة and مقطوعه (ة→ه normalized)
 AR_COMPLAINT_SIGNALS = [
     "لا شبكة","لا إشارة","لا تغطية","انقطاع الشبكة","شبكة مقطوعة",
     "إشارة ضعيفة","الشبكة واقعة","لا 4g","تغطية سيئة",
@@ -386,9 +367,9 @@ AR_COMPLAINT_SIGNALS = [
     "غير مقبول","فضيحة","سيء","رديء","كارثي","شكوى","شكوة",
     "تذمر","متضايق","غاضب","زعلان","لا أستطيع","تعطل",
     "خلل","بطء","تقطيع","مشكلتي","ابلغ عن",
-    "مقطوع",   # FIX-10: stem covers مقطوعة/مقطوعه
-    "منقطع",   # disconnected
-    "شبكتي",   # "my network" — common complaint opener
+    "مقطوع",   
+    "منقطع",  
+    "شبكتي",   
 ]
 
 AR_NON_COMPLAINT_SIGNALS = [
@@ -425,7 +406,7 @@ EN_NON_COMPLAINT_SIGNALS = [
 _DEFAULT_CATEGORIES = {"Autre", "أخرى", "Other"}
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PRE-NORMALIZED KEYWORD DICTIONARIES (FIX-1)
+# PRE-NORMALIZED KEYWORD DICTIONARIES 
 # ══════════════════════════════════════════════════════════════════════════════
 
 _FR_CAT_NORM   = {k: [_norm(w) for w in v] for k, v in FR_CATEGORIES.items()}
@@ -446,7 +427,7 @@ _TN_CITIES_EN_NORM = {_norm(c) for c in TN_CITIES_EN}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# WORD-BOUNDARY MATCH HELPER (FIX-7, FIX-9)
+# WORD-BOUNDARY MATCH HELPER
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _kw_match(kw: str, text: str, arabic: bool = False) -> bool:

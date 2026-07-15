@@ -17,6 +17,10 @@ import av4Img    from '../assets/images/av4.jpg'
 import TranslateWidget from '../components/TranslateWidget'
 
 // ── Huawei Brand Tokens ───────────────────────────────────────────────
+// Confirmed OK to keep red-dominant here: this is a pre-auth marketing
+// page (like LoginPage), a different tier from the post-login app
+// (Layout.jsx etc.) which is blue-dominant with red reserved for
+// alerts. Two-tier system, not a rule violation.
 const HW = {
   red:      '#EE3A43',   // FIX-U1
   redHover: '#D42F38',
@@ -80,6 +84,15 @@ const IconMessageSquare = ({ size = 24, color = 'currentColor' }) => (
     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
   </svg>
 )
+// NEW — Anomaly / alert triangle icon, needed for the fixed MODULES list
+const IconAlertTriangle = ({ size = 24, color = 'currentColor' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+    stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>
+)
 const IconArrowRight = ({ size = 16, color = 'currentColor' }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
     stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -125,23 +138,52 @@ const IconStar = () => (
 )
 
 // ── Static Data ───────────────────────────────────────────────────────
+// FIX: was 50K+ — contradicted the ticker's own "25K+ Complaints
+// Analyzed (verified NB03a)" a few lines below in the same file.
+// 25,727 is the real, verified complaint count (NB00/NB01).
 const STATS = [
-  { value: 50,  suffix: 'K+', labelKey: 'landing.statsComplaints'  },
+  { value: 25,  suffix: 'K+', labelKey: 'landing.statsComplaints'  },
   { value: 552, suffix: 'K',  labelKey: 'landing.statsKpi'         },
   { value: 5,   suffix: 'K',  labelKey: 'landing.statsSites'       },
   { value: 24,  suffix: '',   labelKey: 'landing.statsGovernorates' },
 ]
+// NOTE: 552K and 5K are not part of the NB00-NB07 ground truth
+// established elsewhere in this project (4,898 KPI rows, 257 cities).
+// Confirm these against a real source before the defense, or replace
+// with verified figures.
 
+// FIX: "Six Pillars" (see section title below) previously listed GIS,
+// ML, AI(forecast), UX(segments), NLP, and "LLM/AI Assistant" — but
+// Anomaly Feed, one of the six real analytical modules (Ch1/Ch3), was
+// missing entirely, replaced by AI Assistant which isn't one of the
+// six analytical modules (it's a separate, transversal capability).
+// Swapped the LLM entry for Anomaly Feed so this section matches the
+// six modules actually documented in the report.
 const MODULES = [
-  { icon: IconMap,           titleKey: 'landing.modGisTitle',  descKey: 'landing.modGisDesc',  tag: 'GIS',       path: '/dashboard/map'        },
-  { icon: IconCpu,           titleKey: 'landing.modMlTitle',   descKey: 'landing.modMlDesc',   tag: 'ML',        path: '/dashboard'            },
-  { icon: IconTrendingUp,    titleKey: 'landing.modAiTitle',   descKey: 'landing.modAiDesc',   tag: 'AI',        path: '/dashboard/forecast'   },
-  { icon: IconUsers,         titleKey: 'landing.modUxTitle',   descKey: 'landing.modUxDesc',   tag: 'UX',        path: '/dashboard/segments'   },
-  { icon: IconMessageSquare, titleKey: 'landing.modNlpTitle',  descKey: 'landing.modNlpDesc',  tag: 'NLP',       path: '/dashboard/nlp'        },
-   { icon: IconSearch,        titleKey: 'landing.modAiAssistantTitle',  descKey: 'landing.modAiAssistantDesc',  tag: 'LLM',   path: '/dashboard/about'     },
-
+  { icon: IconMap,            titleKey: 'landing.modGisTitle',  descKey: 'landing.modGisDesc',  tag: 'GIS',      path: '/dashboard/map'        },
+  { icon: IconCpu,            titleKey: 'landing.modMlTitle',   descKey: 'landing.modMlDesc',   tag: 'ML',       path: '/dashboard'            },
+  { icon: IconTrendingUp,     titleKey: 'landing.modAiTitle',   descKey: 'landing.modAiDesc',   tag: 'AI',       path: '/dashboard/forecast'   },
+  { icon: IconUsers,          titleKey: 'landing.modUxTitle',   descKey: 'landing.modUxDesc',   tag: 'UX',       path: '/dashboard/segments'   },
+  { icon: IconMessageSquare,  titleKey: 'landing.modNlpTitle',  descKey: 'landing.modNlpDesc',  tag: 'NLP',      path: '/dashboard/nlp'        },
+  { icon: IconAlertTriangle,  titleKey: 'landing.modAnomalyTitle', descKey: 'landing.modAnomalyDesc', tag: 'Anomaly', path: '/dashboard/anomalies' },
 ]
+// NOTE: add landing.modAnomalyTitle / landing.modAnomalyDesc to your
+// i18next translation files (EN/ZH/AR/FR as applicable) — these keys
+// did not exist before since Anomaly Feed wasn't represented here.
 
+// ⚠ DECISION NEEDED — not auto-fixed, flagged instead:
+// TESTIMONIALS below attributes real-sounding quotes to named people
+// ("Karim Mansouri, Senior NOC Engineer, Major Telecom Operator") who
+// do not exist. Presenting fabricated names/roles/photos as real
+// customer testimonials is risky in front of a jury who might ask
+// "can we verify this quote?" — there's no honest answer if asked.
+// Two options, pick one and apply it yourself:
+//   (a) DELETE the whole Testimonials <section> below, or
+//   (b) Relabel clearly, e.g. change the section title to
+//       "Example User Feedback (illustrative mockup)" so it reads
+//       as a design placeholder rather than a real testimonial.
+// Left AS-IS below (not deleted) since this is a content judgment
+// call, not a bug — your decision, not mine to make silently.
 const TESTIMONIALS = [
   { name: 'Karim Mansouri',  role: 'Senior NOC Engineer',          company: 'Major Telecom Operator',     av: av1Img, textKey: 'landing.testi1' },
   { name: 'Sana Ouerghi',    role: 'Network Quality Manager',      company: 'Leading Telecom Vendor',     av: av2Img, textKey: 'landing.testi2' },
@@ -156,17 +198,16 @@ const TICKER_ITEMS = [
   'KQI · KPI Correlation',
   'Spatio-Temporal Analysis',
   'ML Anomaly Detection',
-  'Random Forest Disengagement Scoring',   // ← remplace "XGBoost Forecasting"
-  'SHAP Churn Drivers',                    // ← remplace "SHAP Root Cause Analysis"
-  'Subscriber & Complaint Segmentation',   // ← remplace "K-Means Segmentation"
-  'Multilingual NLP Classification',       // ← précisé : AR/FR/EN
+  'Random Forest Disengagement Scoring',
+  'SHAP Churn Drivers',
+  'Subscriber & Complaint Segmentation',
+  'Multilingual NLP Classification',
   '24 Governorates',
-  '25K+ Complaints Analyzed',              // ← FIX: 25,727 vérifié (NB03a)
+  '25K+ Complaints Analyzed',              // verified 25,727 (NB00/NB01)
   'Huawei NOC Intelligence',
 ]
 
 // ── Animated Counter ──────────────────────────────────────────────────
-// FIX-B5: intervalRef always cleared on unmount
 function Counter({ target, suffix }) {
   const [val, setVal]  = useState(0)
   const ref            = useRef(null)
@@ -194,7 +235,7 @@ function Counter({ target, suffix }) {
     if (ref.current) observer.observe(ref.current)
     return () => {
       observer.disconnect()
-      if (intervalRef.current) clearInterval(intervalRef.current) // FIX-B5
+      if (intervalRef.current) clearInterval(intervalRef.current)
     }
   }, [target])
 
@@ -236,7 +277,6 @@ export default function LandingPage() {
   const [activeModule, setActiveModule] = useState(0)
   const [testiIdx,     setTestiIdx]     = useState(0)
 
-  // ── Mode-adaptive palette ──
   const BG       = mode === 'dark' ? '#080A12' : '#F0F2F8'
   const BG2      = mode === 'dark' ? '#0A0C14' : '#E8EBF5'
   const BG3      = mode === 'dark' ? '#0C0E16' : '#FFFFFF'
@@ -246,7 +286,7 @@ export default function LandingPage() {
   const DIM      = mode === 'dark' ? 'rgba(255,255,255,.2)' : 'rgba(13,17,23,.35)'
   const BORDER   = mode === 'dark' ? 'rgba(255,255,255,.06)': 'rgba(0,0,0,.08)'
   const GAP_COLOR = mode === 'dark' ? 'rgba(255,255,255,.07)': 'rgba(0,0,0,.1)'
-  const RED      = HW.red   // FIX-U1
+  const RED      = HW.red
   const BLUE     = HW.blue
 
   const goToDashboard = () => navigate('/dashboard')
@@ -268,12 +308,10 @@ export default function LandingPage() {
     ? mode === 'dark' ? 'rgba(8,10,18,.95)' : 'rgba(240,242,248,.97)'
     : 'transparent'
 
-  // FIX-B2: ticker bg reacts to scroll
   const tickerBg = scrolled
     ? mode === 'dark' ? 'rgba(8,10,18,.97)' : 'rgba(232,235,245,.97)'
     : mode === 'dark' ? '#050710'           : '#E4E7F2'
 
-  // Mode-aware split section overlays
   const imgOverlayR = mode === 'dark'
     ? 'linear-gradient(to right, transparent 55%, rgba(8,10,18,.78) 100%)'
     : 'linear-gradient(to right, transparent 55%, rgba(240,242,248,.88) 100%)'
@@ -302,7 +340,6 @@ export default function LandingPage() {
         @keyframes ticker     { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
         @keyframes bounce-y   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
 
-        /* ── Landing Nav Links ── */
         .lp-nav-link {
           color: ${MUTED};
           font-size: 11px;
@@ -331,7 +368,6 @@ export default function LandingPage() {
         .lp-nav-link:hover           { color: ${TEXT}; }
         .lp-nav-link:hover::after    { transform: scaleX(1); }
 
-        /* ── Buttons ── */
         .btn-primary {
           background: ${RED};
           color: white;
@@ -379,7 +415,6 @@ export default function LandingPage() {
           background: ${mode === 'dark' ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.04)'};
         }
 
-        /* ── Module Cards ── */
         .module-card {
           padding: 30px 24px;
           border: 1px solid ${BORDER};
@@ -411,7 +446,6 @@ export default function LandingPage() {
         .module-card.active::before { transform: scaleX(1); }
         .module-card:focus-visible  { outline: 2px solid ${BLUE}; outline-offset: 2px; }
 
-        /* ── Testimonial Cards ── */
         .testi-card {
           background: ${BG3};
           border: 1px solid ${BORDER};
@@ -433,12 +467,10 @@ export default function LandingPage() {
         .testi-card:hover::before   { transform: scaleX(1); }
         .testi-card:hover           { border-color: rgba(238,58,67,.2); }
 
-        /* ── Image wrapper ── */
         .img-wrap { overflow: hidden; position: relative; }
         .img-wrap img { width:100%; height:100%; object-fit:cover; display:block; transition:transform .8s cubic-bezier(.22,1,.36,1); }
         .img-wrap:hover img { transform: scale(1.04); }
 
-        /* ── Tag pill ── */
         .tag {
           font-size: 9px;
           font-weight: 800;
@@ -451,7 +483,6 @@ export default function LandingPage() {
           border-radius: 2px;
         }
 
-        /* ── Section label ── */
         .section-label {
           font-size: 10px;
           font-weight: 800;
@@ -465,7 +496,6 @@ export default function LandingPage() {
         }
         .section-label::before { content: ''; width: 20px; height: 1px; background: ${RED}; }
 
-        /* ── Ticker ── */
         .ticker-wrap {
           overflow: hidden;
           border-top: 1px solid ${BORDER};
@@ -491,7 +521,6 @@ export default function LandingPage() {
         }
         .ticker-dot { width: 3px; height: 3px; border-radius: 50%; background: ${BLUE}; flex-shrink: 0; }
 
-        /* ── Stats blocks ── */
         .stat-block {
           text-align: center;
           padding: 36px 24px;
@@ -514,7 +543,6 @@ export default function LandingPage() {
           transform: translateY(-2px);
         }
 
-        /* ── Theme toggle ── */
         .theme-btn-lp {
           width: 34px;
           height: 34px;
@@ -535,10 +563,8 @@ export default function LandingPage() {
           color: ${RED};
         }
 
-        /* ── Scroll bounce ── */
         .scroll-bounce { animation: bounce-y 1.8s ease-in-out infinite; }
 
-        /* ── Responsive ── */
         @media (max-width: 900px) {
           .split-grid    { grid-template-columns: 1fr !important; }
           .modules-grid  { grid-template-columns: 1fr !important; }
@@ -548,7 +574,7 @@ export default function LandingPage() {
         }
       `}</style>
 
-      {/* ══ NAVBAR ══════════════════════════════════════════════════════ */}
+      {/* ══ NAVBAR ══ */}
       <nav style={{
         position:       'fixed',
         top:            0,
@@ -566,7 +592,6 @@ export default function LandingPage() {
         transition:     'all .4s',
       }}>
 
-        {/* Logo */}
         <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 10,
           flexShrink: 0, textDecoration: 'none' }}>
           <div style={{ width: 36, height: 36, borderRadius: '50%', overflow: 'hidden',
@@ -574,7 +599,6 @@ export default function LandingPage() {
             <img src={logoImg} alt="SpiriCom" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
           </div>
           <div style={{ lineHeight: 1 }}>
-            {/* FIX-B1: SpiriCom */}
             <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900,
               fontSize: 20, letterSpacing: '-.4px', color: TEXT }}>
               Spiri<span style={{ color: RED }}>Com</span>
@@ -585,7 +609,6 @@ export default function LandingPage() {
           </div>
         </Link>
 
-        {/* Center nav links */}
         <div className="nav-links-lp" style={{ flex: 1, display: 'flex',
           justifyContent: 'center', gap: 26, overflow: 'hidden' }}>
           {[
@@ -600,19 +623,14 @@ export default function LandingPage() {
           ))}
         </div>
 
-        {/* Right actions */}
         <div className="nav-actions-lp" style={{ display: 'flex', gap: 8,
           alignItems: 'center', flexShrink: 0 }}>
 
-          {/* Theme toggle */}
           <button className="theme-btn-lp" onClick={toggleTheme}
             title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             {mode === 'dark' ? <Sun size={14}/> : <Moon size={14}/>}
           </button>
 
-        
-
-          {/* Launch Dashboard */}
           <button className="btn-primary" style={{ padding: '9px 22px', fontSize: 11 }}
             onClick={goToDashboard}>
             {t('landing.launch') || 'Launch Dashboard'}
@@ -621,8 +639,7 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      {/* ══ TICKER ══════════════════════════════════════════════════════ */}
-      {/* FIX-B2: background reacts to scroll state */}
+      {/* ══ TICKER ══ */}
       <div className="ticker-wrap" style={{
         position:   'fixed',
         top:        64,
@@ -641,11 +658,10 @@ export default function LandingPage() {
         </div>
       </div>
 
-      {/* ══ HERO ════════════════════════════════════════════════════════ */}
+      {/* ══ HERO ══ */}
       <section style={{ height: '100vh', minHeight: 680, position: 'relative',
         overflow: 'hidden', display: 'flex', alignItems: 'center', paddingTop: 106 }}>
 
-        {/* Background image */}
         <img src={coverImg} alt="" aria-hidden="true" style={{
           position:  'absolute', inset: 0,
           width:     '100%', height: '100%',
@@ -656,18 +672,15 @@ export default function LandingPage() {
           zIndex:    0,
         }}/>
 
-        {/* Primary overlay */}
         <div style={{ position: 'absolute', inset: 0, background:
           mode === 'dark'
             ? 'linear-gradient(110deg, rgba(8,10,18,.97) 35%, rgba(8,10,18,.6) 68%, rgba(8,10,18,.28) 100%)'
             : 'linear-gradient(110deg, rgba(240,242,248,.97) 35%, rgba(240,242,248,.72) 68%, rgba(240,242,248,.32) 100%)'
         }}/>
 
-        {/* Bottom fade */}
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '36%',
           background: `linear-gradient(to top, ${BG}, transparent)` }}/>
 
-        {/* Subtle grid */}
         <div style={{ position: 'absolute', inset: 0,
           backgroundImage: `linear-gradient(rgba(0,147,213,.025) 1px, transparent 1px),
                             linear-gradient(90deg, rgba(0,147,213,.025) 1px, transparent 1px)`,
@@ -675,7 +688,6 @@ export default function LandingPage() {
           pointerEvents: 'none',
         }}/>
 
-        {/* Accent radial — Huawei Blue */}
         <div style={{ position: 'absolute', right: '4%', top: '50%',
           transform: 'translateY(-50%)',
           width: 520, height: 520,
@@ -683,10 +695,8 @@ export default function LandingPage() {
           pointerEvents: 'none',
         }}/>
 
-        {/* Content */}
         <div style={{ position: 'relative', width: '100%', padding: '0 7%', zIndex: 1 }}>
 
-          {/* Live badge */}
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10,
             marginBottom: 30, animation: 'slide-in .55s .05s ease both' }}>
             <div style={{
@@ -710,7 +720,6 @@ export default function LandingPage() {
             </span>
           </div>
 
-          {/* H1 — FIX-B7: letterSpacing via clamp to prevent overflow at small sizes */}
           <h1 style={{
             fontFamily:    "'Barlow Condensed', sans-serif",
             fontSize:      'clamp(30px, 5vw, 64px)',
@@ -742,7 +751,6 @@ export default function LandingPage() {
             {t('landing.heroDesc')}
           </p>
 
-          {/* CTA buttons */}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap',
             animation: 'slide-in .62s .32s ease both' }}>
             <button className="btn-primary" style={{ fontSize: 13, padding: '15px 38px' }}
@@ -757,7 +765,6 @@ export default function LandingPage() {
           </div>
         </div>
 
-        {/* Scroll indicator */}
         <div style={{ position: 'absolute', bottom: 22, left: '50%',
           transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column',
           alignItems: 'center', gap: 4, zIndex: 1, opacity: .45 }}>
@@ -770,14 +777,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ STATS ════════════════════════════════════════════════════════ */}
+      {/* ══ STATS ══ */}
       <section style={{ background: BG, padding: '0', borderTop: `1px solid ${BORDER}` }}>
         <div className="stats-grid" style={{ display: 'grid',
           gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: GAP_COLOR }}>
           {STATS.map((s, i) => (
             <Reveal key={s.labelKey} delay={i * .06}>
               <div className="stat-block">
-                {/* Stats number color: Huawei Blue (not red) for a trustworthy data feel */}
                 <div style={{
                   fontFamily:    "'Barlow Condensed', sans-serif",
                   fontSize:      'clamp(38px, 5vw, 60px)',
@@ -799,18 +805,16 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ SPLIT 1 — Infrastructure ════════════════════════════════════ */}
+      {/* ══ SPLIT 1 — Infrastructure ══ */}
       <section style={{ background: BG, borderTop: `1px solid ${BORDER}` }}>
         <div className="split-grid" style={{ display: 'grid',
           gridTemplateColumns: '1fr 1fr', minHeight: 520 }}>
 
-          {/* Image side */}
           <div style={{ position: 'relative', minHeight: 380 }}>
             <div className="img-wrap" style={{ position: 'absolute', inset: 0 }}>
               <img src={serverImg} alt="Server infrastructure"/>
               <div style={{ position: 'absolute', inset: 0, background: imgOverlayR }}/>
             </div>
-            {/* Status badge — outside img-wrap so overflow:hidden doesn't clip it */}
             <div style={{ position: 'absolute', bottom: 26, left: 26, zIndex: 2 }}>
               <div style={{ background: 'rgba(0,0,0,.72)', backdropFilter: 'blur(12px)',
                 border: '1px solid rgba(255,255,255,.1)', padding: '9px 16px',
@@ -825,7 +829,6 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Text side */}
           <div style={{ background: BG3, padding: '68px 52px', display: 'flex',
             flexDirection: 'column', justifyContent: 'center',
             borderLeft: `1px solid ${BORDER}` }}>
@@ -859,7 +862,6 @@ export default function LandingPage() {
           gridTemplateColumns: '1fr 1fr', minHeight: 520,
           borderTop: `1px solid ${BORDER}` }}>
 
-          {/* Text side */}
           <div style={{ background: mode === 'dark' ? '#0E1020' : '#F5F7FF',
             padding: '68px 52px', display: 'flex', flexDirection: 'column',
             justifyContent: 'center', borderRight: `1px solid ${BORDER}` }}>
@@ -903,7 +905,6 @@ export default function LandingPage() {
             </Reveal>
           </div>
 
-          {/* Image side */}
           <div style={{ position: 'relative', minHeight: 380 }}>
             <div className="img-wrap" style={{ position: 'absolute', inset: 0 }}>
               <img src={dashImg} alt="Analytics dashboard"/>
@@ -922,7 +923,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ MODULES ══════════════════════════════════════════════════════ */}
+      {/* ══ MODULES ══ */}
       <section style={{ background: BG2, padding: '96px 44px',
         borderTop: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -968,7 +969,6 @@ export default function LandingPage() {
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between',
                       alignItems: 'flex-start', marginBottom: 20 }}>
-                      {/* Icon box — Huawei Blue on active */}
                       <div style={{
                         width:      48,
                         height:     48,
@@ -1008,14 +1008,12 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ PHOTO BANNER ═════════════════════════════════════════════════ */}
-      {/* FIX-B9: mode-aware overlay; navy from HW.navy */}
+      {/* ══ PHOTO BANNER ══ */}
       <section style={{ position: 'relative', height: 420, overflow: 'hidden' }}>
         <img src={towerImg} alt="Telecom infrastructure" aria-hidden="true" style={{
           width: '100%', height: '100%', objectFit: 'cover',
           opacity: mode === 'dark' ? .3 : .16, filter: 'saturate(.35)',
         }}/>
-        {/* FIX-B9: uses HW.navy instead of hardcoded #080808 */}
         <div style={{ position: 'absolute', inset: 0, background:
           mode === 'dark'
             ? `linear-gradient(135deg, rgba(238,58,67,.7) 0%, rgba(0,31,63,.92) 55%)`
@@ -1064,7 +1062,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ TESTIMONIALS ═════════════════════════════════════════════════ */}
+      {/* ══ TESTIMONIALS ══ — see ⚠ DECISION NEEDED note near TESTIMONIALS above */}
       <section style={{ background: mode === 'dark' ? '#050710' : '#E8EBF5',
         padding: '96px 44px', borderTop: `1px solid ${BORDER}` }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
@@ -1111,7 +1109,6 @@ export default function LandingPage() {
             </div>
           </Reveal>
 
-          {/* Active pair logic: 2-col shows pair (testiIdx, testiIdx+1), 1-col shows only testiIdx */}
           <div className="testi-grid" style={{ display: 'grid',
             gridTemplateColumns: 'repeat(2,1fr)', gap: 1, background: GAP_COLOR }}>
             {TESTIMONIALS.map((tItem, i) => {
@@ -1155,7 +1152,6 @@ export default function LandingPage() {
             })}
           </div>
 
-          {/* Pagination dots */}
           <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 34 }}>
             {TESTIMONIALS.map((_, i) => (
               <div key={i} onClick={() => setTestiIdx(i)} style={{
@@ -1173,15 +1169,13 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══ FOOTER ═══════════════════════════════════════════════════════ */}
-      {/* FIX-U5: localhost links removed */}
+      {/* ══ FOOTER ══ */}
       <footer style={{ background: mode === 'dark' ? '#060810' : '#E4E7F2',
         borderTop: `1px solid ${BORDER}`, padding: '52px 44px 28px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between',
             flexWrap: 'wrap', gap: 40, marginBottom: 44 }}>
 
-            {/* Brand block */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <div style={{ width: 34, height: 34, borderRadius: '50%', overflow: 'hidden',
@@ -1189,7 +1183,6 @@ export default function LandingPage() {
                   <img src={logoImg} alt="SpiriCom"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
                 </div>
-                {/* FIX-B1 */}
                 <span style={{ fontFamily: "'Barlow Condensed', sans-serif",
                   fontWeight: 900, fontSize: 20, letterSpacing: '-.4px', color: TEXT }}>
                   Spiri<span style={{ color: RED }}>Com</span>
@@ -1200,7 +1193,6 @@ export default function LandingPage() {
                 Telecom Complaint Analytics &amp; Network Intelligence — Huawei Technologies Tunisia
               </p>
 
-              {/* Live status pill */}
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, marginTop: 18,
                 padding: '5px 12px', border: '1px solid rgba(34,197,94,.18)',
                 background: 'rgba(34,197,94,.04)', borderRadius: 20 }}>
@@ -1213,10 +1205,8 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Links columns */}
             <div style={{ display: 'flex', gap: 52, flexWrap: 'wrap' }}>
 
-              {/* Platform */}
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 3.5, color: DIM,
                   textTransform: 'uppercase', marginBottom: 16 }}>Platform</div>
@@ -1225,7 +1215,6 @@ export default function LandingPage() {
                   { label: 'Map',        path: '/dashboard/map'        },
                   { label: 'Anomalies',  path: '/dashboard/anomalies'  },
                   { label: 'Forecast',   path: '/dashboard/forecast'   },
-                 // { label: 'Root Cause', path: '/dashboard/root-cause' },
                   { label: 'Segments',   path: '/dashboard/segments'   },
                   { label: 'NLP',        path: '/dashboard/nlp'        },
                 ].map(({ label, path }) => (
@@ -1237,16 +1226,19 @@ export default function LandingPage() {
                 ))}
               </div>
 
-              {/* Resources — FIX-U5: no localhost, FIX-B8: PFE Report → /dashboard/about */}
+              {/* FIX: PFE Report and Architecture used to both point to
+                  /dashboard/about with no distinction. Given distinct
+                  anchors here — replace with real routes/anchors once
+                  you decide whether these are one page or two. */}
               <div>
                 <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: 3.5, color: DIM,
                   textTransform: 'uppercase', marginBottom: 16 }}>Resources</div>
                 {[
-                  { label: 'API Docs',     href: '/api/docs',             external: false },
-                  { label: 'PFE Report',   href: '/dashboard/about',      external: false },
-                  { label: 'Architecture', href: '/dashboard/about',      external: false },
-                  { label: 'GitHub',       href: 'https://github.com/Ouerghi23', external: true },
-                  { label: 'NOC Guide',    href: '/dashboard/about',      external: false },
+                  { label: 'API Docs',     href: '/api/docs',                    external: false },
+                  { label: 'PFE Report',   href: '/dashboard/about#pfe-report',  external: false },
+                  { label: 'Architecture', href: '/dashboard/about#architecture',external: false },
+                  { label: 'GitHub',       href: 'https://github.com/Ouerghi23', external: true  },
+                  { label: 'NOC Guide',    href: '/dashboard/about#noc-guide',   external: false },
                 ].map(({ label, href, external }) => (
                   external ? (
                     <a key={label} href={href} target="_blank" rel="noreferrer"
@@ -1267,7 +1259,9 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* Bottom strip */}
+          {/* FIX: Privacy and Terms used to both point to /dashboard/about
+              too (4 duplicate links total across the footer). Given
+              distinct anchors — same note as above applies. */}
           <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 22,
             display: 'flex', justifyContent: 'space-between',
             alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -1275,9 +1269,9 @@ export default function LandingPage() {
               © 2026 SpiriCom — Huawei Technologies Tunisia · PFE Engineering · Ouerghi Chaima
             </p>
             <div style={{ display: 'flex', gap: 22 }}>
-              <Link to="/dashboard/about" className="lp-nav-link"
+              <Link to="/dashboard/about#privacy" className="lp-nav-link"
                 style={{ fontSize: 11, color: DIM }}>Privacy</Link>
-              <Link to="/dashboard/about" className="lp-nav-link"
+              <Link to="/dashboard/about#terms" className="lp-nav-link"
                 style={{ fontSize: 11, color: DIM }}>Terms</Link>
               <a href="mailto:chaima.ouerghi@etudiant.u-tunis.tn" className="lp-nav-link"
                 style={{ fontSize: 11, color: DIM }}>Contact</a>
@@ -1285,10 +1279,9 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-      {/* Translate widget — fixed bottom-right */}
       <TranslateWidget/>
-      
+
     </div>
-     
+
   )
 }

@@ -2,8 +2,6 @@
 complaint_classifier_trainer.py
 =================================
 Trains a TF-IDF + Logistic Regression classifier on the labeled rows
-already in your SQLite DB (seeded by seed_db.py or real submissions).
-
 Saves the trained model to:
     models/nlp/classifier.pkl
 
@@ -15,8 +13,6 @@ Usage:
     python complaint_classifier_trainer.py --test   # train + run live test examples
     python complaint_classifier_trainer.py --info   # show DB stats without training
 
-Requirements:
-    pip install scikit-learn
 """
 
 from __future__ import annotations
@@ -96,7 +92,7 @@ def train(run_live_test: bool = False) -> None:
             ngram_range   = (2, 4),        # bigrams to 4-grams
             max_features  = 30_000,
             sublinear_tf  = True,          # log-scale TF → reduces high-freq dominance
-            strip_accents = "unicode",     # accent-insensitive (FIX-1 equivalent)
+            strip_accents = "unicode",     # accent-insensitive 
         )),
         ("clf", LogisticRegression(
             C             = 1.0,

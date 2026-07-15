@@ -2,47 +2,6 @@
 complaint_db.py
 ================
 SQLite database manager for Ooredoo NLP complaint storage.
-
-Schema (v2 — adds is_complaint):
-  complaints (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    complaint_id        TEXT UNIQUE,
-    submitted_at        TEXT,
-    msisdn              TEXT,
-    city_input          TEXT,
-    segment             TEXT,
-    channel             TEXT,
-    text_original       TEXT,
-    language            TEXT,
-    nlp_category        TEXT,
-    nlp_sentiment       TEXT,
-    nlp_urgency_score   REAL,
-    nlp_urgency_level   TEXT,
-    nlp_city            TEXT,
-    nlp_network_type    TEXT,
-    nlp_keywords        TEXT,
-    status              TEXT,
-    is_complaint        INTEGER   ← NEW
-                                        (1 = réclamation,
-                                         0 = feedback,
-                                         NULL = unknown)
-  )
-
-Migration:
-    If the existing DB does not yet have is_complaint,
-    _init_schema() adds it with ALTER TABLE … ADD COLUMN
-    — safe to run on live databases.
-
-NEW in stats():
-    "complaint_count"
-        — submissions where is_complaint = 1
-
-    "non_complaint_count"
-        — submissions where is_complaint = 0
-
-    "by_type"
-        — {"complaint": N, "feedback": N}
-          (used by NLPAnalysis.jsx)
 """
 
 from __future__ import annotations
@@ -486,7 +445,7 @@ class ComplaintDB:
 
             "mean_urgency": round(avg_urg, 3),
 
-            # NEW — consumed by NLPAnalysis.jsx
+        
             "complaint_count": complaint_count,
             "non_complaint_count": non_complaint_count,
 
@@ -521,7 +480,6 @@ class ComplaintDB:
     def _generate_id(self) -> str:
         """
         Generate a unique complaint ID.
-
         Example:
             OOR-A1B2C3D4
         """

@@ -25,84 +25,63 @@ export const HW = {
 }
 
 // ── Alarm severity (the ONLY palette for problem/health states) ──────
-// ITU-T / TMF-style ladder. An operator's reflex must stay intact:
-// red on a chart means "act now" — nothing else on the page may be red.
 export const ALARM = {
   critical: '#DC2626',
   major:    '#EA580C',
   minor:    '#CA8A04',
-  warning:  '#0093D5',   // informational / watch
+  warning:  '#0093D5',
   normal:   '#16A34A',
   unknown:  '#6B7280',
 }
 
-// Convenience: translucent fill/border for a severity color
 export const sevDim = (hex, a = '12') => `${hex}${a}`
 export const sevBd  = (hex)          => `${hex}40`
 
-// ── Typography roles ──────────────────────────────────────────────────
 export const FONT = {
-  display: "'Barlow Condensed', sans-serif",   // big numerals, hero
+  display: "'Barlow Condensed', sans-serif",
   body:    "'Barlow', 'Inter', system-ui, sans-serif",
 }
 
-// ── Multi-series palette (ONLY when color encodes a real dimension) ──
 export const PALETTE = [
   HW.blue, ALARM.critical, ALARM.normal, ALARM.minor,
   '#8B5CF6', '#F97316', '#14B8A6', '#EC4899', '#6366F1', '#84CC16',
 ]
 
-// ── Blue ramp for rank-graded single-series bars ─────────────────────
-// Replaces `distributed: true` rainbows. Index 0 = highest value.
 const BLUE_RAMP = [
   '#00C3FF', '#0093D5', '#1A9FD9', '#33ABDE', '#4DB7E2',
   '#0077B3', '#66C3E7', '#005F8F', '#80CFEC', '#004B73',
 ]
 export const blueRamp = i => BLUE_RAMP[i % BLUE_RAMP.length]
 
-// ── Gap-grid divider color (plain helper — C-4) ───────────────────────
 export const gapColor = T =>
   T.mode === 'dark' ? 'rgba(255,255,255,.06)' : 'rgba(0,0,0,.09)'
 
-// ── Subtle grid line for charts ───────────────────────────────────────
 export const gridLine = T =>
   T.mode === 'dark' ? 'rgba(255,255,255,.04)' : 'rgba(0,0,0,.06)'
 
-// ── FLOAT: shared spec for floating widgets (FABs + panels) ──────────
-// Single source of truth so AIChatBubble / MessagingWidget /
-// FloatingControls share identical dimensions, weight, and stacking.
-// FAB column is right-aligned at FLOAT.right; slot(n) stacks upward.
-// Panels share one size and one shadow; on desktop the second panel
-// sits side-by-side so both can be open without overlap.
 export const FLOAT = {
-  // FAB
-  fab:        48,                       // one diameter for every FAB
-  fabIcon:    20,                       // Lucide size inside a FAB
+  fab:        48,
+  fabIcon:    20,
   gap:        12,
   right:      24,
   bottom:     24,
-  // Panel
   panelW:     372,
   panelH:     520,
   panelShadow:'0 20px 60px rgba(0,0,0,.55)',
-  accentH:    2,                        // top identity stripe
+  accentH:    2,
   headerPad:  '12px 14px 10px',
-  avatar:     28,                       // header avatar disc
-  control:    36,                       // input/send/stop square controls
-  radius:     4,                        // controls
-  bubbleRadius: 8,                      // chat bubbles (the one rounding)
-  // Stacking
+  avatar:     28,
+  control:    36,
+  radius:     4,
+  bubbleRadius: 8,
   z: { fabTop: 9999, fabSecond: 9998, panel: 9997, controls: 9996 },
 }
-// nth FAB from the bottom (0 = lowest)
 FLOAT.fabBottom   = n => FLOAT.bottom + n * (FLOAT.fab + FLOAT.gap)
-// panels open above the FAB column, tops/bottoms aligned
 FLOAT.panelBottom = FLOAT.fabBottom(1) + FLOAT.fab + FLOAT.gap
-// k-th panel from the right (0 = right-aligned with FAB column)
 FLOAT.panelRight  = k => FLOAT.right + k * (FLOAT.panelW + FLOAT.gap)
 
 // ════════════════════════════════════════════════════════════════════
-// 2. GLOBAL STYLES — mount <NocBaseStyles/> ONCE in Layout.jsx (C-6)
+// 2. GLOBAL STYLES
 // ════════════════════════════════════════════════════════════════════
 export const NocBaseStyles = () => {
   const { theme: T } = useTheme()
@@ -141,11 +120,9 @@ export const NocBaseStyles = () => {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 3. STRUCTURE — section labels, panels, grids
+// 3. STRUCTURE
 // ════════════════════════════════════════════════════════════════════
 
-// ── SectionLabel ──────────────────────────────────────────────────────
-// Navigation chrome, NOT an alert → blue accent (was red in Overview).
 export const SectionLabel = ({ children, sub, action }) => {
   const { theme: T } = useTheme()
   return (
@@ -172,8 +149,6 @@ export const SectionLabel = ({ children, sub, action }) => {
   )
 }
 
-// ── ChartPanel ────────────────────────────────────────────────────────
-// Sharp-cornered panel with hover top-accent. The canonical chart frame.
 export const ChartPanel = ({ title, sub, action, children, style = {} }) => {
   const { theme: T } = useTheme()
   return (
@@ -212,9 +187,6 @@ export const ChartPanel = ({ title, sub, action, children, style = {} }) => {
   )
 }
 
-// ── GapGrid ───────────────────────────────────────────────────────────
-// The signature 1px-gap grid. Wrap StatBlocks / ChartPanels in it.
-//   <GapGrid columns="repeat(4,1fr)"> … </GapGrid>
 export const GapGrid = ({ columns = 'repeat(4,1fr)', children, style = {} }) => {
   const { theme: T } = useTheme()
   return (
@@ -226,16 +198,12 @@ export const GapGrid = ({ columns = 'repeat(4,1fr)', children, style = {} }) => 
 }
 
 // ════════════════════════════════════════════════════════════════════
-// 4. DATA DISPLAY — stats, strips, badges, banners
+// 4. DATA DISPLAY — stats, strips, badges, banners, gauges
 // ════════════════════════════════════════════════════════════════════
 
-// ── StatBlock ─────────────────────────────────────────────────────────
-// The canonical KPI tile (replaces KpiCard). Sharp corners, condensed
-// numeral, top accent. `alert` adds pulsing dot + red border tint —
-// reserve it for genuine breach conditions.
 export const StatBlock = ({
   label, value, unit, delta, good, color, icon: IconComp, sub, alert,
-  deltaIcons, // optional { up, down, flat } Lucide components from the page
+  deltaIcons,
 }) => {
   const { theme: T } = useTheme()
   const accent = color || HW.blue
@@ -312,9 +280,6 @@ export const StatBlock = ({
   )
 }
 
-// ── StatStrip ─────────────────────────────────────────────────────────
-// Compact metric strip (generalizes Overview's PulseBar).
-//   <StatStrip items={[{ label:'SPIKE EVENTS', value: 3, color: ALARM.minor }, …]}/>
 export const StatStrip = ({ items = [], style = {} }) => {
   const { theme: T } = useTheme()
   return (
@@ -338,12 +303,6 @@ export const StatStrip = ({ items = [], style = {} }) => {
   )
 }
 
-// ── AlertBanner ───────────────────────────────────────────────────────
-// One banner for SLA breaches, system health, degradations.
-//   severity: 'critical' | 'major' | 'minor' | 'warning' | 'normal'
-//   <AlertBanner severity="critical" icon={ShieldAlert} title="SLA BREACH"
-//     message="48.8% of complaints remain OPEN — exceeds 30% threshold"
-//     value="48.8%" />
 export const AlertBanner = ({
   severity = 'normal', icon: IconComp, title, message, value,
   pulse = true, action, style = {},
@@ -381,16 +340,11 @@ export const AlertBanner = ({
   )
 }
 
-// ── Badge ─────────────────────────────────────────────────────────────
-// Brand variants + severity variants (preferred for alarm states, so
-// badge colors match chart colors exactly).
 const BADGE_VARIANTS = {
-  // severity (use these for any alarm/health state)
   critical: { bg: sevDim(ALARM.critical, '1A'), bd: sevBd(ALARM.critical), fg: ALARM.critical },
   major:    { bg: sevDim(ALARM.major,    '1A'), bd: sevBd(ALARM.major),    fg: ALARM.major    },
   minor:    { bg: sevDim(ALARM.minor,    '1A'), bd: sevBd(ALARM.minor),    fg: ALARM.minor    },
   normal:   { bg: sevDim(ALARM.normal,   '1A'), bd: sevBd(ALARM.normal),   fg: ALARM.normal   },
-  // brand / neutral
   red:    { bg: 'rgba(238,58,67,.1)',  bd: 'rgba(238,58,67,.3)',  fg: HW.red    },
   blue:   { bg: 'rgba(0,147,213,.1)',  bd: 'rgba(0,147,213,.3)',  fg: HW.blue   },
   green:  { bg: 'rgba(34,197,94,.1)',  bd: 'rgba(34,197,94,.28)', fg: '#16A34A' },
@@ -417,8 +371,6 @@ export const Badge = ({ children, variant = 'blue' }) => {
   )
 }
 
-// ── InfoCard ──────────────────────────────────────────────────────────
-// Left-accent metadata card (promoted from Overview's dataset summary).
 export const InfoCard = ({ label, value, color = HW.blue, icon: IconComp }) => {
   const { theme: T } = useTheme()
   return (
@@ -448,6 +400,59 @@ export const InfoCard = ({ label, value, color = HW.blue, icon: IconComp }) => {
   )
 }
 
+// ── RingGauge ─────────────────────────────────────────────────────────
+// NEW. Compact circular score indicator, CSS-only (conic-gradient, no
+// SVG). Single clear use case for now: NB00's Data Quality Score
+// (94.7/100), which currently has no visual representation anywhere
+// in the app.
+//   <RingGauge value={94.7} label="Data Quality" sub="NB00"/>
+// Deliberately kept minimal: one ring, no secondary/dual-ring variant,
+// no new color system (reuses ALARM exactly like every other severity
+// display in this file).
+export const RingGauge = ({
+  value, max = 100, label, sub, severity, size = 96, strokeWidth = 8,
+}) => {
+  const { theme: T } = useTheme()
+  const pct = Math.max(0, Math.min(100, (value / max) * 100))
+  const color = severity ? ALARM[severity] :
+    pct >= 80 ? ALARM.normal : pct >= 60 ? ALARM.minor :
+    pct >= 40 ? ALARM.major : ALARM.critical
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column',
+      alignItems: 'center', gap: 10 }}>
+      <div style={{
+        width: size, height: size, borderRadius: '50%', position: 'relative',
+        background: `conic-gradient(${color} ${pct}%, ${T.border} 0)`,
+        transition: 'background .6s ease',
+      }}>
+        {/* Punches the ring hole — must match the background this sits
+            on. Uses T.bgCard since RingGauge is meant to live inside a
+            ChartPanel/Card, consistent with every other data-display
+            component in this file. */}
+        <div style={{
+          position: 'absolute', inset: strokeWidth, borderRadius: '50%',
+          background: T.bgCard, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>
+          <span style={{ fontFamily: FONT.display, fontSize: size * 0.26,
+            fontWeight: 900, color: T.text, lineHeight: 1, letterSpacing: '-1px' }}>
+            {value}
+          </span>
+          {max !== 100 && <span style={{ fontSize: 9, color: T.textDim }}>/ {max}</span>}
+        </div>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: T.textDim,
+          letterSpacing: '1.5px', textTransform: 'uppercase' }}>
+          {label}
+        </div>
+        {sub && <div style={{ fontSize: 9, color: T.textDim, marginTop: 2 }}>{sub}</div>}
+      </div>
+    </div>
+  )
+}
+
 // ════════════════════════════════════════════════════════════════════
 // 5. FEEDBACK — spinner, empty state
 // ════════════════════════════════════════════════════════════════════
@@ -465,7 +470,6 @@ export const Spinner = ({ size = 32 }) => (
   </div>
 )
 
-// C-7: icon must be a Lucide component — no emoji strings.
 export const EmptyState = ({ icon: IconComp, title, desc, action }) => {
   const { theme: T } = useTheme()
   return (
@@ -527,12 +531,9 @@ export const baseChartOptions = (T) => ({
   yaxis: {
     labels: { style: { fontSize: '10px', colors: T.textMuted } },
   },
-  // Default series order: primary metric, then severity ladder.
   colors: [HW.blue, ALARM.critical, ALARM.normal, ALARM.minor, '#8B5CF6'],
 })
 
-// Single-hue bar options: uniform blue, or rank-graded via blueRamp.
-//   colors: rankGraded ? values.map((_, i) => blueRamp(i)) : [HW.blue]
 export const singleSeriesBarColors = (count, rankGraded = true) =>
   rankGraded ? Array.from({ length: count }, (_, i) => blueRamp(i)) : [HW.blue]
 
@@ -540,8 +541,6 @@ export const singleSeriesBarColors = (count, rankGraded = true) =>
 // 7. PAGE CHROME (kept from v1)
 // ════════════════════════════════════════════════════════════════════
 
-// BrandHeader — page hero. The red left strip is brand chrome and the
-// ONE place HW.red appears structurally on a page.
 export const BrandHeader = ({ title, subtitle, badges = [], icon: Icon }) => {
   const { theme: T } = useTheme()
   return (
@@ -589,8 +588,6 @@ export const BrandHeader = ({ title, subtitle, badges = [], icon: Icon }) => {
   )
 }
 
-// Generic container — still useful for non-chart content (forms, lists).
-// Sharp corners to match the system (was borderRadius: 10).
 export const Card = ({ children, style = {}, className = '', noPadding = false }) => {
   const { theme: T } = useTheme()
   return (

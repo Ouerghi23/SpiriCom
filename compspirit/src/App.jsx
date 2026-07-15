@@ -123,7 +123,7 @@ export default function App() {
           <Route path="forecast"   element={<Forecasting />} />
           <Route path="segments"   element={<UserSegments />} />
           <Route path="nlp"        element={<NLPAnalysis />} />
-          <Route path="about"      element={<NOCAssistant />} />
+          {/* <Route path="about"      element={<NOCAssistant />} /> */}
         </Route>
 
         {/* ── Admin panel (role = admin only) ──────────────────────────── */}

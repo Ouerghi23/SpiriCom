@@ -32,6 +32,15 @@ const DOW_FULL  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday',
 const avg = a => (a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0)
 
 // ── Status grouping (domain logic — stays in the page) ───────────────
+// FIX: the previous version only summed explicitly-named status keys
+// (CLOSED, OPEN, IN PROGRESS..., RESOLVED...). Any status value not in
+// that list -- e.g. CANCELLED or REASSIGN, both present in NB00's own
+// status audit -- was silently dropped from every total downstream
+// (the donut, the KPI tiles). This is the exact cause of the donut
+// showing 25,725 instead of the true 25,727 on a live capture: 2
+// records fell through the gap without any error. Now tracked
+// explicitly as `other` instead of disappearing, so totals reconcile
+// exactly against the true dataset size.
 function groupStatuses(by_status = {}) {
   const closed   = (by_status['CLOSED'] || 0) +
                    (by_status['CLOSED ALERT RESOLVED'] || 0) +
@@ -44,7 +53,9 @@ function groupStatuses(by_status = {}) {
                    (by_status['IN PROGRESS RETURN NOT COMPLETE'] || 0) +
                    (by_status['IN PROGRESS UNFOUNDED RETURN'] || 0)
   const resolved = (by_status['RESOLVED'] || 0) + (by_status['RESOLVED DT'] || 0)
-  return { closed, open: open_, in_progress: in_prog, resolved }
+  const grandTotal = Object.values(by_status).reduce((s, v) => s + (v || 0), 0)
+  const other = Math.max(0, grandTotal - (closed + open_ + in_prog + resolved))
+  return { closed, open: open_, in_progress: in_prog, resolved, other }
 }
 
 // ── French → English complaint-type normalization ─────────────────────
@@ -57,6 +68,27 @@ const normalizeType = k => k
   .replace('COUPURE DE CONNEXION', 'Internet Drop')
   .replace("COUPURE D'APPEL", 'Call Drop')
   .replace('MAUVAISE QUALITÉ DE SON', 'Poor Voice Quality')
+// NOTE: flagged separately in this conversation -- "COUPURE DAPPEL"
+// (no apostrophe) and a "PAS DE COUVERTURE..." variant seen on a live
+// capture do NOT match any rule above (rules expect the apostrophe
+// form "COUPURE D'APPEL"). If your source data uses the no-apostrophe
+// form, add matching rules here, e.g.:
+//   .replace('COUPURE DAPPEL', 'Call Drop')
+// Left as a TODO rather than guessed at, since changing this silently
+// could mis-merge two genuinely different categories.
+
+// ── Percentage formatter with a rounding floor ────────────────────────
+// FIX: chart formatters below used .toFixed(0), which displays "(0%)"
+// for any category whose true share is under 0.5% of the total -- the
+// same rounding artefact already diagnosed in NB01's category chart
+// during this conversation. Small values are real and non-zero; only
+// the *display* was misleading. This helper switches to one decimal
+// place automatically when the value would otherwise round to 0.
+const fmtPct = (value, total) => {
+  if (!total) return '0%'
+  const pct = (value / total) * 100
+  return pct > 0 && pct < 0.5 ? `${pct.toFixed(2)}%` : `${pct.toFixed(0)}%`
+}
 
 // ════════════════════════════════════════════════════════════════════
 // MAIN EXPORT
@@ -261,7 +293,6 @@ export default function Overview() {
       chart:  { ...base.chart, type: 'line', stacked: false },
       colors: [HW.blue, ALARM.critical, HW.blueLight],
       stroke: { curve: ['smooth', 'straight', 'smooth'], width: [2, 0, 1.5], dashArray: [0, 0, 6] },
-      // O-6: marker ring matches card background in both themes
       markers: { size: [0, 8, 0], strokeWidth: [0, 2, 0],
         strokeColors: ['transparent', T.bgCard, 'transparent'], hover: { size: 10 } },
       fill: { type: ['gradient', 'solid', 'solid'],
@@ -293,11 +324,19 @@ export default function Overview() {
   }
 
   // 2. Resolution Status donut — O-2: pipeline order, Open = critical
+  // FIX: added an "Other" slice for statuses like CANCELLED/REASSIGN
+  // that groupStatuses() now tracks explicitly instead of dropping.
+  // Only rendered if there actually is a nonzero "other" bucket, so
+  // this is a no-op visually for any dataset where every status maps
+  // cleanly into the four named buckets.
   const DONUT = [
     { label: 'Open',        value: statusGroups.open,        color: ALARM.critical },
     { label: 'In Progress', value: statusGroups.in_progress, color: ALARM.minor    },
     { label: 'Resolved',    value: statusGroups.resolved,    color: HW.blue        },
     { label: 'Closed',      value: statusGroups.closed,      color: ALARM.normal   },
+    ...(statusGroups.other > 0
+      ? [{ label: 'Other', value: statusGroups.other, color: ALARM.unknown }]
+      : []),
   ]
   const totalGrouped = DONUT.reduce((s, d) => s + d.value, 0)
   const resolutionChart = totalGrouped > 0 ? {
@@ -320,7 +359,7 @@ export default function Overview() {
         itemMargin: { horizontal: 8, vertical: 4 } },
       dataLabels: { enabled: false },
       tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
-        y: { formatter: v => `${v.toLocaleString()} (${((v / totalGrouped) * 100).toFixed(1)}%)` } },
+        y: { formatter: v => `${v.toLocaleString()} (${fmtPct(v, totalGrouped)})` } },
     },
   } : null
 
@@ -331,10 +370,10 @@ export default function Overview() {
       ...base,
       chart:  { ...base.chart, type: 'bar' },
       colors: DOW_ORDER.map(d => {
-        if (d === todayDow) return HW.blue                       // today: full
+        if (d === todayDow) return HW.blue
         if (d === 'Sat' || d === 'Sun')
           return T.mode === 'dark' ? 'rgba(255,255,255,.16)' : 'rgba(0,0,0,.16)'
-        return 'rgba(0,147,213,.40)'                             // weekdays: dimmed
+        return 'rgba(0,147,213,.40)'
       }),
       plotOptions: { bar: { columnWidth: '72%', borderRadius: 0, distributed: true } },
       xaxis: { categories: DOW_ORDER,
@@ -345,7 +384,7 @@ export default function Overview() {
         formatter: v => v?.toFixed(0) } },
       dataLabels: { enabled: true,
         style: { fontSize: '10px', fontWeight: 700, fontFamily: FONT.display,
-          colors: [T.text] },                                   // O-6
+          colors: [T.text] },
         formatter: v => (v > 0 ? v.toLocaleString() : '') },
       legend: { show: false },
       grid: { borderColor: gridLine(T), strokeDashArray: 3,
@@ -385,6 +424,11 @@ export default function Overview() {
   } : null
 
   // 5. Complaint types — O-2: rank-graded blue, no rainbow
+  // FIX: both the on-bar data label and the tooltip used .toFixed(0),
+  // showing "(0%)" for any category under ~0.5% of the categorized
+  // total even though its absolute count (shown right next to it) is
+  // genuinely nonzero -- same rounding artefact already diagnosed and
+  // fixed in NB01's category chart. Now uses fmtPct() for both.
   const typeChart = typeValues.length > 0 ? {
     series: [{ name: t('overview.complaints') || 'Complaints', data: typeValues }],
     options: {
@@ -401,11 +445,11 @@ export default function Overview() {
       yaxis: { labels: { style: { fontSize: '10px', colors: T.textMuted }, maxWidth: 150 } },
       dataLabels: { enabled: true, textAnchor: 'start', offsetX: 8,
         style: { fontSize: '10px', fontWeight: 700, colors: [T.text] },
-        formatter: v => `${v.toLocaleString()} (${((v / typeTotal) * 100).toFixed(0)}%)` },
+        formatter: v => `${v.toLocaleString()} (${fmtPct(v, typeTotal)})` },
       legend: { show: false },
       grid: { xaxis: { lines: { show: false } }, borderColor: gridLine(T), strokeDashArray: 3 },
       tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
-        y: { formatter: v => `${v?.toLocaleString()} (${((v / typeTotal) * 100).toFixed(1)}%)` } },
+        y: { formatter: v => `${v?.toLocaleString()} (${fmtPct(v, typeTotal)})` } },
     },
   } : null
 
@@ -427,7 +471,7 @@ export default function Overview() {
       legend: { show: false },
       grid: { borderColor: gridLine(T), strokeDashArray: 3 },
       tooltip: { theme: T.mode === 'dark' ? 'dark' : 'light',
-        y: { formatter: v => `${v?.toLocaleString()} (${((v / segTotal) * 100).toFixed(1)}%)` } },
+        y: { formatter: v => `${v?.toLocaleString()} (${fmtPct(v, segTotal)})` } },
     },
   } : null
 
@@ -470,7 +514,7 @@ export default function Overview() {
     {
       label: t('overview.openComplaints') || 'Open Complaints',
       value: statusGroups.open.toLocaleString(),
-      color: slaBreached ? ALARM.critical : ALARM.normal,   // O-2: severity, not brand red
+      color: slaBreached ? ALARM.critical : ALARM.normal,
       icon:  slaBreached ? ShieldAlert : CheckCircle2,
       sub:   `${openPct.toFixed(1)}% open rate`,
       alert: slaBreached,
@@ -504,7 +548,6 @@ export default function Overview() {
       {/* ══ HERO HEADER ════════════════════════════════════════════ */}
       <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 28, marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-          {/* O-2: live = healthy → green status pill (was brand red) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 7,
             background: `${ALARM.normal}10`, border: `1px solid ${ALARM.normal}40`,
             padding: '5px 13px' }}>
@@ -533,7 +576,6 @@ export default function Overview() {
         <div style={{ display: 'flex', justifyContent: 'space-between',
           alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
           <div>
-            {/* The ONE brand-red element on this page (hero accent) */}
             <h1 style={{ fontFamily: FONT.display, fontSize: 'clamp(26px,3.5vw,52px)',
               fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1,
               color: T.text, marginBottom: 8 }}>
@@ -578,7 +620,7 @@ export default function Overview() {
             </span>
             <span style={{ fontFamily: FONT.display, fontSize: 13, fontWeight: 700,
               color: T.textMuted }}>
-              {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}   {/* O-5 */}
+              {lastUpdated ? lastUpdated.toLocaleTimeString() : '—'}
             </span>
           </div>
         }
@@ -615,13 +657,20 @@ export default function Overview() {
       </GapGrid>
 
       {/* ══ 3. COMPLAINT TREND ════════════════════════════════════ */}
+      {/* NOTE: the section title below falls back to 'COMPLAINT VOLUME
+          — DAILY TREND' when no i18n key is found. If your live UI
+          shows "90-Day Trend" instead, that string comes from your
+          i18next translation file's `overview.trendSection` key, not
+          from this component -- the chart itself plots the full data
+          range (337 days in the current dataset), so the "90-Day"
+          label is stale wherever it's actually defined. Fix it in the
+          translation JSON (e.g. en.json), not here. */}
       <SectionLabel
         action={
           <div style={{ display: 'flex', gap: 8 }}>
             <Badge variant={spikeCount > 0 ? 'minor' : 'normal'}>
               {spikeCount} {t('overview.spikeBadge') || 'SPIKES'}
             </Badge>
-            {/* O-3: badge derives from the actual constant */}
             <Badge variant="gray">{`Z-SCORE ≥ ${SPIKE_SIGMA}σ`}</Badge>
           </div>
         }
@@ -661,7 +710,6 @@ export default function Overview() {
       </SectionLabel>
 
       <GapGrid columns="1fr 1.6fr">
-        {/* Resolution donut */}
         <ChartPanel
           title={t('overview.resolutionTitle') || 'Resolution Status'}
           sub={`${statusGroups.open.toLocaleString()} open · ${statusGroups.closed.toLocaleString()} closed · SLA threshold ${SLA_OPEN_THRESHOLD}%`}>
@@ -697,7 +745,6 @@ export default function Overview() {
           )}
         </ChartPanel>
 
-        {/* Weekly pattern */}
         <ChartPanel
           title={t('overview.weeklyTitle') || 'Weekly Complaint Pattern'}
           sub={hasDow
@@ -710,7 +757,6 @@ export default function Overview() {
             <EmptyState icon={Activity} title="DOW data unavailable"
               desc="Run /api/analytics/complaints/dow"/>
           )}
-          {/* O-3: weekly stats computed from the same data as the chart */}
           {hasDow && (
             <StatStrip style={{ marginTop: 12 }} items={[
               { label: 'PEAK DAY',    value: peakDay,                          color: HW.blue },
@@ -822,7 +868,6 @@ export default function Overview() {
         {t('overview.datasetSection') || 'DATASET SUMMARY'}
       </SectionLabel>
 
-      {/* Metadata, not alarms → neutral accent colors (O-2) */}
       <GapGrid columns="repeat(4,1fr)">
         <InfoCard label={t('overview.totalComplaints') || 'Total Complaints'}
           value={totalComplaints.toLocaleString()} color={HW.blue} icon={Database}/>

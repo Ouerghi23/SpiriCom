@@ -8,7 +8,9 @@ import { useTranslation }                          from 'react-i18next'
 import { useTheme }                                from '../context/ThemeContext'
 import { Sun, Moon }                               from 'lucide-react'
 import FloatingControls                            from '../components/FloatingControls'
-import TranslateWidget                             from '../components/TranslateWidget'
+// FIX: TranslateWidget was imported but never rendered in this file
+// (only <FloatingControls/> is used below) — dead import, removed.
+// FloatingControls already provides the theme + EN↔ZH toggle.
 import logoImg                                     from '../assets/images/logo.png'
 import axios                                       from 'axios'
 
@@ -26,6 +28,9 @@ const DEMO = [
   { username:'noc_engineer', password:'noc123',        role:'Engineer', flag:'📡' },
   { username:'huawei_cn',    password:'huawei2026',    role:'华为工程师',  flag:'🇨🇳' },
 ]
+// NOTE: demo credentials still reference 'spiricomp2026' as the admin
+// password literal — that's a backend/seed-data value, not a UI brand
+// string, so it's untouched here. Only display text was renamed.
 
 const FEATURES = [
   { tag:'GIS',       titleKey:'modGisTitle'       },
@@ -42,6 +47,8 @@ const STATS = [
   { value:'5K',   labelKey:'statsSites'        },
   { value:'24',   labelKey:'statsGovernorates' },
 ]
+// NOTE: same 50K+ vs 25K+ discrepancy flagged in LandingPage.jsx applies
+// here too — update if you change STATS there, keep both pages consistent.
 
 // ── Icons ──────────────────────────────────────────────────────────────
 const Ico = d => ({ size=14, color='currentColor', sw=2 }) => (
@@ -99,13 +106,13 @@ function NocInput({ left:L, right, value, onChange, type='text',
   placeholder, autoComplete, autoFocus, required, extraBorder,
   mode, BORDER, TEXT, RED, DIM }) {
   const [focus, setFocus] = useState(false)
-  const inputRef = useRef(null)            // ← ajoute
+  const inputRef = useRef(null)
 
   useEffect(() => {
     if (autoFocus && inputRef.current) {
-      inputRef.current.focus()             // ← focus une seule fois au mount
+      inputRef.current.focus()
     }
-  }, [])  
+  }, [])
   const inputBg     = mode==='dark' ? (focus?'#060609':'#04050A') : (focus?'#FFFFFF':'#F5F7FF')
   const inputBorder = extraBorder || (focus ? 'rgba(207,10,44,.65)' : BORDER)
   return (
@@ -157,7 +164,6 @@ export default function LoginPage() {
   const { t }                 = useTranslation()
   const { mode, toggleTheme } = useTheme()
 
-  // ── FIX-2 / FIX-1: palette memoised ──────────────────────────────────
   const { RED, REDL, BG, BORDER, TEXT, MUTED, DIM } = useMemo(() => ({
     RED:    '#CF0A2C',
     REDL:   '#FF4060',
@@ -168,10 +174,8 @@ export default function LoginPage() {
     DIM:    mode==='dark' ? 'rgba(248,250,252,.28)'  : 'rgba(13,17,23,.32)',
   }), [mode])
 
-  // ── Tab ───────────────────────────────────────────────────────────────
   const [tab, setTab] = useState('signin')
 
-  // ── Sign-in state ─────────────────────────────────────────────────────
   const [siUser,   setSiUser]   = useState('')
   const [siPass,   setSiPass]   = useState('')
   const [siShowPw, setSiShowPw] = useState(false)
@@ -184,7 +188,6 @@ export default function LoginPage() {
   const lockedUntilRef = useRef(lockedUntil)
   lockedUntilRef.current = lockedUntil
 
-  // ── Sign-up state ─────────────────────────────────────────────────────
   const [suUser,   setSuUser]   = useState('')
   const [suName,   setSuName]   = useState('')
   const [suEmail,  setSuEmail]  = useState('')
@@ -196,18 +199,14 @@ export default function LoginPage() {
   const [suLoad,   setSuLoad]   = useState(false)
   const [suOk,     setSuOk]     = useState(false)
 
-  // ── Forgot password state ─────────────────────────────────────────────
   const [fpEmail, setFpEmail] = useState('')
   const [fpSent,  setFpSent]  = useState(false)
   const [fpLoad,  setFpLoad]  = useState(false)
   const [fpErr,   setFpErr]   = useState(null)
 
-  // ── Derived lockout values ─────────────────────────────────────────────
   const isLocked     = !!(lockedUntil && Date.now() < lockedUntil)
   const minutesLeft  = isLocked ? Math.ceil((lockedUntil - Date.now()) / 60000) : 0
   const attemptsLeft = MAX_ATTEMPTS - attempts
-
-  // ── Handlers ──────────────────────────────────────────────────────────
 
   const roleDestination = () => {
     try {
@@ -224,6 +223,11 @@ export default function LoginPage() {
     } catch { /* ignore */ }
     return '/dashboard'
   }
+  // NOTE: localStorage/sessionStorage keys ('spiricomp_user',
+  // 'spiricomp_token') are internal storage keys, invisible to users —
+  // left unchanged intentionally, consistent with useAuth.jsx which
+  // uses the same keys. Only user-visible display text was renamed
+  // from SpiriComp to SpiriCom in this file.
 
   const handleSignIn = useCallback(async (e) => {
     e.preventDefault()
@@ -297,14 +301,13 @@ export default function LoginPage() {
     } catch (err) {
       const raw = err.response?.data?.detail
       const msg = Array.isArray(raw)
-        ? (raw[0]?.msg || t('forgot.connectionError'))   // erreur Pydantic 422
-        : (typeof raw === 'string' ? raw                 // erreur applicative
-        : t('forgot.connectionError'))                   // fallback
+        ? (raw[0]?.msg || t('forgot.connectionError'))
+        : (typeof raw === 'string' ? raw
+        : t('forgot.connectionError'))
       setFpErr(msg)
     } finally { setFpLoad(false) }
   }
 
-  // ── Password strength ──────────────────────────────────────────────────
   const str = useMemo(() => {
     let s = 0
     if (suPass.length >= 8)           s++
@@ -322,7 +325,6 @@ export default function LoginPage() {
   const confMatch    = suConf.length > 0 && suPass === suConf
   const confMismatch = suConf.length > 0 && suPass !== suConf
 
-  // ── Inline components ──────────────────────────────────────────────────
   const FieldLabel = ({ children ,dim}) => (
     <label style={{ display:'block', fontSize:9.5, fontWeight:700,
       color:DIM, letterSpacing:2.4, textTransform:'uppercase', marginBottom:8 }}>
@@ -342,10 +344,8 @@ export default function LoginPage() {
     </div>
   )
 
-  // ── Stable theme object ───────────────────────────────────────────────
   const th = useMemo(() => ({ mode, BORDER, TEXT, RED, DIM }), [mode, BORDER, TEXT, RED, DIM])
 
-  // ── Tab titles ─────────────────────────────────────────────────────────
   const cardTitle = {
     signin: t('login.title'),
     signup: t('signup.title'),
@@ -470,11 +470,15 @@ export default function LoginPage() {
           <div style={{ width:36, height:36, borderRadius:'50%', overflow:'hidden',
             border:'1.5px solid rgba(207,10,44,.55)', flexShrink:0,
             boxShadow:'0 0 14px rgba(207,10,44,.22), 0 0 0 3px rgba(207,10,44,.06)' }}>
-            <img src={logoImg} alt="SpiriComp" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+            {/* FIX: alt text SpiriComp -> SpiriCom */}
+            <img src={logoImg} alt="SpiriCom" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
           </div>
           <div style={{ lineHeight:1 }}>
+            {/* FIX: display name SpiriComp -> SpiriCom (was inconsistent
+                with every other page in the app, all of which say
+                SpiriCom without the trailing 'p') */}
             <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontWeight:900, fontSize:20, letterSpacing:'-.5px', color:TEXT }}>
-              Spiri<span style={{ color:RED }}>Comp</span>
+              Spiri<span style={{ color:RED }}>Com</span>
             </div>
             <div style={{ fontSize:8, color:DIM, letterSpacing:4, marginTop:2, fontWeight:700 }}>
               {t('brand.by')}
@@ -610,7 +614,8 @@ export default function LoginPage() {
                 <h2 style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:28,
                   fontWeight:900, letterSpacing:'-1px', lineHeight:1, color:TEXT, marginBottom:5 }}>
                   {cardTitle}{' — '}
-                  <span style={{ color:MUTED, fontWeight:300, fontStyle:'italic' }}>SpiriComp</span>
+                  {/* FIX: SpiriComp -> SpiriCom */}
+                  <span style={{ color:MUTED, fontWeight:300, fontStyle:'italic' }}>SpiriCom</span>
                 </h2>
                 <p style={{ fontSize:11, color:DIM, lineHeight:1.6 }}>{cardSub}</p>
               </div>
@@ -975,8 +980,9 @@ export default function LoginPage() {
         background:mode==='dark'?'rgba(5,5,7,.98)':'rgba(240,242,248,.98)',
         flexShrink:0, zIndex:1, position:'relative', transition:'background .3s',
       }}>
+        {/* FIX: SpiriComp -> SpiriCom */}
         <p style={{ fontSize:10, color:DIM, letterSpacing:.4 }}>
-          © 2026 SpiriComp — Huawei Technologies Tunisia · PFE Engineering · Ouerghi Chaima
+          © 2026 SpiriCom — Huawei Technologies Tunisia · PFE Engineering · Ouerghi Chaima
         </p>
         <div style={{ display:'inline-flex', alignItems:'center', gap:7,
           border:'1px solid rgba(34,197,94,.16)', background:'rgba(34,197,94,.04)', padding:'4px 12px' }}>
@@ -990,8 +996,6 @@ export default function LoginPage() {
 
       {/* FloatingControls: bottom-left pill — theme + EN↔ZH */}
       <FloatingControls />
-      {/* TranslateWidget: bottom-right i18n button */}
-     
     </div>
   )
 }

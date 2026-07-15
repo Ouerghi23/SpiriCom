@@ -1,45 +1,4 @@
 // src/pages/ComplaintMap.jsx
-// ─────────────────────────────────────────────────────────────────────
-// SpiriCom NOC Dashboard — Geographic Complaint Map (v2, UI.jsx aligned)
-//
-// DATA SCHEMA (unchanged from MAP-1…MAP-5):
-//  province col normalized · service derived from sub_category ·
-//  QoE replaced by resolution rate · GOUVERNORAT stripped
-//
-// MIGRATION (vs previous version):
-//  CM-1  Duplicated HW / ALARM / gapColor / SectionLabel / StatBlock
-//        removed — imported from components/UI. No T prop drilling.
-//        Keyframes (noc-pulse/noc-spin) + hover lifts come from
-//        <NocBaseStyles/> in Layout; only map-pulse stays local
-//        (Leaflet divIcon HTML references it).
-//  CM-2  Red discipline. This page used brand red for complaint
-//        VOLUME everywhere (KPIs, top-10 ramp, rank rows, selection,
-//        zoom hover, search focus, section labels). Volume is a
-//        magnitude, not an alarm:
-//        · analytics (top-10 bar, ranking list, KPI) → blueRamp / blue
-//        · selection accents, search focus, zoom hover → HW.blue
-//        · hero "LIVE GEO" pill → ALARM.normal (live = healthy)
-//        Map intensity layers (heat / choropleth / clusters) keep a
-//        warm high-end — high complaint density IS severity — but the
-//        scale is now the token ladder:
-//        HW.blue → normal → minor → major → critical.
-//  CM-3  Popups, choropleth labels, and the legend were hardcoded
-//        dark (#0C0E1A + white text) regardless of theme — unreadable
-//        styling mismatch in light mode. All theme-aware now.
-//  CM-4  Avg resolution was an unweighted city mean (a village counted
-//        like Tunis). Now complaint-weighted; label says so.
-//  CM-5  "Lowest Resolution" KPI accent derives from RES_COLOR of the
-//        actual value (was fixed major); "Most Complaints" → minor.
-//  CM-6  error / noData banners → AlertBanner. Governorate count from
-//        regions.length (was hardcoded 24 twice).
-//  CM-7  Hover via CSS classes (no inline onMouseOver mutation).
-//        Typography floor ≥10px for data labels.
-//
-// FLAGGED (backend): the city field is still named `qoe` but holds
-// resolution rate — rename to `resolution_rate` in the API and here
-// in one coordinated change.
-// ─────────────────────────────────────────────────────────────────────
-
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import 'leaflet/dist/leaflet.css'
@@ -79,7 +38,6 @@ const RES_LABEL = r =>
   r >= 80 ? 'Good' : r >= 60 ? 'Fair' : r >= 40 ? 'Poor' : 'Critical'
 
 // ── CM-2: volume-intensity ladder for MAP layers only ─────────────────
-// (charts and lists use blueRamp — magnitude, not alarm)
 const VOL_LADDER = [HW.blue, ALARM.normal, ALARM.minor, ALARM.major, ALARM.critical]
 const volColor = intensity =>
   intensity > .8  ? ALARM.critical :
@@ -112,8 +70,12 @@ const buildIcon = (size, color, pulse = false) => L.divIcon({
 })
 
 // ── CM-3: theme-aware popup builder ───────────────────────────────────
+// NOTE (CM-8): c.qoe here is always the all-services resolution rate,
+// even when the active service filter is 4g/voice/5g -- see the file
+// header note. The popup label below now says so explicitly instead
+// of silently showing an unfiltered number next to a filtered one.
 const buildPopup = (c, t, T) => {
-  const resColor = RES_COLOR(c.qoe)   // FLAG: qoe field = resolution rate
+  const resColor = RES_COLOR(c.qoe)
   const resLabel = RES_LABEL(c.qoe)
   return `
   <div style="font-family:'Barlow','Inter',system-ui;padding:4px;min-width:230px;color:${T.text};">
@@ -131,7 +93,7 @@ const buildPopup = (c, t, T) => {
     </div>
     <div style="display:flex;align-items:center;gap:6px;">
       <div style="width:6px;height:6px;border-radius:50%;background:${resColor};"></div>
-      <span style="font-size:10px;color:${T.textDim};">${resLabel} resolution rate</span>
+      <span style="font-size:10px;color:${T.textDim};">${resLabel} resolution rate (all services)</span>
     </div>
   </div>`
 }
@@ -219,10 +181,19 @@ export default function ComplaintMap() {
       ? c.complaints
       : (c.services?.[service] || 0),
   })), [cities, service])
+  // NOTE (CM-8): only filteredComplaints is service-aware here. c.qoe
+  // is passed through unchanged from the API response for every
+  // service filter -- see file header note for the full explanation
+  // and what a real fix requires from the backend.
 
   const totals = useMemo(() => {
     const total = enrichedCities.reduce((s, c) => s + c.filteredComplaints, 0)
-    // CM-4: complaint-weighted resolution rate
+    // CM-4/CM-8: complaint-weighted resolution rate -- weighting and
+    // qoe are both all-services regardless of the active filter, since
+    // no per-service qoe exists in the current API response. This
+    // average is therefore identical no matter which service is
+    // selected; labelled as "All Services" explicitly below rather
+    // than implying it tracks the filter.
     const wSum  = enrichedCities.reduce((s, c) => s + (c.qoe || 0) * c.complaints, 0)
     const wTot  = enrichedCities.reduce((s, c) => s + c.complaints, 0)
     const avgRes    = wTot > 0 ? wSum / wTot : 0
@@ -240,7 +211,7 @@ export default function ComplaintMap() {
     [enrichedCities, search]
   )
 
-  const govCount = regions.length || 24   // CM-6
+  const govCount = regions.length || 24
 
   const resetView = useCallback(() => {
     mapRef.current?.flyTo(TUNISIA_CENTER, TUNISIA_ZOOM, { duration: 1.2 })
@@ -291,7 +262,6 @@ export default function ComplaintMap() {
     const maxVal = Math.max(...enrichedCities.map(c => c.filteredComplaints), 1)
 
     if (viewMode === 'heatmap') {
-      // CM-2: token ladder gradient
       heatLayer.current = L.heatLayer(
         enrichedCities.map(c => [c.lat, c.lng, c.filteredComplaints / maxVal]),
         { radius: 50, blur: 35, maxZoom: 12, max: 1.0,
@@ -308,7 +278,6 @@ export default function ComplaintMap() {
           const sum   = cluster.getAllChildMarkers()
             .reduce((s, mk) => s + (mk.options.complaints || 0), 0)
           const size  = sum > 15000 ? 56 : sum > 5000 ? 44 : 36
-          // CM-2: token ladder, not raw hex
           const color = sum > 15000 ? ALARM.critical : sum > 5000 ? ALARM.minor : HW.blue
           return L.divIcon({
             className: '',
@@ -324,7 +293,7 @@ export default function ComplaintMap() {
                      : c.filteredComplaints > 500  ? 15 : 11
         const color  = colorByRes
           ? RES_COLOR(c.qoe)
-          : volColor(c.filteredComplaints / maxVal)   // CM-2: ladder, not flat red
+          : volColor(c.filteredComplaints / maxVal)
         const marker = L.marker([c.lat, c.lng],
           { icon: buildIcon(size, color, isPeak), complaints: c.filteredComplaints })
         marker.bindPopup(buildPopup(c, t, T), { className: 'noc-popup', maxWidth: 270 })
@@ -339,7 +308,7 @@ export default function ComplaintMap() {
       layerGroup.current = L.layerGroup()
       enrichedCities.forEach(c => {
         const intensity = c.filteredComplaints / maxVal
-        const color     = volColor(intensity)   // CM-2
+        const color     = volColor(intensity)
         const circle = L.circle([c.lat, c.lng], {
           radius: (15 + intensity * 50) * 1000,
           color, fillColor: color, fillOpacity: 0.28, weight: 1.5,
@@ -347,7 +316,6 @@ export default function ComplaintMap() {
         circle.bindPopup(buildPopup(c, t, T), { className: 'noc-popup', maxWidth: 270 })
         circle.on('click', () => setSelectedCity(c))
         layerGroup.current.addLayer(circle)
-        // CM-3: theme-aware label
         const labelBg = mode === 'dark' ? 'rgba(8,10,18,.88)' : 'rgba(245,247,252,.92)'
         const labelFg = mode === 'dark' ? '#F8FAFC' : '#0C0E1A'
         const labelIcon = L.divIcon({
@@ -397,7 +365,6 @@ export default function ComplaintMap() {
     <div style={{ background: T.bg, minHeight: '100vh', color: T.text,
       transition: 'background .3s' }}>
       <style>{`
-        /* Leaflet divIcon HTML references this — must stay global here */
         @keyframes map-pulse { 0%,100%{transform:scale(1);opacity:.6} 50%{transform:scale(1.5);opacity:0} }
         @media (prefers-reduced-motion: reduce) {
           [style*="map-pulse"] { animation: none !important; }
@@ -411,7 +378,6 @@ export default function ComplaintMap() {
         .leaflet-control-attribution a { color:${T.textMuted}!important; }
         .leaflet-control-scale-line { background:${T.bgCard}!important; color:${T.textMuted}!important; border-color:${T.border}!important; border-radius:0!important; font-size:9px!important; }
 
-        /* CM-3: popup chrome follows the theme */
         .noc-popup .leaflet-popup-content-wrapper { background:${T.bgCard}; border-radius:0; box-shadow:0 8px 32px rgba(0,0,0,.45); border:1px solid ${T.border}; }
         .noc-popup .leaflet-popup-tip-container   { display:none; }
         .noc-popup .leaflet-popup-content         { margin:14px 16px; }
@@ -433,7 +399,6 @@ export default function ComplaintMap() {
         {/* ══ HERO HEADER ════════════════════════════════════════ */}
         <div style={{ borderBottom: `1px solid ${T.border}`, paddingBottom: 24, marginBottom: 24 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-            {/* CM-2: live = healthy → green */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 7,
               background: `${ALARM.normal}10`, border: `1px solid ${ALARM.normal}40`,
               padding: '5px 13px' }}>
@@ -453,7 +418,6 @@ export default function ComplaintMap() {
           <div style={{ display: 'flex', justifyContent: 'space-between',
             alignItems: 'flex-end', flexWrap: 'wrap', gap: 20 }}>
             <div>
-              {/* The ONE brand-red element on this page */}
               <h1 style={{ fontFamily: FONT.display, fontSize: 'clamp(26px,3.5vw,52px)',
                 fontWeight: 900, letterSpacing: '-1.5px', lineHeight: 1,
                 color: T.text, marginBottom: 8 }}>
@@ -507,19 +471,26 @@ export default function ComplaintMap() {
             color={HW.blue}
             icon={MapPin}
             sub={t(SERVICE_OPTIONS.find(s => s.id === service)?.labelKey) || 'All'}/>
+          {/* FIX (CM-8): sub-label now always reads "All Services" for
+              this tile -- the value never actually varies with the
+              service filter (see file header note), so the label no
+              longer implies otherwise. */}
           <StatBlock
             label={t('map.avgResolution') || 'Avg Resolution Rate'}
             value={`${totals.avgRes.toFixed(1)}%`}
             color={RES_COLOR(totals.avgRes)}
             icon={CheckCircle2}
-            sub={`${RES_LABEL(totals.avgRes)} — weighted national avg`}/>
+            sub={`${RES_LABEL(totals.avgRes)} — all services, weighted nat'l avg`}/>
+          {/* FIX (CM-8): same as above -- this tile's underlying city
+              (and its rate) also never changes with the service
+              filter. */}
           <StatBlock
             label={t('map.worstCity') || 'Lowest Resolution'}
             value={totals.worstCity?.city || '—'}
             color={totals.worstCity ? RES_COLOR(totals.worstCity.qoe) : ALARM.unknown}
             icon={ShieldAlert}
             alert={totals.worstCity ? totals.worstCity.qoe < 40 : false}
-            sub={totals.worstCity ? `${totals.worstCity.qoe?.toFixed(0)}% resolved` : ''}/>
+            sub={totals.worstCity ? `${totals.worstCity.qoe?.toFixed(0)}% resolved (all services)` : ''}/>
           <StatBlock
             label={t('map.peakCity') || 'Most Complaints'}
             value={totals.peakCity?.city || '—'}
@@ -578,7 +549,6 @@ export default function ComplaintMap() {
         {/* ══ MAP + SIDE PANEL ═══════════════════════════════════ */}
         <GapGrid columns="1fr 360px" style={{ marginBottom: 1 }}>
 
-          {/* MAP */}
           <div style={{ position: 'relative', height: 660, overflow: 'hidden',
             border: `1px solid ${T.border}` }}>
             {loading && (
@@ -595,7 +565,6 @@ export default function ComplaintMap() {
             )}
             <div ref={mapContainer} style={{ width: '100%', height: '100%' }}/>
 
-            {/* Legend — CM-3: theme-aware */}
             <div style={{ position: 'absolute', bottom: 40, left: 56, zIndex: 500,
               background: mode === 'dark' ? 'rgba(8,10,18,.94)' : 'rgba(245,247,252,.95)',
               backdropFilter: 'blur(12px)', border: `1px solid ${T.border}`,
@@ -603,7 +572,7 @@ export default function ComplaintMap() {
               <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '2px',
                 textTransform: 'uppercase', color: T.textDim, marginBottom: 10 }}>
                 {viewMode === 'heatmap' ? 'DENSITY'
-                  : colorByRes && viewMode === 'clusters' ? 'RESOLUTION RATE'
+                  : colorByRes && viewMode === 'clusters' ? 'RESOLUTION RATE (ALL SERVICES)'
                   : 'COMPLAINT VOLUME'}
               </div>
               {viewMode === 'heatmap' || (!colorByRes || viewMode !== 'clusters') ? (
@@ -631,7 +600,6 @@ export default function ComplaintMap() {
 
           {/* SIDE PANEL */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {/* Selected city — CM-2: selection is blue, not red */}
             {selectedCity ? (
               <div style={{ background: T.bgCard, border: `1px solid ${HW.blueBd}`,
                 padding: '18px 20px', position: 'relative', overflow: 'hidden' }}>
@@ -669,7 +637,15 @@ export default function ComplaintMap() {
                   {[
                     { label: t('map.complaints') || 'City Complaints',
                       value: selectedCity.complaints.toLocaleString(), color: HW.blue },
-                    { label: t('map.region') || 'Governorate',
+                    {
+                      /* FIX (CM-8): explicitly labelled "(all services)"
+                         -- this governorate total is never filtered by
+                         the active service, unlike "City Complaints"
+                         above which correctly reflects the selected
+                         service via filteredComplaints. Without this
+                         label the two numbers side by side look like a
+                         comparison, but they use different scopes. */
+                      label: (t('map.region') || 'Governorate') + ' (all services)',
                       value: (() => {
                         const r = regions.find(r => r.region === selectedCity.region)
                         return r ? r.total_complaints.toLocaleString() : '—'
@@ -703,7 +679,7 @@ export default function ComplaintMap() {
                         <div style={{ fontSize: 10, color: T.textDim,
                           letterSpacing: '1.8px', fontWeight: 700,
                           textTransform: 'uppercase', marginBottom: 5 }}>
-                          {t('map.resolutionRate') || 'RESOLUTION RATE'}
+                          {t('map.resolutionRate') || 'RESOLUTION RATE'} (ALL SERVICES)
                         </div>
                         <div style={{ fontFamily: FONT.display, fontSize: 26,
                           fontWeight: 900, color: RES_COLOR(selectedCity.qoe),
@@ -721,7 +697,6 @@ export default function ComplaintMap() {
                         {RES_LABEL(selectedCity.qoe)}
                       </span>
                     </div>
-                    {/* Severity-colored fill, neutral track */}
                     <div style={{ height: 3, background: T.border, overflow: 'hidden' }}>
                       <div style={{ height: '100%',
                         width: `${selectedCity.qoe || 0}%`,
