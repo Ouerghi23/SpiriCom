@@ -52,12 +52,19 @@ jobs:
         run: |
           pip install flake8
           flake8 src/ --max-line-length=120 --extend-ignore=E203,W503 || true
-
       # ── Node ─────────────────────────────────────────────────────
-      - name: Set up Node 20
+      - name: Set up Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: compspirit/package-lock.json
+
+      - name: Install frontend deps
+        run: cd compspirit && npm ci
+
+      - name: Build frontend
+        run: cd compspirit && npm run build
 
       # WARN-1 fix: cache npm dependencies
       - name: Cache npm
