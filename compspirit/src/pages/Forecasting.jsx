@@ -31,10 +31,7 @@ const TRAINING = {
    
     { label: 'Data Quality', value: '91.8%',    color: ALARM.major,
       sub: 'traffic_5g imputed' },
-    { label: 'RF PR-AUC',    value: '0.825',    color: ALARM.normal,
-      sub: 'Lift ×2.44 vs base' },
-    { label: 'RF ROC-AUC',   value: '0.848',    color: ALARM.normal,
-      sub: 'Leak-free, calibrated' },
+   
   ],
   churnDef: [
     { label: 'C1 — Low Data Usage', metric: 'dou_total ≤ 1.86 MB (Q20, observed)',
@@ -179,12 +176,15 @@ const [modelRes, scoresRes, shapRes, fg5gRes] = await Promise.allSettled([
                       ?? modelSummary?.all_models?.[bestModel]?.threshold
                       ?? modelSummary?.models?.[bestModel]?.threshold
   const nTest          = null
-
+const highRiskCount = useMemo(() =>
+ churnScores.filter(c => (c.churn_probability || 0) >= 0.50).length,
+ [churnScores])
   const highRiskRows = useMemo(() =>
     [...churnScores]
       .filter(c => (c.churn_probability || 0) >= 0.50)
       .sort((a, b) => (b.churn_probability || 0) - (a.churn_probability || 0))
       .slice(0, 15),
+   
     [churnScores]
   )
 
@@ -443,7 +443,7 @@ const avgRiskScore = useMemo(() => {
               </span>
             </div>
             <span style={{ fontSize: 11, color: T.textDim, letterSpacing: '1.5px' }}>
-              Huawei Technologies Tunisia — KPI Dataset · Disengagement v6
+              Huawei Technologies Tunisia — KPI Dataset · Disengagement 5G
             </span>
             {refreshing && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 6 }}>
@@ -673,7 +673,7 @@ const avgRiskScore = useMemo(() => {
         {/* ══ §5. HIGH-RISK CUSTOMER TABLE ═══════════════════════════ */}
         <SectionLabel
           action={<Badge variant="critical">
-            {highRiskRows.length} {t('forecast.customers') || 'customers'}
+              Top {highRiskRows.length} of {highRiskCount} {t('forecast.customers') || 'customers'}
           </Badge>}
           sub={`Calibrated risk · isotonic · sorted descending · ${bestModelLabel}${bestThreshold != null ? ` · threshold ${bestThreshold.toFixed(2)}` : ''}`}>
           {t('forecast.tableSection') || 'HIGH-RISK CUSTOMERS'}

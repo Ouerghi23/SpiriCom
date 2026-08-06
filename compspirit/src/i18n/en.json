@@ -85,6 +85,7 @@
     "errorUsername": "Username must be at least 3 characters (letters, numbers, _)",
     "errorPasswordShort": "Password must be at least 8 characters",
     "errorPasswordMatch": "Passwords do not match"
+
   },
   "forgot": {
     "cardTitle": "RESET PASSWORD",
@@ -134,7 +135,7 @@
     "spikeRate": "SPIKE RATE",
     "todayVsAvg": "TODAY vs AVG",
     "daysRecorded": "DAYS RECORDED",
-    "trendSection": "COMPLAINT VOLUME — 90-DAY TREND",
+    "trendSection": "Complaint Volume — Daily Trend (Full Year)",
     "trendSubtitle": "Daily complaint volume with 7-day rolling average and spike detection",
     "dailyComplaints": "Daily Complaints",
     "anomalySpike": "Anomaly Spike",
@@ -242,7 +243,7 @@
     "kpiHigh": "High Severity",
     "kpiRate": "Anomaly Rate",
     "kpiRegions": "Affected Regions",
-    "subFullData": "full dataset",
+    "subFullData": "Flagged records (union)",
     "subIf": "Isolation Forest detections",
     "subStat": "Z-Score / rolling detections",
     "subBoth": "flagged by both methods",
@@ -257,7 +258,7 @@
     "noTimeline": "No timeline data",
     "noTimelineDesc": "Select a region or run the anomaly pipeline",
     "topRegions": "Region",
-    "topDriversSub": "Regions ranked by anomaly day count",
+    "topDriversSub": "Top KPI features behind flagged anomalies",
     "noRegionData": "No regional data available",
     "driversSection": "Root Cause Drivers & Severity",
     "driversSub": "Top anomaly drivers and event severity distribution",
@@ -739,6 +740,7 @@
     "statsSites": "Cell Sites",
     "statsGovernorates": "Governorates Covered",
     "modGisTitle": "Spatio-Temporal Hotspot Map",
+    "modRcaTitle": "Analytic Root Cause Classification",
 "modGisDesc": "Interactive Leaflet.js map visualising 25,727 complaints across 257 cities and 24 governorates, with resolution rates, service filters and severity layers.",
 
 "modMlTitle": "Multi-Method Anomaly Detection",

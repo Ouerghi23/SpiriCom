@@ -965,7 +965,7 @@ export default function AnomalyFeed() {
                     background: T.bgCard, border: `1px solid ${T.border}`,
                     borderRadius: 6, color: T.text, cursor: 'pointer'
                   }}>
-                  Fermer
+                  Close
                 </button>
                 <button
                   onClick={() => {
@@ -977,7 +977,7 @@ export default function AnomalyFeed() {
                     background: HW.blue, border: 'none',
                     borderRadius: 6, color: 'white', cursor: 'pointer'
                   }}>
-                  Marquer résolu
+                  Done
                 </button>
               </div>
             </div>

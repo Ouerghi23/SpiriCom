@@ -68,6 +68,8 @@ const normalizeType = k => k
   .replace('COUPURE DE CONNEXION', 'Internet Drop')
   .replace("COUPURE D'APPEL", 'Call Drop')
   .replace('MAUVAISE QUALITÉ DE SON', 'Poor Voice Quality')
+  .replace('COUPURE DAPPEL', 'Call Drop')
+  .replace('PAS DE COUVERTURE', 'No Coverage') 
 // NOTE: flagged separately in this conversation -- "COUPURE DAPPEL"
 // (no apostrophe) and a "PAS DE COUVERTURE..." variant seen on a live
 // capture do NOT match any rule above (rules expect the apostrophe

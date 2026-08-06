@@ -777,7 +777,7 @@ export default function LoginPage() {
                           <FieldLabel>
                             {t('signup.emailLabel')}{' '}
                             <span style={{ color:DIM, fontWeight:400 }}>
-                              ({t('signup.emailOptional')})
+                              
                             </span>
                           </FieldLabel>
                           <TInput
