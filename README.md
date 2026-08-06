@@ -172,4 +172,3 @@ Developed at **Huawei Technologies Tunisia** (Mediterranean South Service Experi
 ## License
 
 No license file is currently included in this repository — all rights reserved by default. Add a `LICENSE` file if you intend to make reuse terms explicit.
-![CI](https://github.com/Ouerghi23/SpiriComp_/actions/workflows/ci.yml/badge.svg)
